@@ -18,7 +18,7 @@ import plotly.express as px
 # ------------------------------------------------------------------
 from supabase import create_client, Client, ClientOptions
 
-URL_SUPABASE = "https://zxzpaubemwpgvswvwjh.supabase.co"
+URL_SUPABASE = "https://zxzpaubemwpwgvswvwjh.supabase.co"
 CLAVE_SUPABASE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4enBhdWJlbXdwd2d2c3d2d2poIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Mzg1NzMzMiwiZXhwIjoyMDg5NDMzMzMyfQ.CGWbTQprQaAhYruqlIkmMAMhx7EzD9hJ8QnJ7wCBxto"
 
 # Opciones con tiempo de espera extendido (por si se ejecuta en redes lentas)
