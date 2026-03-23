@@ -184,14 +184,6 @@ def send_email(subject, body, recipient_email):
     except Exception as e:
         pass # Silencioso si no hay configurado el st.secrets
 
-¡Mil disculpas! El error ocurrió porque usé la palabra "dense" en el parámetro label_visibility, y Streamlit solo acepta "visible", "hidden" o "collapsed". Mi error por intentar forzar que fuera "denso" usando una palabra que no existe en sus reglas.
-
-Vamos a arreglarlo de verdad: usaremos CSS real para apretar los espacios y dejaremos el código de Streamlit con los parámetros correctos. Esto hará que todo quepa en una sola pantalla sin necesidad de bajar con el ratón.
-
-🛠️ Código corregido y "Ultra-Compacto"
-Busca el bloque del login (donde estaba el error) y reemplázalo por este. He achicado el logo un poco más y eliminé todos los márgenes sobrantes:
-
-Python
 # ------------------------------------------------------------------
 # 3) SISTEMA DE LOGIN "SINGLE-SCREEN" (SIN SCROLL)
 # ------------------------------------------------------------------
