@@ -24,9 +24,6 @@ URL_SUPABASE = "https://zxzpaubemwpwgvswvwjh.supabase.co"
 # Llave Maestra (Service Role)
 CLAVE_SUPABASE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4enBhdWJlbXdwd2d2c3d2d2poIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Mzg1NzMzMiwiZXhwIjoyMDg5NDMzMzMyfQ.CGWbTQprQaAhYruqlIkmMAMhx7EzD9hJ8QnJ7wCBxto"
 
-opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
-supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
-
 # Opciones con tiempo de espera extendido (por si se ejecuta en redes lentas)
 opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
 supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
@@ -231,7 +228,7 @@ def cargar_datos_nube():
         cursos = sorted([c["nombre"] for c in supabase.table("cursos").select("nombre").execute().data], key=custom_course_sort_key)
         recursos = sorted([r["nombre"] for r in supabase.table("recursos").select("nombre").execute().data])
         
-        # Horas y Mantenimientos (Por si acaso ya los creaste en Supabase, sino usa predeterminados locales)
+        # Horas y Mantenimientos
         try:
             horas = sorted([h["nombre"] for h in supabase.table("horas").select("nombre").execute().data], key=sort_time_key)
         except:
@@ -305,7 +302,9 @@ PAGES_CONFIG = {
     "Base de datos": {"icon": "🗃️", "roles": ["admin"]},
     "Semana": {"icon": "🗓️", "roles": ["admin", "profesor"]},
     "Dashboard": {"icon": "📈", "roles": ["admin"]},
+    "Configuración": {"icon": "⚙️", "roles": ["admin"]},
 }
+
 available_pages = [page for page, conf in PAGES_CONFIG.items() if st.session_state.role in conf["roles"]]
 default_page = "Mis Reservas" if st.session_state.role == 'profesor' else "Registrar"
 page = st.sidebar.radio("Navegación", available_pages, index=available_pages.index(default_page), format_func=lambda p: f"{PAGES_CONFIG[p]['icon']} {p}", label_visibility="collapsed")
@@ -436,8 +435,6 @@ if page == "Base de datos":
                 with st.spinner("Sincronizando con Supabase..."):
                     try:
                         # Detección de filas eliminadas por el usuario
-                        # En Streamlit data_editor, si se elimina una fila, su indice desaparece. 
-                        # Compararemos con df original
                         original_indices = set(df.index)
                         edited_indices = set(edited_df.index)
                         deleted_indices = original_indices - edited_indices
@@ -527,7 +524,6 @@ if page == "Semana":
 
     st.markdown(schedule.to_html(escape=False), unsafe_allow_html=True)
 
-
 if page == "Dashboard":
     st.title("📈 Dashboard Analítico")
     with st.container(border=True):
@@ -595,53 +591,69 @@ if page == "Dashboard":
                     st.plotly_chart(fig_recursos, use_container_width=True)
                 else: st.info("No hay datos de recursos en este periodo.")
 
-if page == "Mantenimiento de Equipos":
-    st.header("🛠️ Mantenimiento de Equipos")
-    st.write("Registra o revisa los equipos que están en reparación o presentan fallas.")
+if page == "Configuración":
+    st.title("⚙️ Configuración del Sistema")
+    st.write("Desde aquí puedes administrar los elementos centrales de la aplicación.")
     
-    tab_nuevo, tab_historial = st.tabs(["Reportar Falla", "Historial de Mantenimientos"])
+    tab_prof, tab_cur, tab_rec, tab_mant = st.tabs(["Profesores", "Cursos", "Recursos", "Mantenimientos"])
     
-    with tab_nuevo:
-        with st.form("form_mantenimiento"):
-            st.subheader("Reportar un equipo")
-            # map_rec debe estar creado arriba junto con map_prof y map_cur
-            rec_mant = st.selectbox("Selecciona el Recurso", list(map_rec.keys()) if map_rec else ["No hay recursos"])
-            fecha_mant = st.date_input("Fecha del reporte", dt.date.today())
-            detalle = st.text_area("Descripción de la falla o mantenimiento")
-            estado = st.selectbox("Estado", ["En Reparación", "Dado de Baja", "Reparado"])
-            
-            submit_mant = st.form_submit_button("Guardar Reporte")
-            
-            if submit_mant:
-                if rec_mant == "No hay recursos" or not detalle.strip():
-                    st.error("Por favor completa la descripción y selecciona un recurso válido.")
+    with tab_prof:
+        st.write("### 👥 Administración de Profesores")
+        st.info("Esta sección se implementará en el futuro para agregar/editar profesores directamente.")
+        
+    with tab_cur:
+        st.write("### 📚 Administración de Cursos")
+        st.info("Esta sección se implementará en el futuro para agregar/editar cursos.")
+        
+    with tab_rec:
+        st.write("### 💻 Administración de Recursos")
+        st.info("Esta sección se implementará en el futuro para agregar/editar recursos físicos.")
+        
+    with tab_mant:
+        st.subheader("🛠️ Gestión de Mantenimientos")
+        
+        c1, c2 = st.columns([1, 2])
+        
+        with c1:
+            st.write("#### Reportar Falla")
+            with st.form("form_mant_config"):
+                rec_mant = st.selectbox("Selecciona el Recurso", list(map_rec.keys()) if map_rec else ["No hay recursos"])
+                fecha_mant = st.date_input("Fecha del reporte", dt.date.today())
+                estado = st.selectbox("Estado", ["En Reparación", "Dado de Baja", "Reparado"])
+                detalle = st.text_area("Descripción de la falla")
+                
+                submit_mant = st.form_submit_button("Guardar Reporte", use_container_width=True)
+                
+                if submit_mant:
+                    if rec_mant == "No hay recursos" or not detalle.strip():
+                        st.error("Por favor completa la descripción.")
+                    else:
+                        recurso_id = map_rec[rec_mant]
+                        datos_mant = {
+                            "recurso_id": recurso_id,
+                            "fecha": fecha_mant.strftime("%Y-%m-%d"),
+                            "descripcion": detalle,
+                            "estado": estado
+                        }
+                        try:
+                            supabase.table("mantenimientos").insert(datos_mant).execute()
+                            st.success(f"Reporte guardado para {rec_mant}.")
+                            st.cache_data.clear() # Limpiar caché para que aparezca al instante
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al guardar: {e}")
+
+        with c2:
+            st.write("#### Historial de Equipos")
+            try:
+                mants = supabase.table("mantenimientos").select("*, recursos(nombre)").execute().data
+                if mants:
+                    df_mants = pd.DataFrame(mants)
+                    df_mants['Recurso'] = df_mants['recursos'].apply(lambda x: x['nombre'] if x else 'Desconocido')
+                    df_mants = df_mants.rename(columns={'fecha': 'Fecha', 'descripcion': 'Detalle', 'estado': 'Estado'})
+                    st.dataframe(df_mants[['Fecha', 'Recurso', 'Detalle', 'Estado']], use_container_width=True, hide_index=True)
                 else:
-                    recurso_id = map_rec[rec_mant]
-                    # Datos a insertar en la tabla mantenimientos
-                    datos_mant = {
-                        "recurso_id": recurso_id,
-                        "fecha": fecha_mant.strftime("%Y-%m-%d"),
-                        "descripcion": detalle,
-                        "estado": estado
-                    }
-                    try:
-                        respuesta = supabase.table("mantenimientos").insert(datos_mant).execute()
-                        st.success(f"Reporte guardado exitosamente para {rec_mant}.")
-                    except Exception as e:
-                        st.error(f"Error al guardar: {e}")
-                        
-    with tab_historial:
-        st.subheader("Equipos en Mantenimiento")
-        try:
-            # Traer datos de mantenimiento cruzados con el nombre del recurso
-            mants = supabase.table("mantenimientos").select("*, recursos(nombre)").execute().data
-            if mants:
-                df_mants = pd.DataFrame(mants)
-                # Limpiar la columna recursos para sacar solo el nombre
-                df_mants['Recurso'] = df_mants['recursos'].apply(lambda x: x['nombre'] if x else 'Desconocido')
-                df_mants = df_mants.rename(columns={'fecha': 'Fecha', 'descripcion': 'Detalle', 'estado': 'Estado'})
-                st.dataframe(df_mants[['Fecha', 'Recurso', 'Detalle', 'Estado']], use_container_width=True)
-            else:
-                st.info("No hay registros de mantenimiento en la base de datos.")
-        except Exception as e:
-            st.warning("Aún no hay registros o hubo un error al cargar el historial.")
+                    st.info("No hay registros de mantenimiento.")
+            except Exception as e:
+                st.warning("Error al cargar el historial.")
