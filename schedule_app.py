@@ -185,7 +185,7 @@ def send_email(subject, body, recipient_email):
         pass # Silencioso si no hay configurado el st.secrets
 
 # ------------------------------------------------------------------
-# 3) SISTEMA DE LOGIN "SINGLE-SCREEN" CON LOGO NÍTIDO (SIN SCROLL)
+# 3) SISTEMA DE LOGIN "SINGLE-SCREEN" - CORREGIDO (SIN ERROR DENSE)
 # ------------------------------------------------------------------
 if "logged" not in st.session_state:
     st.session_state.logged = False
@@ -193,50 +193,48 @@ if "logged" not in st.session_state:
     st.session_state.profesor_name = None
 
 if not st.session_state.logged:
-    # 1. INYECCIÓN DE CSS PARA COMPRIMIR ESPACIOS (NUEVA VERSIÓN)
+    # CSS PARA COMPRIMIR TODO Y QUE QUEPA EN UNA PANTALLA
     st.markdown("""
         <style>
-            /* Reducir drásticamente el espacio superior de la página entera */
             .block-container { padding-top: 1rem !important; }
-            /* Reducir el espacio vertical entre elementos de Streamlit (gap) */
-            [data-testid="stVerticalBlock"] { gap: 0.3rem !important; }
-            /* Quitar los márgenes por defecto de la imagen del logo */
-            [data-testid="stImage"] { margin-top: -20px; margin-bottom: -10px; }
-            /* Compactar inputs y selectboxes */
-            .stTextInput, .stSelectbox { margin-bottom: -15px; }
-            /* Compactar el hr (línea divisoria) */
+            [data-testid="stVerticalBlock"] { gap: 0.2rem !important; }
+            [data-testid="stImage"] { margin-top: -15px; margin-bottom: -5px; }
+            .stTextInput, .stSelectbox { margin-bottom: -10px; }
             hr { margin: 5px 0px !important; }
+            /* Estilo para que las etiquetas no ocupen tanto espacio */
+            label { margin-bottom: 2px !important; font-size: 0.9rem !important; }
         </style>
     """, unsafe_allow_html=True)
 
     BASE_DIR = Path(__file__).parent
     logo_path = BASE_DIR / "logocav.png"
     
-    # 2. LOGO COMPACTO PERO NÍTIDO (Cambiamos proporciones)
+    # 1. LOGO: Ajustado a 0.7 para que NO se corte
     if logo_path.exists():
-        # Aumentamos el centro a 0.6 [1.2, 0.6, 1.2] para que el logo tenga aire y no se corte
-        col1_img, col2_img, col3_img = st.columns([1.2, 0.6, 1.2])
+        # [Izquierda, Centro, Derecha] -> El centro con 0.7 es seguro para que no se achate
+        col1_img, col2_img, col3_img = st.columns([1.1, 0.7, 1.1])
         with col2_img:
             st.image(str(logo_path), use_container_width=True)
     
     LISTA_ADMINS = ["EDGAR", "GLORIA", "CARLOS", "ALEXIS"]
     PASSWORD_ADMIN = "cav690"
 
-    # 3. CONTENEDOR DE LOGIN ULTRA-COMPACTO
+    # 2. TARJETA DE LOGIN COMPACTA
     with st.container(border=True):
-        st.markdown(f"<div style='text-align: center; color: var(--primary-color); font-weight: bold; margin-bottom: 5px; font-size: 1.1em; letter-spacing: 1px;'>INICIAR SESIÓN</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; color: var(--primary-color); font-weight: bold; margin-bottom: 5px; font-size: 1.1em; letter-spacing: 1px;'>ACCESO</div>", unsafe_allow_html=True)
         
         tipo_usuario = st.radio(
             "Perfil", ["Profesor", "Administrador"],
-            horizontal=True, label_visibility="collapsed" 
+            horizontal=True, label_visibility="collapsed" # Aquí "collapsed" sí es válido
         )
         
-        st.markdown("<hr style='margin: 5px 0px 10px 0px; padding: 0;'>", unsafe_allow_html=True)
+        st.markdown("<hr>", unsafe_allow_html=True)
         
         if tipo_usuario == "Administrador":
             with st.form("form_admin", clear_on_submit=True):
-                admin_nombre = st.text_input("Nombre", placeholder="Tu nombre", label_visibility="dense")
-                admin_pass = st.text_input("Contraseña", type="password", placeholder="••••", label_visibility="dense")
+                # Cambiado label_visibility a "visible" para evitar errores
+                admin_nombre = st.text_input("Nombre", placeholder="Ej: Edgar")
+                admin_pass = st.text_input("Contraseña", type="password", placeholder="••••")
                 
                 if st.form_submit_button("ENTRAR", use_container_width=True, type="primary"):
                     nombre_limpio = admin_nombre.strip().upper()
@@ -246,12 +244,12 @@ if not st.session_state.logged:
                         st.session_state.profesor_name = nombre_limpio.capitalize()
                         st.rerun()
                     else:
-                        st.error("❌ Error")
+                        st.error("❌ Datos incorrectos.")
                         
         else:
             with st.form("form_profe", clear_on_submit=True):
                 profe_seleccionado = st.selectbox(
-                    "Nombre", PROFESORES, index=None, placeholder="Selecciona...", label_visibility="dense"
+                    "Nombre Completo", PROFESORES, index=None, placeholder="Selecciona..."
                 )
                 
                 if st.form_submit_button("ENTRAR", use_container_width=True, type="primary"):
