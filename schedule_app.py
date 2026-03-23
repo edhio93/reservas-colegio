@@ -597,7 +597,7 @@ if page == "Configuración":
     
     tab_prof, tab_cur, tab_rec, tab_mant = st.tabs(["Profesores", "Cursos", "Recursos", "Mantenimientos"])
     
-   with tab_prof:
+    with tab_prof:
         st.write("### 👥 Administración de Profesores")
         col_add, col_list = st.columns([1, 2])
         
@@ -721,3 +721,52 @@ if page == "Configuración":
                             st.rerun()
                         except Exception as e:
                             st.error("No se puede eliminar porque tiene reservas o reportes de mantenimiento asociados.")
+
+    with tab_mant:
+        st.subheader("🛠️ Gestión de Mantenimientos")
+        
+        c1, c2 = st.columns([1, 2])
+        
+        with c1:
+            st.write("#### Reportar Falla")
+            with st.form("form_mant_config"):
+                rec_mant = st.selectbox("Selecciona el Recurso", list(map_rec.keys()) if map_rec else ["No hay recursos"])
+                fecha_mant = st.date_input("Fecha del reporte", dt.date.today())
+                estado = st.selectbox("Estado", ["En Reparación", "Dado de Baja", "Reparado"])
+                detalle = st.text_area("Descripción de la falla")
+                
+                submit_mant = st.form_submit_button("Guardar Reporte", use_container_width=True)
+                
+                if submit_mant:
+                    if rec_mant == "No hay recursos" or not detalle.strip():
+                        st.error("Por favor completa la descripción.")
+                    else:
+                        recurso_id = map_rec[rec_mant]
+                        datos_mant = {
+                            "recurso_id": recurso_id,
+                            "fecha": fecha_mant.strftime("%Y-%m-%d"),
+                            "descripcion": detalle,
+                            "estado": estado
+                        }
+                        try:
+                            supabase.table("mantenimientos").insert(datos_mant).execute()
+                            st.success(f"Reporte guardado para {rec_mant}.")
+                            st.cache_data.clear() 
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al guardar: {e}")
+
+        with c2:
+            st.write("#### Historial de Equipos")
+            try:
+                mants = supabase.table("mantenimientos").select("*, recursos(nombre)").execute().data
+                if mants:
+                    df_mants = pd.DataFrame(mants)
+                    df_mants['Recurso'] = df_mants['recursos'].apply(lambda x: x['nombre'] if x else 'Desconocido')
+                    df_mants = df_mants.rename(columns={'fecha': 'Fecha', 'descripcion': 'Detalle', 'estado': 'Estado'})
+                    st.dataframe(df_mants[['Fecha', 'Recurso', 'Detalle', 'Estado']], use_container_width=True, hide_index=True)
+                else:
+                    st.info("No hay registros de mantenimiento.")
+            except Exception as e:
+                st.warning("Error al cargar el historial.")
