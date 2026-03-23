@@ -18,8 +18,14 @@ import plotly.express as px
 # ------------------------------------------------------------------
 from supabase import create_client, Client, ClientOptions
 
+# Enlace corregido (con wpwg)
 URL_SUPABASE = "https://zxzpaubemwpwgvswvwjh.supabase.co"
+
+# Llave Maestra (Service Role)
 CLAVE_SUPABASE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4enBhdWJlbXdwd2d2c3d2d2poIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Mzg1NzMzMiwiZXhwIjoyMDg5NDMzMzMyfQ.CGWbTQprQaAhYruqlIkmMAMhx7EzD9hJ8QnJ7wCBxto"
+
+opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
+supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 
 # Opciones con tiempo de espera extendido (por si se ejecuta en redes lentas)
 opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
