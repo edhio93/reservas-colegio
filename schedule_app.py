@@ -185,7 +185,34 @@ def send_email(subject, body, recipient_email):
         pass # Silencioso si no hay configurado el st.secrets
 
 # ------------------------------------------------------------------
-# 3) SISTEMA DE LOGIN "SINGLE-SCREEN" - CORREGIDO (SIN ERROR DENSE)
+# 1) CARGA DE DATOS INICIAL (PARA EVITAR NameError)
+# ------------------------------------------------------------------
+
+@st.cache_data(ttl=60)
+def obtener_catalogos_iniciales():
+    """Carga las listas básicas para el login y el resto de la app"""
+    try:
+        # Traer profesores
+        p_data = supabase.table("profesores").select("nombre").execute().data
+        profs = sorted([p["nombre"] for p in p_data]) if p_data else ["Cargando..."]
+        
+        # Traer recursos
+        r_data = supabase.table("recursos").select("nombre").execute().data
+        recs = sorted([r["nombre"] for r in r_data]) if r_data else []
+        
+        # Traer cursos
+        c_data = supabase.table("cursos").select("nombre").execute().data
+        curs = sorted([c["nombre"] for c in c_data], key=custom_course_sort_key) if c_data else []
+        
+        return profs, recs, curs
+    except Exception as e:
+        return ["Error al cargar"], [], []
+
+# EJECUCIÓN INMEDIATA: Esto define PROFESORES antes de cualquier otra cosa
+PROFESORES, RECURSOS, CURSOS = obtener_catalogos_iniciales()
+
+# ------------------------------------------------------------------
+# 2) SISTEMA DE LOGIN "SINGLE-SCREEN" (SIN ERROR Y SIN SCROLL)
 # ------------------------------------------------------------------
 if "logged" not in st.session_state:
     st.session_state.logged = False
@@ -193,75 +220,69 @@ if "logged" not in st.session_state:
     st.session_state.profesor_name = None
 
 if not st.session_state.logged:
-    # CSS PARA COMPRIMIR TODO Y QUE QUEPA EN UNA PANTALLA
+    # CSS para comprimir todo y que no aparezca la rueda del ratón
     st.markdown("""
         <style>
-            .block-container { padding-top: 1rem !important; }
+            .block-container { padding-top: 1rem !important; padding-bottom: 0rem !important; }
             [data-testid="stVerticalBlock"] { gap: 0.2rem !important; }
             [data-testid="stImage"] { margin-top: -15px; margin-bottom: -5px; }
-            .stTextInput, .stSelectbox { margin-bottom: -10px; }
+            .stTextInput, .stSelectbox { margin-bottom: -15px; }
             hr { margin: 5px 0px !important; }
-            /* Estilo para que las etiquetas no ocupen tanto espacio */
-            label { margin-bottom: 2px !important; font-size: 0.9rem !important; }
+            div[data-testid="stForm"] { padding: 0.5rem !important; border-radius: 10px !important; }
+            label { font-size: 0.85rem !important; margin-bottom: 2px !important; }
         </style>
     """, unsafe_allow_html=True)
 
     BASE_DIR = Path(__file__).parent
     logo_path = BASE_DIR / "logocav.png"
     
-    # 1. LOGO: Ajustado a 0.7 para que NO se corte
+    # LOGO: Columna central más ancha (0.8) para que no se corte
     if logo_path.exists():
-        # [Izquierda, Centro, Derecha] -> El centro con 0.7 es seguro para que no se achate
-        col1_img, col2_img, col3_img = st.columns([1.1, 0.7, 1.1])
-        with col2_img:
+        c1, c2, c3 = st.columns([1.1, 0.8, 1.1])
+        with c2:
             st.image(str(logo_path), use_container_width=True)
     
     LISTA_ADMINS = ["EDGAR", "GLORIA", "CARLOS", "ALEXIS"]
     PASSWORD_ADMIN = "cav690"
 
-    # 2. TARJETA DE LOGIN COMPACTA
     with st.container(border=True):
-        st.markdown(f"<div style='text-align: center; color: var(--primary-color); font-weight: bold; margin-bottom: 5px; font-size: 1.1em; letter-spacing: 1px;'>ACCESO</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; font-weight: bold; font-size: 1.1em;'>SISTEMA DE RESERVAS</div>", unsafe_allow_html=True)
         
-        tipo_usuario = st.radio(
-            "Perfil", ["Profesor", "Administrador"],
-            horizontal=True, label_visibility="collapsed" # Aquí "collapsed" sí es válido
-        )
-        
+        tipo_usuario = st.radio("Perfil", ["Profesor", "Administrador"], horizontal=True, label_visibility="collapsed")
         st.markdown("<hr>", unsafe_allow_html=True)
         
         if tipo_usuario == "Administrador":
-            with st.form("form_admin", clear_on_submit=True):
-                # Cambiado label_visibility a "visible" para evitar errores
-                admin_nombre = st.text_input("Nombre", placeholder="Ej: Edgar")
-                admin_pass = st.text_input("Contraseña", type="password", placeholder="••••")
-                
+            with st.form("form_admin"):
+                # IMPORTANTE: Eliminado label_visibility="dense" para evitar el error anterior
+                u_admin = st.text_input("Nombre", placeholder="Ej: Edgar")
+                p_admin = st.text_input("Clave", type="password", placeholder="••••")
                 if st.form_submit_button("ENTRAR", use_container_width=True, type="primary"):
-                    nombre_limpio = admin_nombre.strip().upper()
-                    if nombre_limpio in LISTA_ADMINS and admin_pass == PASSWORD_ADMIN:
+                    nombre_up = u_admin.strip().upper()
+                    if nombre_up in LISTA_ADMINS and p_admin == PASSWORD_ADMIN:
                         st.session_state.logged = True
                         st.session_state.role = "admin"
-                        st.session_state.profesor_name = nombre_limpio.capitalize()
+                        st.session_state.profesor_name = nombre_up.capitalize()
                         st.rerun()
                     else:
-                        st.error("❌ Datos incorrectos.")
-                        
+                        st.error("Datos incorrectos")
         else:
-            with st.form("form_profe", clear_on_submit=True):
-                profe_seleccionado = st.selectbox(
-                    "Nombre Completo", PROFESORES, index=None, placeholder="Selecciona..."
-                )
-                
+            with st.form("form_profe"):
+                # Aquí PROFESORES ya está definido arriba del todo
+                u_profe = st.selectbox("Selecciona tu nombre", PROFESORES, index=None, placeholder="Tu nombre aquí...")
                 if st.form_submit_button("ENTRAR", use_container_width=True, type="primary"):
-                    if profe_seleccionado:
+                    if u_profe:
                         st.session_state.logged = True
                         st.session_state.role = "profesor"
-                        st.session_state.profesor_name = profe_seleccionado
+                        st.session_state.profesor_name = u_profe
                         st.rerun()
                     else:
-                        st.error("⚠️ Elige nombre")
-                        
+                        st.error("Elige un nombre")
     st.stop()
+
+# ------------------------------------------------------------------
+# 3) CARGA DEL RESTO DE DATOS (Solo si ya está logueado)
+# ------------------------------------------------------------------
+# Aquí puedes dejar tu función cargar_datos_nube() original para el resto de la app
 # ------------------------------------------------------------------
 # 2) NAVEGACIÓN Y VISTAS
 # ------------------------------------------------------------------
