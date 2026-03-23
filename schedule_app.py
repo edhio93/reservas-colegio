@@ -257,13 +257,24 @@ def cargar_datos_nube():
 df, RECURSOS, PROFESORES, CURSOS, HORAS, PROFESOR_DATA, df_mantenimiento = cargar_datos_nube()
 
 # Diccionarios inversos para IDs
-map_prof = {p["nombre"]: p["id"] for p in supabase.table("profesores").select("id, nombre").execute().data} if "profesores" in [t['name'] for t in supabase.table("profesores").select("id").limit(1).execute().data] else {}
-try: map_prof = {p["nombre"]: p["id"] for p in supabase.table("profesores").select("id, nombre").execute().data}
-except: pass
-try: map_cur = {c["nombre"]: c["id"] for c in supabase.table("cursos").select("id, nombre").execute().data}
-except: pass
-try: map_rec = {r["nombre"]: r["id"] for r in supabase.table("recursos").select("id, nombre").execute().data}
-except: pass
+map_prof = {}
+map_cur = {}
+map_rec = {}
+
+try: 
+    map_prof = {p["nombre"]: p["id"] for p in supabase.table("profesores").select("id, nombre").execute().data}
+except: 
+    pass
+
+try: 
+    map_cur = {c["nombre"]: c["id"] for c in supabase.table("cursos").select("id, nombre").execute().data}
+except: 
+    pass
+
+try: 
+    map_rec = {r["nombre"]: r["id"] for r in supabase.table("recursos").select("id, nombre").execute().data}
+except: 
+    pass
 
 if st.session_state.role == 'profesor' and not st.session_state.profesor_name:
     st.title("👤 Selección de Perfil")
