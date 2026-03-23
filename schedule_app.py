@@ -185,7 +185,7 @@ def send_email(subject, body, recipient_email):
         pass # Silencioso si no hay configurado el st.secrets
 
 # ------------------------------------------------------------------
-# 3) SISTEMA DE LOGIN "SINGLE-SCREEN" (SIN SCROLL)
+# 3) SISTEMA DE LOGIN "SINGLE-SCREEN" CON LOGO NÍTIDO (SIN SCROLL)
 # ------------------------------------------------------------------
 if "logged" not in st.session_state:
     st.session_state.logged = False
@@ -193,33 +193,38 @@ if "logged" not in st.session_state:
     st.session_state.profesor_name = None
 
 if not st.session_state.logged:
-    # INYECCIÓN DE CSS PARA APRETAR TODO EL DISEÑO AL MÁXIMO
+    # 1. INYECCIÓN DE CSS PARA COMPRIMIR ESPACIOS (NUEVA VERSIÓN)
     st.markdown("""
         <style>
-            /* Reducir el espacio superior de la página */
+            /* Reducir drásticamente el espacio superior de la página entera */
             .block-container { padding-top: 1rem !important; }
-            /* Reducir espacio entre elementos de Streamlit */
-            [data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
-            /* Quitar márgenes de los inputs para que sean "densos" */
+            /* Reducir el espacio vertical entre elementos de Streamlit (gap) */
+            [data-testid="stVerticalBlock"] { gap: 0.3rem !important; }
+            /* Quitar los márgenes por defecto de la imagen del logo */
+            [data-testid="stImage"] { margin-top: -20px; margin-bottom: -10px; }
+            /* Compactar inputs y selectboxes */
             .stTextInput, .stSelectbox { margin-bottom: -15px; }
+            /* Compactar el hr (línea divisoria) */
+            hr { margin: 5px 0px !important; }
         </style>
     """, unsafe_allow_html=True)
 
     BASE_DIR = Path(__file__).parent
     logo_path = BASE_DIR / "logocav.png"
     
-    # 1. LOGO MINI (Aun más pequeño para que no empuje el resto hacia abajo)
+    # 2. LOGO COMPACTO PERO NÍTIDO (Cambiamos proporciones)
     if logo_path.exists():
-        col1_img, col2_img, col3_img = st.columns([1.5, 0.3, 1.5])
+        # Aumentamos el centro a 0.6 [1.2, 0.6, 1.2] para que el logo tenga aire y no se corte
+        col1_img, col2_img, col3_img = st.columns([1.2, 0.6, 1.2])
         with col2_img:
             st.image(str(logo_path), use_container_width=True)
     
     LISTA_ADMINS = ["EDGAR", "GLORIA", "CARLOS", "ALEXIS"]
     PASSWORD_ADMIN = "cav690"
 
-    # 2. CONTENEDOR DE LOGIN
+    # 3. CONTENEDOR DE LOGIN ULTRA-COMPACTO
     with st.container(border=True):
-        st.markdown(f"<div style='text-align: center; color: var(--primary-color); font-weight: bold; margin-bottom: 5px; font-size: 1.1em; letter-spacing: 1px;'>ACCESO</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; color: var(--primary-color); font-weight: bold; margin-bottom: 5px; font-size: 1.1em; letter-spacing: 1px;'>INICIAR SESIÓN</div>", unsafe_allow_html=True)
         
         tipo_usuario = st.radio(
             "Perfil", ["Profesor", "Administrador"],
@@ -230,8 +235,8 @@ if not st.session_state.logged:
         
         if tipo_usuario == "Administrador":
             with st.form("form_admin", clear_on_submit=True):
-                admin_nombre = st.text_input("Nombre", placeholder="Tu nombre")
-                admin_pass = st.text_input("Contraseña", type="password", placeholder="••••")
+                admin_nombre = st.text_input("Nombre", placeholder="Tu nombre", label_visibility="dense")
+                admin_pass = st.text_input("Contraseña", type="password", placeholder="••••", label_visibility="dense")
                 
                 if st.form_submit_button("ENTRAR", use_container_width=True, type="primary"):
                     nombre_limpio = admin_nombre.strip().upper()
@@ -246,7 +251,7 @@ if not st.session_state.logged:
         else:
             with st.form("form_profe", clear_on_submit=True):
                 profe_seleccionado = st.selectbox(
-                    "Nombre", PROFESORES, index=None, placeholder="Selecciona..."
+                    "Nombre", PROFESORES, index=None, placeholder="Selecciona...", label_visibility="dense"
                 )
                 
                 if st.form_submit_button("ENTRAR", use_container_width=True, type="primary"):
