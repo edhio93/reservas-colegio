@@ -295,6 +295,98 @@ BASE_DIR = Path(__file__).parent
 logo_path = BASE_DIR / "logocav.png"
 if logo_path.exists(): st.sidebar.image(str(logo_path), width=180)
 st.sidebar.markdown("---")
+
+# ---------------------------------------------------------
+# RELOJ EN TIEMPO REAL Y MENSAJES IT (HTML/JS)
+# ---------------------------------------------------------
+html_reloj = """
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        font-family: "Source Sans Pro", sans-serif;
+        text-align: center;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    .container {
+        padding: 5px;
+        width: 100%;
+    }
+    /* Adaptación automática a Modo Claro / Modo Oscuro */
+    @media (prefers-color-scheme: dark) {
+        .container { background-color: transparent; color: #FAFAFA; }
+        .reloj { color: #ff4b4b; }
+        .mensaje { color: #c6c6d1; }
+    }
+    @media (prefers-color-scheme: light) {
+        .container { background-color: transparent; color: #31333F; }
+        .reloj { color: #ff4b4b; }
+        .mensaje { color: #555555; }
+    }
+    .fecha { font-weight: 600; font-size: 0.95em; text-transform: capitalize; margin-bottom: 5px;}
+    .reloj { font-size: 1.8em; font-weight: 700; margin: 5px 0; font-variant-numeric: tabular-nums;}
+    .mensaje { font-size: 0.85em; font-style: italic; margin-top: 8px;}
+</style>
+</head>
+<body>
+    <div class="container">
+        <div id="fecha" class="fecha"></div>
+        <div id="reloj" class="reloj"></div>
+        <div id="mensaje" class="mensaje"></div>
+    </div>
+
+    <script>
+        // Mensajes motivacionales versión Informáticos / IT
+        const mensajes = [
+            "¡Que tengas un excelente día! ☀️",
+            "Cada día es una nueva oportunidad para brillar. ✨",
+            "Tu esfuerzo de hoy es el éxito de mañana. 💪",
+            "Haz que las cosas pasen. ¡Tú puedes! 🚀",
+            "Pequeños pasos todos los días llevan a grandes resultados. 🏔️",
+            "Sonríe, respira y sigue adelante. 🌻",
+            "La actitud lo es todo. ¡A dar el 100%! 💯",
+            "Hoy es un buen día para hacer la diferencia. 🌟",
+            "Tu trabajo y dedicación son muy valiosos. 🤝",
+            "¡Mucho éxito en todas tus tareas de hoy! 🎯"
+        ];
+        
+        // Elegir un mensaje al azar
+        document.getElementById("mensaje").innerText = mensajes[Math.floor(Math.random() * mensajes.length)];
+        
+        function actualizarReloj() {
+            const ahora = new Date();
+            const opcionesHora = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
+            document.getElementById("reloj").innerText = ahora.toLocaleTimeString('es-CL', opcionesHora);
+            
+            const opcionesFecha = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById("fecha").innerText = ahora.toLocaleDateString('es-CL', opcionesFecha);
+        }
+        
+        setInterval(actualizarReloj, 1000);
+        actualizarReloj();
+    </script>
+</body>
+</html>
+"""
+
+# Usamos 'with st.sidebar' para asegurarnos de que el HTML se inyecte en el menú lateral
+with st.sidebar:
+    components.html(html_reloj, height=130)
+    st.markdown("---")
+
+PAGES_CONFIG = {
+    "Mis Reservas": {"icon": "👤", "roles": ["profesor"]},
+    "Registrar": {"icon": "📝", "roles": ["admin"]},
+    "Base de datos": {"icon": "🗃️", "roles": ["admin"]},
+    "Semana": {"icon": "🗓️", "roles": ["admin", "profesor"]},
+    "Dashboard": {"icon": "📈", "roles": ["admin"]},
+    "Configuración": {"icon": "⚙️", "roles": ["admin"]},
+}
        
       
 PAGES_CONFIG = {
