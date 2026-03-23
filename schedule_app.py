@@ -157,16 +157,6 @@ def format_date_es(date_obj):
     meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
     return f"{dias[date_obj.weekday()]}, {date_obj.day} de {meses[date_obj.month - 1]} de {date_obj.year}"
 
-def custom_course_sort_key(course_name):
-    course_name = str(course_name).strip()
-    if 'Dif' in course_name: return (3, 0, course_name)
-    match = re.match(r"(\d+)°\s*(BÁSICO|MEDIO)\s*([A-Z])?", course_name, re.IGNORECASE)
-    if match:
-        num, level, letter = match.groups()
-        level_priority = 0 if 'BÁSICO' in level.upper() else 1
-        return (level_priority, int(num), letter or '')
-    return (4, 0, course_name)
-
 def send_email(subject, body, recipient_email):
     try:
         creds = st.secrets["email_credentials"]
@@ -188,6 +178,16 @@ if 'RECURSOS' not in globals():
     RECURSOS = []
 if 'CURSOS' not in globals():
     CURSOS = []
+
+def custom_course_sort_key(course_name):
+    course_name = str(course_name).strip()
+    if 'Dif' in course_name: return (3, 0, course_name)
+    match = re.match(r"(\d+)°\s*(BÁSICO|MEDIO)\s*([A-Z])?", course_name, re.IGNORECASE)
+    if match:
+        num, level, letter = match.groups()
+        level_priority = 0 if 'BÁSICO' in level.upper() else 1
+        return (level_priority, int(num), letter or '')
+    return (4, 0, course_name)
 
 @st.cache_data(ttl=60)
 def cargar_datos_login():
@@ -272,7 +272,7 @@ if not st.session_state.logged:
                             else:
                                 st.error("Contraseña incorrecta")
 
-    st.stop() # Bloquea el resto de la app hasta loguearse
+    st.stop() 
 
 # ------------------------------------------------------------------
 # 3) CARGA DE LA BASE DE DATOS PRINCIPAL (SÓLO SI ESTÁ LOGUEADO)
@@ -295,8 +295,8 @@ def cargar_reservas_y_datos():
             })
         df_res = pd.DataFrame(reservas_limpias) if reservas_limpias else pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones'])
 
-        try: horas = sorted([h["nombre"] for h in supabase.table("horas").select("nombre").execute().data], key=sort_time_key)
-        except: horas = ['8:00 a 9:30', '9:45 a 11:15', '11:30 a 13:00', '14:00 a 15:30', '15:45 a 16:30']
+        # HORAS FORZADAS ESTRICTAMENTE PARA COINCIDIR CON LA IMAGEN
+        horas = ['8:00 a 9:30', '9:45 a 11:15', '11:30 a 13:00', '14:00 a 15:30', '15:45 a 17:15']
             
         try:
             df_mant = pd.DataFrame(supabase.table("mantenimientos").select("*").execute().data)
@@ -310,12 +310,10 @@ def cargar_reservas_y_datos():
 
         return df_res, horas, df_mant
     except Exception as e:
-        return pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones']), [], pd.DataFrame()
+        return pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones']), ['8:00 a 9:30', '9:45 a 11:15', '11:30 a 13:00', '14:00 a 15:30', '15:45 a 17:15'], pd.DataFrame()
 
-# Ejecutamos la carga de las reservas
 df, HORAS, df_mantenimiento = cargar_reservas_y_datos()
 
-# Mapeos de IDs necesarios para guardar nuevas reservas
 map_prof = {}
 map_cur = {}
 map_rec = {}
@@ -514,7 +512,6 @@ if page == "Registrar":
                                     'recurso_id': map_rec.get(rec), 
                                     'observaciones': obs
                                 })
-                        # Insertar en Supabase
                         try:
                             supabase.table("reservas").insert(nuevas_reservas).execute()
                             st.success("✅ ¡Reservas guardadas exitosamente!")
@@ -597,11 +594,18 @@ if page == "Semana":
 
     st.markdown("---")
     
-    schedule = pd.DataFrame(index=HORAS, columns=[d.strftime('%A %d/%m') for d in week_days]).fillna('')
+    # -------------------------------------------------------------
+    # TRADUCCIÓN DE DÍAS Y ENCABEZADOS DE LA SEMANA A ESPAÑOL
+    # -------------------------------------------------------------
+    dias_es = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
+    column_names = [f"{dias_es[d.weekday()]} {d.strftime('%d/%m')}" for d in week_days]
+    
+    schedule = pd.DataFrame(index=HORAS, columns=column_names).fillna('')
 
     if not df_week.empty:
         for _, row in df_week.iterrows():
-            day_str = row['Fecha'].strftime('%A %d/%m')
+            day_str = f"{dias_es[row['Fecha'].weekday()]} {row['Fecha'].strftime('%d/%m')}"
+            
             for bloque in HORAS:
                 try:
                     h_inicio_b, h_fin_b = [dt.datetime.strptime(t.strip(), '%H:%M').time() for t in bloque.split(' a ')]
