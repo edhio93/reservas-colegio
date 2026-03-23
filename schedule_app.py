@@ -294,10 +294,12 @@ st.sidebar.title(sidebar_title)
 BASE_DIR = Path(__file__).parent
 logo_path = BASE_DIR / "logocav.png"
 if logo_path.exists(): st.sidebar.image(str(logo_path), width=180)
-st.sidebar.markdown("---")
+
+# Usamos HTML para la línea divisoria porque nos permite quitarle los márgenes gigantes que trae Streamlit por defecto
+st.sidebar.markdown("<hr style='margin: 5px 0px 5px 0px; padding: 0;'>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# RELOJ EN TIEMPO REAL Y MENSAJES IT (HTML/JS)
+# RELOJ EN TIEMPO REAL Y MENSAJES (HTML/JS) COMPRIMIDO
 # ---------------------------------------------------------
 html_reloj = """
 <!DOCTYPE html>
@@ -312,9 +314,10 @@ html_reloj = """
         display: flex;
         justify-content: center;
         align-items: center;
+        overflow: hidden; /* Evita que aparezcan barras de scroll si ajustamos mucho */
     }
     .container {
-        padding: 5px;
+        padding: 0px;
         width: 100%;
     }
     /* Adaptación automática a Modo Claro / Modo Oscuro */
@@ -328,9 +331,10 @@ html_reloj = """
         .reloj { color: #ff4b4b; }
         .mensaje { color: #555555; }
     }
-    .fecha { font-weight: 600; font-size: 0.95em; text-transform: capitalize; margin-bottom: 5px;}
-    .reloj { font-size: 1.8em; font-weight: 700; margin: 5px 0; font-variant-numeric: tabular-nums;}
-    .mensaje { font-size: 0.85em; font-style: italic; margin-top: 8px;}
+    /* Redujimos los márgenes (margin) al mínimo en estas 3 clases */
+    .fecha { font-weight: 600; font-size: 0.9em; text-transform: capitalize; margin-bottom: 2px;}
+    .reloj { font-size: 1.6em; font-weight: 700; margin: 2px 0; font-variant-numeric: tabular-nums;}
+    .mensaje { font-size: 0.8em; font-style: italic; margin-top: 2px;}
 </style>
 </head>
 <body>
@@ -341,7 +345,6 @@ html_reloj = """
     </div>
 
     <script>
-        // Mensajes motivacionales versión Informáticos / IT
         const mensajes = [
             "¡Que tengas un excelente día! ☀️",
             "Cada día es una nueva oportunidad para brillar. ✨",
@@ -355,7 +358,6 @@ html_reloj = """
             "¡Mucho éxito en todas tus tareas de hoy! 🎯"
         ];
         
-        // Elegir un mensaje al azar
         document.getElementById("mensaje").innerText = mensajes[Math.floor(Math.random() * mensajes.length)];
         
         function actualizarReloj() {
@@ -374,21 +376,11 @@ html_reloj = """
 </html>
 """
 
-# Usamos 'with st.sidebar' para asegurarnos de que el HTML se inyecte en el menú lateral
+# Redujimos la altura reservada de 130 a 85 píxeles
 with st.sidebar:
-    components.html(html_reloj, height=130)
-    st.markdown("---")
+    components.html(html_reloj, height=85)
+    st.markdown("<hr style='margin: 0px 0px 10px 0px; padding: 0;'>", unsafe_allow_html=True)
 
-PAGES_CONFIG = {
-    "Mis Reservas": {"icon": "👤", "roles": ["profesor"]},
-    "Registrar": {"icon": "📝", "roles": ["admin"]},
-    "Base de datos": {"icon": "🗃️", "roles": ["admin"]},
-    "Semana": {"icon": "🗓️", "roles": ["admin", "profesor"]},
-    "Dashboard": {"icon": "📈", "roles": ["admin"]},
-    "Configuración": {"icon": "⚙️", "roles": ["admin"]},
-}
-       
-      
 PAGES_CONFIG = {
     "Mis Reservas": {"icon": "👤", "roles": ["profesor"]},
     "Registrar": {"icon": "📝", "roles": ["admin"]},
