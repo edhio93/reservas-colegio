@@ -293,9 +293,14 @@ st.sidebar.title(sidebar_title)
 
 BASE_DIR = Path(__file__).parent
 logo_path = BASE_DIR / "logocav.png"
-if logo_path.exists(): st.sidebar.image(str(logo_path), width=180)
+if logo_path.exists():
+    # Creamos 3 columnas invisibles en la barra lateral ([espacio_izq, imagen, espacio_der])
+    col1, col2, col3 = st.sidebar.columns([0.5, 1.5, 0.5])
+    with col2:
+        # Colocamos la imagen en la columna central
+        st.image(str(logo_path), use_container_width=True)
 
-# Usamos HTML para la línea divisoria porque nos permite quitarle los márgenes gigantes que trae Streamlit por defecto
+# La línea divisoria comprimida que ya teníamos
 st.sidebar.markdown("<hr style='margin: 5px 0px 5px 0px; padding: 0;'>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
