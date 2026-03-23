@@ -1,4 +1,4 @@
-﻿import datetime as dt
+import datetime as dt
 from datetime import date, datetime as dt_datetime
 import time
 from io import BytesIO
@@ -13,28 +13,23 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import plotly.express as px
 import streamlit.components.v1 as components
+
 # ------------------------------------------------------------------
 # CONFIGURACIÓN SUPABASE (NUEVO MOTOR DE BASE DE DATOS)
 # ------------------------------------------------------------------
 from supabase import create_client, Client, ClientOptions
 
-# Enlace corregido (con wpwg)
 URL_SUPABASE = "https://zxzpaubemwpwgvswvwjh.supabase.co"
-
-# Llave Maestra (Service Role)
 CLAVE_SUPABASE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4enBhdWJlbXdwd2d2c3d2d2poIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Mzg1NzMzMiwiZXhwIjoyMDg5NDMzMzMyfQ.CGWbTQprQaAhYruqlIkmMAMhx7EzD9hJ8QnJ7wCBxto"
 
-# Opciones con tiempo de espera extendido (por si se ejecuta en redes lentas)
 opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
 supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 0) CONFIGURACIÓN GLOBAL Y ESTILO
 # ──────────────────────────────────────────────────────────────────────────────
-
 st.set_page_config(page_title="Sistema de Horarios CAV", page_icon="📅", layout="wide", initial_sidebar_state="expanded")
 
-# ---- Inyección de CSS ----
 st.markdown("""
 <style>
     :root {
@@ -182,12 +177,11 @@ def send_email(subject, body, recipient_email):
         server.login(sender_email, password); server.send_message(msg); server.quit()
         st.toast(f"📧 Notificación enviada a {recipient_email}")
     except Exception as e:
-        pass # Silencioso si no hay configurado el st.secrets
+        pass 
 
 # ------------------------------------------------------------------
 # 1) INICIALIZACIÓN DE DATOS (PARA EVITAR NameError)
 # ------------------------------------------------------------------
-# Definimos valores por defecto por si la base de datos tarda en responder
 if 'PROFESORES' not in globals():
     PROFESORES = []
 if 'RECURSOS' not in globals():
@@ -208,7 +202,6 @@ def cargar_datos_login():
     except:
         return [], [], []
 
-# Cargamos las listas globales antes de entrar al Login
 PROFESORES, RECURSOS, CURSOS = cargar_datos_login()
 
 # ------------------------------------------------------------------
@@ -220,35 +213,23 @@ if "logged" not in st.session_state:
     st.session_state.profesor_name = None
 
 if not st.session_state.logged:
-    # CSS PARA DISEÑO LIMPIO Y SIN SCROLL
     st.markdown("""
         <style>
             .block-container { padding-top: 3rem !important; }
             [data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
-            /* Estilo de la tarjeta de login */
-            .login-card {
-                padding: 20px;
-                border-radius: 15px;
-                border: 1px solid #eeeeee;
-                background-color: white;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            }
-            /* Hacer los inputs más limpios */
+            .login-card { padding: 20px; border-radius: 15px; border: 1px solid #eeeeee; background-color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
             .stTextInput, .stSelectbox { margin-bottom: -10px; }
             label { font-size: 0.85rem !important; font-weight: 600 !important; }
         </style>
     """, unsafe_allow_html=True)
 
-    # Contenedor principal para centrar todo en la pantalla
     main_container = st.container()
     
     with main_container:
-        # Usamos columnas con espacio para que no se corte el formulario
-        # Logo (1 parte) | Formulario (2 partes)
         col_logo, col_form = st.columns([1, 1.8], gap="large")
 
         with col_logo:
-            st.markdown("<br><br>", unsafe_allow_html=True) # Bajar un poco el logo
+            st.markdown("<br><br>", unsafe_allow_html=True)
             BASE_DIR = Path(__file__).parent
             logo_path = BASE_DIR / "logocav.png"
             if logo_path.exists():
@@ -278,7 +259,6 @@ if not st.session_state.logged:
                                 st.error("Acceso denegado")
                 else:
                     with st.form("profe_form", clear_on_submit=True):
-                        # Aquí PROFESORES ya está garantizado que existe
                         u_profe = st.selectbox("Busca tu nombre", PROFESORES, index=None, placeholder="Selecciona...")
                         p_profe = st.text_input("Clave de Acceso", type="password", placeholder="6904")
                         if st.form_submit_button("ENTRAR AL PANEL", use_container_width=True, type="primary"):
@@ -292,22 +272,77 @@ if not st.session_state.logged:
                             else:
                                 st.error("Contraseña incorrecta")
 
-    st.stop() # No mostrar el resto de la app hasta loguearse
+    st.stop() # Bloquea el resto de la app hasta loguearse
+
 # ------------------------------------------------------------------
-# 2) NAVEGACIÓN Y VISTAS
+# 3) CARGA DE LA BASE DE DATOS PRINCIPAL (SÓLO SI ESTÁ LOGUEADO)
+# ------------------------------------------------------------------
+@st.cache_data(ttl=30)
+def cargar_reservas_y_datos():
+    try:
+        res_data = supabase.table("reservas").select("id, fecha, hora_inicio, hora_fin, observaciones, profesores(nombre), cursos(nombre), recursos(nombre)").execute().data
+        reservas_limpias = []
+        for r in res_data:
+            reservas_limpias.append({
+                "id": r["id"],
+                "Fecha": parse_date(r["fecha"]),
+                "Hora inicio": as_time(r["hora_inicio"]),
+                "Hora fin": as_time(r["hora_fin"]),
+                "Profesor": r["profesores"]["nombre"] if r.get("profesores") else "",
+                "Curso": r["cursos"]["nombre"] if r.get("cursos") else "",
+                "Recurso": r["recursos"]["nombre"] if r.get("recursos") else "",
+                "Observaciones": r["observaciones"]
+            })
+        df_res = pd.DataFrame(reservas_limpias) if reservas_limpias else pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones'])
+
+        try: horas = sorted([h["nombre"] for h in supabase.table("horas").select("nombre").execute().data], key=sort_time_key)
+        except: horas = ['8:00 a 9:30', '9:45 a 11:15', '11:30 a 13:00', '14:00 a 15:30', '15:45 a 16:30']
+            
+        try:
+            df_mant = pd.DataFrame(supabase.table("mantenimientos").select("*").execute().data)
+            if not df_mant.empty:
+                df_mant['FechaInicio_dt'] = df_mant['fecha_inicio'].apply(parse_date)
+                df_mant['FechaFin_dt'] = df_mant['fecha_fin'].apply(parse_date)
+                df_mant['HoraInicio'] = df_mant['hora_inicio']
+                df_mant['HoraFin'] = df_mant['hora_fin']
+                df_mant['Recurso'] = df_mant['recurso']
+        except: df_mant = pd.DataFrame(columns=['Recurso', 'FechaInicio_dt', 'HoraInicio', 'FechaFin_dt', 'HoraFin'])
+
+        return df_res, horas, df_mant
+    except Exception as e:
+        return pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones']), [], pd.DataFrame()
+
+# Ejecutamos la carga de las reservas
+df, HORAS, df_mantenimiento = cargar_reservas_y_datos()
+
+# Mapeos de IDs necesarios para guardar nuevas reservas
+map_prof = {}
+map_cur = {}
+map_rec = {}
+PROFESOR_DATA = {}
+
+try: 
+    prof_data_db = supabase.table("profesores").select("id, nombre, email").execute().data
+    map_prof = {p["nombre"]: p["id"] for p in prof_data_db}
+    PROFESOR_DATA = {p["nombre"]: p.get("email", "") for p in prof_data_db}
+except: pass
+try: map_cur = {c["nombre"]: c["id"] for c in supabase.table("cursos").select("id, nombre").execute().data}
+except: pass
+try: map_rec = {r["nombre"]: r["id"] for r in supabase.table("recursos").select("id, nombre").execute().data}
+except: pass
+
+# ------------------------------------------------------------------
+# 4) NAVEGACIÓN Y VISTAS
 # ------------------------------------------------------------------
 
-# 1. Definir el título de perfil
 sidebar_title = f"Panel de {st.session_state.role.capitalize()}"
 if st.session_state.role == 'profesor':
     sidebar_title = f"Hola, {st.session_state.profesor_name.split(' ')[0]}"
 
-# 2. LOGO CAV CENTRADO, GRANDE Y AESTHETIC ARRIBA DEL TODO
 BASE_DIR = Path(__file__).parent
 logo_path = BASE_DIR / "logocav.png"
 
 if logo_path.exists():
-    # Inyección de CSS para ocultar el espacio superior por defecto del sidebar
     st.markdown("""
         <style>
             [data-testid="stSidebarNav"]::before { content: ""; display: none; margin-top: 0px; }
@@ -315,49 +350,22 @@ if logo_path.exists():
         </style>
     """, unsafe_allow_html=True)
 
-    # Columnas ajustadas para agrandar el logo al máximo centrado
     col1, col2, col3 = st.sidebar.columns([0.1, 2.8, 0.1])
     with col2:
         st.image(str(logo_path), use_container_width=True)
 
-# 3. Mostrar la identificación de usuario de forma elegante y sutil
 st.sidebar.markdown(f"<div style='text-align: center; color: var(--primary-color); font-weight: bold; margin-bottom: 0px; font-size: 1.1em; letter-spacing: 1px;'>{sidebar_title.upper()}</div>", unsafe_allow_html=True)
-
-# Línea divisoria comprimida
 st.sidebar.markdown("<hr style='margin: 8px 0px 5px 0px; padding: 0;'>", unsafe_allow_html=True)
 
-# ---------------------------------------------------------
-# 4. RELOJ EN TIEMPO REAL Y MENSAJES (HTML/JS) COMPRIMIDO
-# ---------------------------------------------------------
 html_reloj = """
 <!DOCTYPE html>
 <html>
 <head>
 <style>
-    body {
-        margin: 0;
-        padding: 0;
-        font-family: "Source Sans Pro", sans-serif;
-        text-align: center;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        overflow: hidden;
-    }
-    .container {
-        padding: 0px;
-        width: 100%;
-    }
-    @media (prefers-color-scheme: dark) {
-        .container { background-color: transparent; color: #FAFAFA; }
-        .reloj { color: #ff4b4b; }
-        .mensaje { color: #c6c6d1; }
-    }
-    @media (prefers-color-scheme: light) {
-        .container { background-color: transparent; color: #31333F; }
-        .reloj { color: #ff4b4b; }
-        .mensaje { color: #555555; }
-    }
+    body { margin: 0; padding: 0; font-family: "Source Sans Pro", sans-serif; text-align: center; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+    .container { padding: 0px; width: 100%; }
+    @media (prefers-color-scheme: dark) { .container { background-color: transparent; color: #FAFAFA; } .reloj { color: #ff4b4b; } .mensaje { color: #c6c6d1; } }
+    @media (prefers-color-scheme: light) { .container { background-color: transparent; color: #31333F; } .reloj { color: #ff4b4b; } .mensaje { color: #555555; } }
     .fecha { font-weight: 600; font-size: 0.9em; text-transform: capitalize; margin-bottom: 2px;}
     .reloj { font-size: 1.6em; font-weight: 700; margin: 2px 0; font-variant-numeric: tabular-nums;}
     .mensaje { font-size: 0.8em; font-style: italic; margin-top: 2px;}
@@ -369,32 +377,22 @@ html_reloj = """
         <div id="reloj" class="reloj"></div>
         <div id="mensaje" class="mensaje"></div>
     </div>
-
     <script>
         const mensajes = [
-            "¡Que tengas un excelente día! ☀️",
-            "Cada día es una nueva oportunidad para brillar. ✨",
-            "Tu esfuerzo de hoy es el éxito de mañana. 💪",
-            "Haz que las cosas pasen. ¡Tú puedes! 🚀",
-            "Pequeños pasos todos los días llevan a grandes resultados. 🏔️",
-            "Sonríe, respira y sigue adelante. 🌻",
-            "La actitud lo es todo. ¡A dar el 100%! 💯",
-            "Hoy es un buen día para hacer la diferencia. 🌟",
-            "Tu trabajo y dedicación son muy valiosos. 🤝",
-            "¡Mucho éxito en todas tus tareas de hoy! 🎯"
+            "¡Que tengas un excelente día! ☀️", "Cada día es una nueva oportunidad para brillar. ✨",
+            "Tu esfuerzo de hoy es el éxito de mañana. 💪", "Haz que las cosas pasen. ¡Tú puedes! 🚀",
+            "Pequeños pasos todos los días llevan a grandes resultados. 🏔️", "Sonríe, respira y sigue adelante. 🌻",
+            "La actitud lo es todo. ¡A dar el 100%! 💯", "Hoy es un buen día para hacer la diferencia. 🌟",
+            "Tu trabajo y dedicación son muy valiosos. 🤝", "¡Mucho éxito en todas tus tareas de hoy! 🎯"
         ];
-        
         document.getElementById("mensaje").innerText = mensajes[Math.floor(Math.random() * mensajes.length)];
-        
         function actualizarReloj() {
             const ahora = new Date();
             const opcionesHora = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
             document.getElementById("reloj").innerText = ahora.toLocaleTimeString('es-CL', opcionesHora);
-            
             const opcionesFecha = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
             document.getElementById("fecha").innerText = ahora.toLocaleDateString('es-CL', opcionesFecha);
         }
-        
         setInterval(actualizarReloj, 1000);
         actualizarReloj();
     </script>
@@ -406,9 +404,6 @@ with st.sidebar:
     components.html(html_reloj, height=85)
     st.markdown("<hr style='margin: 0px 0px 10px 0px; padding: 0;'>", unsafe_allow_html=True)
 
-# ---------------------------------------------------------
-# 5. CONFIGURACIÓN DEL MENÚ DE PÁGINAS
-# ---------------------------------------------------------
 PAGES_CONFIG = {
     "Mis Reservas": {"icon": "👤", "roles": ["profesor"]},
     "Registrar": {"icon": "📝", "roles": ["admin"]},
@@ -540,24 +535,20 @@ if page == "Base de datos":
     st.info("Nota: Para eliminar una fila selecciónala y presiona Supr/Delete, luego guarda.")
     with st.container(border=True):
         if not df.empty:
-            # Quitamos el id para mostrar
             df_display = df.drop(columns=['id'])
             edited_df = st.data_editor(df_display, hide_index=True, use_container_width=True, num_rows="dynamic", column_config={"Fecha": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"), "Hora inicio": st.column_config.TimeColumn("Hora Inicio", format="HH:mm"), "Hora fin": st.column_config.TimeColumn("Hora Fin", format="HH:mm"), "Profesor": st.column_config.SelectboxColumn("Profesor", options=PROFESORES, required=True), "Curso": st.column_config.SelectboxColumn("Curso", options=CURSOS, required=True), "Recurso": st.column_config.SelectboxColumn("Recurso", options=RECURSOS, required=True)})
             
             if st.button("💾 Guardar Cambios en la Nube", use_container_width=True, type="primary"):
                 with st.spinner("Sincronizando con Supabase..."):
                     try:
-                        # Detección de filas eliminadas por el usuario
                         original_indices = set(df.index)
                         edited_indices = set(edited_df.index)
                         deleted_indices = original_indices - edited_indices
                         
-                        # Eliminar de BD
                         for idx in deleted_indices:
                             id_borrar = df.loc[idx, 'id']
                             supabase.table("reservas").delete().eq("id", id_borrar).execute()
                             
-                            # Opcional: Notificar eliminación
                             prof_name = df.loc[idx, 'Profesor']
                             email_to = PROFESOR_DATA.get(prof_name)
                             if email_to:
@@ -565,7 +556,6 @@ if page == "Base de datos":
                                 body = f"""<html><body><p>Hola {prof_name.split(' ')[0]},</p><p>Te informamos que la siguiente reserva ha sido <b>cancelada</b>:</p><ul><li><b>Fecha:</b> {format_date_es(df.loc[idx, 'Fecha'])}</li><li><b>Horario:</b> {df.loc[idx, 'Hora inicio'].strftime('%H:%M')} - {df.loc[idx, 'Hora fin'].strftime('%H:%M')}</li><li><b>Curso:</b> {df.loc[idx, 'Curso']}</li><li><b>Recurso:</b> {df.loc[idx, 'Recurso']}</li></ul><p>Saludos,<br>Sistema de Horarios CAV</p></body></html>"""
                                 send_email(subject, body, email_to)
 
-                        # Insertar filas nuevas
                         new_rows = edited_df[~edited_df.index.isin(original_indices)]
                         if not new_rows.empty:
                             nuevas_inserciones = []
