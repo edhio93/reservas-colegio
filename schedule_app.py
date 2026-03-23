@@ -597,63 +597,127 @@ if page == "Configuración":
     
     tab_prof, tab_cur, tab_rec, tab_mant = st.tabs(["Profesores", "Cursos", "Recursos", "Mantenimientos"])
     
-    with tab_prof:
+   with tab_prof:
         st.write("### 👥 Administración de Profesores")
-        st.info("Esta sección se implementará en el futuro para agregar/editar profesores directamente.")
+        col_add, col_list = st.columns([1, 2])
         
-    with tab_cur:
-        st.write("### 📚 Administración de Cursos")
-        st.info("Esta sección se implementará en el futuro para agregar/editar cursos.")
-        
-    with tab_rec:
-        st.write("### 💻 Administración de Recursos")
-        st.info("Esta sección se implementará en el futuro para agregar/editar recursos físicos.")
-        
-    with tab_mant:
-        st.subheader("🛠️ Gestión de Mantenimientos")
-        
-        c1, c2 = st.columns([1, 2])
-        
-        with c1:
-            st.write("#### Reportar Falla")
-            with st.form("form_mant_config"):
-                rec_mant = st.selectbox("Selecciona el Recurso", list(map_rec.keys()) if map_rec else ["No hay recursos"])
-                fecha_mant = st.date_input("Fecha del reporte", dt.date.today())
-                estado = st.selectbox("Estado", ["En Reparación", "Dado de Baja", "Reparado"])
-                detalle = st.text_area("Descripción de la falla")
-                
-                submit_mant = st.form_submit_button("Guardar Reporte", use_container_width=True)
-                
-                if submit_mant:
-                    if rec_mant == "No hay recursos" or not detalle.strip():
-                        st.error("Por favor completa la descripción.")
-                    else:
-                        recurso_id = map_rec[rec_mant]
-                        datos_mant = {
-                            "recurso_id": recurso_id,
-                            "fecha": fecha_mant.strftime("%Y-%m-%d"),
-                            "descripcion": detalle,
-                            "estado": estado
-                        }
+        with col_add:
+            with st.form("form_add_prof"):
+                st.write("**Agregar Nuevo Profesor**")
+                nuevo_prof = st.text_input("Nombre y Apellidos")
+                nuevo_email = st.text_input("Correo Electrónico (Opcional)")
+                if st.form_submit_button("➕ Agregar Profesor", use_container_width=True):
+                    if nuevo_prof.strip():
                         try:
-                            supabase.table("mantenimientos").insert(datos_mant).execute()
-                            st.success(f"Reporte guardado para {rec_mant}.")
-                            st.cache_data.clear() # Limpiar caché para que aparezca al instante
-                            time.sleep(1)
+                            supabase.table("profesores").insert({"nombre": nuevo_prof.strip().upper(), "email": nuevo_email.strip()}).execute()
+                            st.success("¡Profesor agregado!")
+                            st.cache_data.clear()
+                            time.sleep(0.5)
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Error al guardar: {e}")
+                            st.error(f"Error al agregar: {e}")
+                    else:
+                        st.error("El nombre es obligatorio.")
+                        
+        with col_list:
+            st.write("**Directorio de Profesores**")
+            prof_data = supabase.table("profesores").select("*").order("nombre").execute().data
+            if prof_data:
+                df_p = pd.DataFrame(prof_data)
+                st.dataframe(df_p[['nombre', 'email']], use_container_width=True, hide_index=True)
+                
+                with st.expander("🗑️ Eliminar un Profesor"):
+                    st.warning("⚠️ Nota: No puedes eliminar a un profesor si ya tiene reservas en el sistema.")
+                    prof_borrar = st.selectbox("Selecciona el profesor a eliminar", df_p['nombre'].tolist(), key="del_prof")
+                    if st.button("Eliminar Profesor Definitivamente", type="primary"):
+                        try:
+                            id_b = int(df_p[df_p['nombre'] == prof_borrar]['id'].values[0])
+                            supabase.table("profesores").delete().eq("id", id_b).execute()
+                            st.success(f"Profesor {prof_borrar} eliminado.")
+                            st.cache_data.clear()
+                            time.sleep(0.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error("No se puede eliminar porque este profesor tiene reservas asociadas.")
 
-        with c2:
-            st.write("#### Historial de Equipos")
-            try:
-                mants = supabase.table("mantenimientos").select("*, recursos(nombre)").execute().data
-                if mants:
-                    df_mants = pd.DataFrame(mants)
-                    df_mants['Recurso'] = df_mants['recursos'].apply(lambda x: x['nombre'] if x else 'Desconocido')
-                    df_mants = df_mants.rename(columns={'fecha': 'Fecha', 'descripcion': 'Detalle', 'estado': 'Estado'})
-                    st.dataframe(df_mants[['Fecha', 'Recurso', 'Detalle', 'Estado']], use_container_width=True, hide_index=True)
-                else:
-                    st.info("No hay registros de mantenimiento.")
-            except Exception as e:
-                st.warning("Error al cargar el historial.")
+    with tab_cur:
+        st.write("### 📚 Administración de Cursos")
+        col_add_c, col_list_c = st.columns([1, 2])
+        
+        with col_add_c:
+            with st.form("form_add_cur"):
+                st.write("**Agregar Nuevo Curso**")
+                nuevo_curso = st.text_input("Nombre del Curso (ej. 1° BÁSICO A)")
+                if st.form_submit_button("➕ Agregar Curso", use_container_width=True):
+                    if nuevo_curso.strip():
+                        try:
+                            supabase.table("cursos").insert({"nombre": nuevo_curso.strip().upper()}).execute()
+                            st.success("¡Curso agregado!")
+                            st.cache_data.clear()
+                            time.sleep(0.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al agregar: {e}")
+                    else:
+                        st.error("El nombre es obligatorio.")
+                        
+        with col_list_c:
+            st.write("**Cursos Registrados**")
+            cur_data = supabase.table("cursos").select("*").order("nombre").execute().data
+            if cur_data:
+                df_c = pd.DataFrame(cur_data)
+                st.dataframe(df_c[['nombre']], use_container_width=True, hide_index=True)
+                
+                with st.expander("🗑️ Eliminar un Curso"):
+                    cur_borrar = st.selectbox("Selecciona el curso a eliminar", df_c['nombre'].tolist(), key="del_cur")
+                    if st.button("Eliminar Curso Definitivamente", type="primary"):
+                        try:
+                            id_b = int(df_c[df_c['nombre'] == cur_borrar]['id'].values[0])
+                            supabase.table("cursos").delete().eq("id", id_b).execute()
+                            st.success(f"Curso {cur_borrar} eliminado.")
+                            st.cache_data.clear()
+                            time.sleep(0.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error("No se puede eliminar porque este curso tiene reservas asociadas.")
+
+    with tab_rec:
+        st.write("### 💻 Administración de Recursos")
+        col_add_r, col_list_r = st.columns([1, 2])
+        
+        with col_add_r:
+            with st.form("form_add_rec"):
+                st.write("**Agregar Nuevo Recurso**")
+                nuevo_rec = st.text_input("Nombre del Recurso (ej. Proyector 5)")
+                if st.form_submit_button("➕ Agregar Recurso", use_container_width=True):
+                    if nuevo_rec.strip():
+                        try:
+                            supabase.table("recursos").insert({"nombre": nuevo_rec.strip().upper()}).execute()
+                            st.success("¡Recurso agregado!")
+                            st.cache_data.clear()
+                            time.sleep(0.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al agregar: {e}")
+                    else:
+                        st.error("El nombre es obligatorio.")
+                        
+        with col_list_r:
+            st.write("**Inventario de Recursos**")
+            rec_data = supabase.table("recursos").select("*").order("nombre").execute().data
+            if rec_data:
+                df_r = pd.DataFrame(rec_data)
+                st.dataframe(df_r[['nombre']], use_container_width=True, hide_index=True)
+                
+                with st.expander("🗑️ Eliminar un Recurso"):
+                    rec_borrar = st.selectbox("Selecciona el recurso a eliminar", df_r['nombre'].tolist(), key="del_rec")
+                    if st.button("Eliminar Recurso Definitivamente", type="primary"):
+                        try:
+                            id_b = int(df_r[df_r['nombre'] == rec_borrar]['id'].values[0])
+                            supabase.table("recursos").delete().eq("id", id_b).execute()
+                            st.success(f"Recurso {rec_borrar} eliminado.")
+                            st.cache_data.clear()
+                            time.sleep(0.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error("No se puede eliminar porque tiene reservas o reportes de mantenimiento asociados.")
