@@ -228,7 +228,7 @@ if not st.session_state.logged:
 
     # 2. LOGO CHIQUITO Y CENTRADO ARRIBA
     BASE_DIR = Path(__file__).parent
-    logo_path = BASE_DIR / "logocav.png"
+    logo_path = BASE_DIR / "login.png"
     
     if logo_path.exists():
         # [Izquierda, Centro, Derecha] -> El centro con 0.6 es seguro para que sea chiquito y nítido
