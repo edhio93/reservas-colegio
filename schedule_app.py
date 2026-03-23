@@ -185,58 +185,7 @@ def send_email(subject, body, recipient_email):
         pass # Silencioso si no hay configurado el st.secrets
 
 # ------------------------------------------------------------------
-# 2) CARGA DE DATOS (Para evitar NameError en el Login)
-# ------------------------------------------------------------------
-
-@st.cache_data(ttl=30)
-def cargar_datos_nube():
-    try:
-        res_data = supabase.table("reservas").select("id, fecha, hora_inicio, hora_fin, observaciones, profesores(nombre), cursos(nombre), recursos(nombre)").execute().data
-        reservas_limpias = []
-        for r in res_data:
-            reservas_limpias.append({
-                "id": r["id"],
-                "Fecha": parse_date(r["fecha"]),
-                "Hora inicio": as_time(r["hora_inicio"]),
-                "Hora fin": as_time(r["hora_fin"]),
-                "Profesor": r["profesores"]["nombre"] if r.get("profesores") else "",
-                "Curso": r["cursos"]["nombre"] if r.get("cursos") else "",
-                "Recurso": r["recursos"]["nombre"] if r.get("recursos") else "",
-                "Observaciones": r["observaciones"]
-            })
-        df_res = pd.DataFrame(reservas_limpias) if reservas_limpias else pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones'])
-
-        profesores_data = supabase.table("profesores").select("nombre, email").execute().data
-        profesores = sorted([p["nombre"] for p in profesores_data])
-        profesor_dict = {p["nombre"]: p.get("email", "") for p in profesores_data}
-        
-        cursos = sorted([c["nombre"] for c in supabase.table("cursos").select("nombre").execute().data], key=custom_course_sort_key)
-        recursos = sorted([r["nombre"] for r in supabase.table("recursos").select("nombre").execute().data])
-        
-        try: horas = sorted([h["nombre"] for h in supabase.table("horas").select("nombre").execute().data], key=sort_time_key)
-        except: horas = ['8:00 a 9:30', '9:45 a 11:15', '11:30 a 13:00', '14:00 a 15:30', '15:45 a 16:30']
-            
-        try:
-            df_mant = pd.DataFrame(supabase.table("mantenimientos").select("*").execute().data)
-            if not df_mant.empty:
-                df_mant['FechaInicio_dt'] = df_mant['fecha_inicio'].apply(parse_date)
-                df_mant['FechaFin_dt'] = df_mant['fecha_fin'].apply(parse_date)
-                df_mant['HoraInicio'] = df_mant['hora_inicio']
-                df_mant['HoraFin'] = df_mant['hora_fin']
-                df_mant['Recurso'] = df_mant['recurso']
-        except: df_mant = pd.DataFrame(columns=['Recurso', 'FechaInicio_dt', 'HoraInicio', 'FechaFin_dt', 'HoraFin'])
-
-        return df_res, recursos, profesores, cursos, horas, profesor_dict, df_mant
-    except Exception as e:
-        st.error(f"Error de conexión a la nube: {e}")
-        st.stop()
-
-# Inicializamos las variables globales de los catálogos antes del login
-df, RECURSOS, PROFESORES, CURSOS, HORAS, PROFESOR_DATA, df_mantenimiento = cargar_datos_nube()
-
-
-# ------------------------------------------------------------------
-# 3) SISTEMA DE LOGIN DE SEGURIDAD "AESTHETIC"
+# 3) SISTEMA DE LOGIN DE SEGURIDAD "ULTRA-COMPACTO Y AESTHETIC"
 # ------------------------------------------------------------------
 if "logged" not in st.session_state:
     st.session_state.logged = False
@@ -247,36 +196,39 @@ if not st.session_state.logged:
     BASE_DIR = Path(__file__).parent
     logo_path = BASE_DIR / "logocav.png"
     
+    # 1. LOGO MINIATURA Y CENTRADO (Sin scroll)
     if logo_path.exists():
-        # AQUÍ ACHICAMOS EL LOGO: ampliamos los márgenes laterales [1.2, 0.6, 1.2] para que el del centro sea pequeño
-        col1_img, col2_img, col3_img = st.columns([1.2, 0.6, 1.2])
+        # Aumentamos los márgenes laterales [1.4, 0.4, 1.4] para que el centro sea diminuto y elegante
+        col1_img, col2_img, col3_img = st.columns([1.4, 0.4, 1.4])
         with col2_img:
             st.image(str(logo_path), use_container_width=True)
-    
-    st.markdown("<br>", unsafe_allow_html=True)
     
     LISTA_ADMINS = ["EDGAR", "GLORIA", "CARLOS", "ALEXIS"]
     PASSWORD_ADMIN = "cav690"
 
+    # 2. CONTENEDOR MINI (Redujimos paddings y márgenes al máximo)
     with st.container(border=True):
-        st.markdown(f"<div style='text-align: center; color: var(--primary-color); font-weight: bold; margin-bottom: 25px; font-size: 1.5em; letter-spacing: 1px;'>ACCESO AL SISTEMA</div>", unsafe_allow_html=True)
+        # Título más pequeño y pegado arriba
+        st.markdown(f"<div style='text-align: center; color: var(--primary-color); font-weight: bold; margin-bottom: 10px; font-size: 1.2em; letter-spacing: 1px;'>INICIAR SESIÓN</div>", unsafe_allow_html=True)
         
         tipo_usuario = st.radio(
-            "Selecciona tu perfil:",
+            "Perfil:",
             ["Profesor", "Administrador"],
             horizontal=True,
-            key="login_type"
+            key="login_type",
+            label_visibility="collapsed" # Ocultamos la etiqueta para ahorrar otra línea
         )
         
-        st.markdown("<hr style='margin: 15px 0px 20px 0px; padding: 0;'>", unsafe_allow_html=True)
+        st.markdown("<hr style='margin: 10px 0px 10px 0px; padding: 0;'>", unsafe_allow_html=True)
         
         if tipo_usuario == "Administrador":
-            st.info("💻 Bienvenido, Administrador. Ingresa tu nombre corto y contraseña.")
-            with st.form("form_admin"):
-                admin_nombre = st.text_input("Tu Nombre", placeholder="Ej: Edgar, Gloria...")
-                admin_pass = st.text_input("Contraseña", type="password", placeholder="••••••••")
+            # Eliminamos el st.info() gigante para ahorrar espacio vertical
+            with st.form("form_admin", clear_on_submit=True):
+                admin_nombre = st.text_input("Nombre", placeholder="Ej: Edgar", label_visibility="dense")
+                admin_pass = st.text_input("Contraseña", type="password", placeholder="••••", label_visibility="dense")
                 
-                if st.form_submit_button("INICIAR SESIÓN ADMIN", use_container_width=True, type="primary"):
+                # Botón de tamaño normal
+                if st.form_submit_button("ENTRAR COMO ADMIN", use_container_width=True, type="primary"):
                     nombre_limpio = admin_nombre.strip().upper()
                     if nombre_limpio in LISTA_ADMINS and admin_pass == PASSWORD_ADMIN:
                         st.session_state.logged = True
@@ -284,26 +236,27 @@ if not st.session_state.logged:
                         st.session_state.profesor_name = nombre_limpio.capitalize()
                         st.rerun()
                     else:
-                        st.error("❌ Nombre o contraseña incorrectos. Acceso denegado.")
+                        st.error("❌ Datos incorrectos.")
                         
         else:
-            st.info("🏫 ¡Hola Profe! Selecciona tu nombre de la lista oficial para entrar.")
-            with st.form("form_profe"):
+            with st.form("form_profe", clear_on_submit=True):
                 profe_seleccionado = st.selectbox(
-                    "Tu Nombre Completo",
+                    "Selecciona tu Nombre",
                     PROFESORES,
                     index=None,
-                    placeholder="Busca tu nombre en la lista..."
+                    placeholder="Busca aquí...",
+                    label_visibility="dense"
                 )
                 
-                if st.form_submit_button("INGRESAR COMO PROFESOR", use_container_width=True, type="primary"):
+                if st.form_submit_button("ENTRAR COMO PROFESOR", use_container_width=True, type="primary"):
                     if profe_seleccionado:
                         st.session_state.logged = True
                         st.session_state.role = "profesor"
                         st.session_state.profesor_name = profe_seleccionado
                         st.rerun()
                     else:
-                        st.error("⚠️ Por favor, selecciona tu nombre de la lista para entrar.")
+                        st.error("⚠️ Selecciona un nombre.")
+                        
     st.stop()
 
 # ------------------------------------------------------------------
