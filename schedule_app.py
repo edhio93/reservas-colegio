@@ -185,34 +185,26 @@ def send_email(subject, body, recipient_email):
         pass # Silencioso si no hay configurado el st.secrets
 
 # ------------------------------------------------------------------
-# 1) CARGA DE DATOS INICIAL (PARA EVITAR NameError)
+# 1) CARGA DE DATOS INICIAL (ORDEN CORREGIDO PARA EVITAR ERRORES)
 # ------------------------------------------------------------------
-
 @st.cache_data(ttl=60)
 def obtener_catalogos_iniciales():
-    """Carga las listas básicas para el login y el resto de la app"""
     try:
-        # Traer profesores
         p_data = supabase.table("profesores").select("nombre").execute().data
-        profs = sorted([p["nombre"] for p in p_data]) if p_data else ["Cargando..."]
-        
-        # Traer recursos
+        profs = sorted([p["nombre"] for p in p_data]) if p_data else []
         r_data = supabase.table("recursos").select("nombre").execute().data
         recs = sorted([r["nombre"] for r in r_data]) if r_data else []
-        
-        # Traer cursos
         c_data = supabase.table("cursos").select("nombre").execute().data
         curs = sorted([c["nombre"] for c in c_data], key=custom_course_sort_key) if c_data else []
-        
         return profs, recs, curs
-    except Exception as e:
-        return ["Error al cargar"], [], []
+    except:
+        return ["Error de conexión"], [], []
 
-# EJECUCIÓN INMEDIATA: Esto define PROFESORES antes de cualquier otra cosa
+# Definición global para que el Login no falle
 PROFESORES, RECURSOS, CURSOS = obtener_catalogos_iniciales()
 
 # ------------------------------------------------------------------
-# 2) SISTEMA DE LOGIN "SINGLE-SCREEN" (SIN ERROR Y SIN SCROLL)
+# 2) SISTEMA DE LOGIN HORIZONTAL "AESTHETIC" (SIN SCROLL)
 # ------------------------------------------------------------------
 if "logged" not in st.session_state:
     st.session_state.logged = False
@@ -220,69 +212,70 @@ if "logged" not in st.session_state:
     st.session_state.profesor_name = None
 
 if not st.session_state.logged:
-    # CSS para comprimir todo y que no aparezca la rueda del ratón
+    # CSS para diseño horizontal y compacto
     st.markdown("""
         <style>
-            .block-container { padding-top: 1rem !important; padding-bottom: 0rem !important; }
-            [data-testid="stVerticalBlock"] { gap: 0.2rem !important; }
-            [data-testid="stImage"] { margin-top: -15px; margin-bottom: -5px; }
-            .stTextInput, .stSelectbox { margin-bottom: -15px; }
-            hr { margin: 5px 0px !important; }
-            div[data-testid="stForm"] { padding: 0.5rem !important; border-radius: 10px !important; }
-            label { font-size: 0.85rem !important; margin-bottom: 2px !important; }
+            .block-container { padding-top: 2rem !important; }
+            [data-testid="stVerticalBlock"] { gap: 0rem !important; }
+            div[data-testid="stForm"] { padding: 1rem !important; border: 1px solid #ddd; }
+            label { font-size: 0.8rem !important; margin-bottom: 0px !important; }
+            .stTextInput, .stSelectbox { margin-bottom: -10px; }
         </style>
     """, unsafe_allow_html=True)
 
-    BASE_DIR = Path(__file__).parent
-    logo_path = BASE_DIR / "logocav.png"
-    
-    # LOGO: Columna central más ancha (0.8) para que no se corte
-    if logo_path.exists():
-        c1, c2, c3 = st.columns([1.1, 0.8, 1.1])
-        with c2:
-            st.image(str(logo_path), use_container_width=True)
-    
-    LISTA_ADMINS = ["EDGAR", "GLORIA", "CARLOS", "ALEXIS"]
-    PASSWORD_ADMIN = "cav690"
+    # Creamos dos columnas: Izquierda para Logo, Derecha para Login
+    col_logo, col_login = st.columns([1, 1.2], gap="large")
 
-    with st.container(border=True):
-        st.markdown("<div style='text-align: center; font-weight: bold; font-size: 1.1em;'>SISTEMA DE RESERVAS</div>", unsafe_allow_html=True)
+    # --- COLUMNA IZQUIERDA: LOGO ---
+    with col_logo:
+        BASE_DIR = Path(__file__).parent
+        logo_path = BASE_DIR / "logocav.png"
+        if logo_path.exists():
+            st.image(str(logo_path), use_container_width=True)
+        else:
+            st.write("### LOGO CAV")
+
+    # --- COLUMNA DERECHA: FORMULARIO ---
+    with col_login:
+        st.markdown("<h3 style='text-align: center; margin-bottom: 10px;'>ACCESO</h3>", unsafe_allow_html=True)
         
         tipo_usuario = st.radio("Perfil", ["Profesor", "Administrador"], horizontal=True, label_visibility="collapsed")
-        st.markdown("<hr>", unsafe_allow_html=True)
         
+        LISTA_ADMINS = ["EDGAR", "GLORIA", "CARLOS", "ALEXIS"]
+        PASS_ADMIN = "cav690"
+        PASS_PROFE = "6904"
+
         if tipo_usuario == "Administrador":
             with st.form("form_admin"):
-                # IMPORTANTE: Eliminado label_visibility="dense" para evitar el error anterior
-                u_admin = st.text_input("Nombre", placeholder="Ej: Edgar")
-                p_admin = st.text_input("Clave", type="password", placeholder="••••")
-                if st.form_submit_button("ENTRAR", use_container_width=True, type="primary"):
+                u_admin = st.text_input("Tu Nombre", placeholder="Ej: Edgar")
+                p_admin = st.text_input("Contraseña Admin", type="password")
+                if st.form_submit_button("INGRESAR", use_container_width=True, type="primary"):
                     nombre_up = u_admin.strip().upper()
-                    if nombre_up in LISTA_ADMINS and p_admin == PASSWORD_ADMIN:
+                    if nombre_up in LISTA_ADMINS and p_admin == PASS_ADMIN:
                         st.session_state.logged = True
                         st.session_state.role = "admin"
                         st.session_state.profesor_name = nombre_up.capitalize()
                         st.rerun()
                     else:
-                        st.error("Datos incorrectos")
+                        st.error("❌ Credenciales incorrectas")
         else:
             with st.form("form_profe"):
-                # Aquí PROFESORES ya está definido arriba del todo
-                u_profe = st.selectbox("Selecciona tu nombre", PROFESORES, index=None, placeholder="Tu nombre aquí...")
-                if st.form_submit_button("ENTRAR", use_container_width=True, type="primary"):
-                    if u_profe:
+                u_profe = st.selectbox("Selecciona tu nombre", PROFESORES, index=None, placeholder="Tu nombre...")
+                p_profe = st.text_input("Contraseña Profesores", type="password", placeholder="Clave de 4 dígitos")
+                if st.form_submit_button("INGRESAR", use_container_width=True, type="primary"):
+                    if u_profe and p_profe == PASS_PROFE:
                         st.session_state.logged = True
                         st.session_state.role = "profesor"
                         st.session_state.profesor_name = u_profe
                         st.rerun()
+                    elif not u_profe:
+                        st.warning("⚠️ Selecciona tu nombre")
                     else:
-                        st.error("Elige un nombre")
-    st.stop()
+                        st.error("❌ Contraseña de profesor incorrecta")
+    
+    st.stop() # Bloquea el resto de la app hasta loguearse
 
-# ------------------------------------------------------------------
-# 3) CARGA DEL RESTO DE DATOS (Solo si ya está logueado)
-# ------------------------------------------------------------------
-# Aquí puedes dejar tu función cargar_datos_nube() original para el resto de la app
+
 # ------------------------------------------------------------------
 # 2) NAVEGACIÓN Y VISTAS
 # ------------------------------------------------------------------
