@@ -184,8 +184,16 @@ def send_email(subject, body, recipient_email):
     except Exception as e:
         pass # Silencioso si no hay configurado el st.secrets
 
+¡Mil disculpas! El error ocurrió porque usé la palabra "dense" en el parámetro label_visibility, y Streamlit solo acepta "visible", "hidden" o "collapsed". Mi error por intentar forzar que fuera "denso" usando una palabra que no existe en sus reglas.
+
+Vamos a arreglarlo de verdad: usaremos CSS real para apretar los espacios y dejaremos el código de Streamlit con los parámetros correctos. Esto hará que todo quepa en una sola pantalla sin necesidad de bajar con el ratón.
+
+🛠️ Código corregido y "Ultra-Compacto"
+Busca el bloque del login (donde estaba el error) y reemplázalo por este. He achicado el logo un poco más y eliminé todos los márgenes sobrantes:
+
+Python
 # ------------------------------------------------------------------
-# 3) SISTEMA DE LOGIN DE SEGURIDAD "ULTRA-COMPACTO Y AESTHETIC"
+# 3) SISTEMA DE LOGIN "SINGLE-SCREEN" (SIN SCROLL)
 # ------------------------------------------------------------------
 if "logged" not in st.session_state:
     st.session_state.logged = False
@@ -193,42 +201,47 @@ if "logged" not in st.session_state:
     st.session_state.profesor_name = None
 
 if not st.session_state.logged:
+    # INYECCIÓN DE CSS PARA APRETAR TODO EL DISEÑO AL MÁXIMO
+    st.markdown("""
+        <style>
+            /* Reducir el espacio superior de la página */
+            .block-container { padding-top: 1rem !important; }
+            /* Reducir espacio entre elementos de Streamlit */
+            [data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
+            /* Quitar márgenes de los inputs para que sean "densos" */
+            .stTextInput, .stSelectbox { margin-bottom: -15px; }
+        </style>
+    """, unsafe_allow_html=True)
+
     BASE_DIR = Path(__file__).parent
     logo_path = BASE_DIR / "logocav.png"
     
-    # 1. LOGO MINIATURA Y CENTRADO (Sin scroll)
+    # 1. LOGO MINI (Aun más pequeño para que no empuje el resto hacia abajo)
     if logo_path.exists():
-        # Aumentamos los márgenes laterales [1.4, 0.4, 1.4] para que el centro sea diminuto y elegante
-        col1_img, col2_img, col3_img = st.columns([1.4, 0.4, 1.4])
+        col1_img, col2_img, col3_img = st.columns([1.5, 0.3, 1.5])
         with col2_img:
             st.image(str(logo_path), use_container_width=True)
     
     LISTA_ADMINS = ["EDGAR", "GLORIA", "CARLOS", "ALEXIS"]
     PASSWORD_ADMIN = "cav690"
 
-    # 2. CONTENEDOR MINI (Redujimos paddings y márgenes al máximo)
+    # 2. CONTENEDOR DE LOGIN
     with st.container(border=True):
-        # Título más pequeño y pegado arriba
-        st.markdown(f"<div style='text-align: center; color: var(--primary-color); font-weight: bold; margin-bottom: 10px; font-size: 1.2em; letter-spacing: 1px;'>INICIAR SESIÓN</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; color: var(--primary-color); font-weight: bold; margin-bottom: 5px; font-size: 1.1em; letter-spacing: 1px;'>ACCESO</div>", unsafe_allow_html=True)
         
         tipo_usuario = st.radio(
-            "Perfil:",
-            ["Profesor", "Administrador"],
-            horizontal=True,
-            key="login_type",
-            label_visibility="collapsed" # Ocultamos la etiqueta para ahorrar otra línea
+            "Perfil", ["Profesor", "Administrador"],
+            horizontal=True, label_visibility="collapsed" 
         )
         
-        st.markdown("<hr style='margin: 10px 0px 10px 0px; padding: 0;'>", unsafe_allow_html=True)
+        st.markdown("<hr style='margin: 5px 0px 10px 0px; padding: 0;'>", unsafe_allow_html=True)
         
         if tipo_usuario == "Administrador":
-            # Eliminamos el st.info() gigante para ahorrar espacio vertical
             with st.form("form_admin", clear_on_submit=True):
-                admin_nombre = st.text_input("Nombre", placeholder="Ej: Edgar", label_visibility="dense")
-                admin_pass = st.text_input("Contraseña", type="password", placeholder="••••", label_visibility="dense")
+                admin_nombre = st.text_input("Nombre", placeholder="Tu nombre")
+                admin_pass = st.text_input("Contraseña", type="password", placeholder="••••")
                 
-                # Botón de tamaño normal
-                if st.form_submit_button("ENTRAR COMO ADMIN", use_container_width=True, type="primary"):
+                if st.form_submit_button("ENTRAR", use_container_width=True, type="primary"):
                     nombre_limpio = admin_nombre.strip().upper()
                     if nombre_limpio in LISTA_ADMINS and admin_pass == PASSWORD_ADMIN:
                         st.session_state.logged = True
@@ -236,26 +249,22 @@ if not st.session_state.logged:
                         st.session_state.profesor_name = nombre_limpio.capitalize()
                         st.rerun()
                     else:
-                        st.error("❌ Datos incorrectos.")
+                        st.error("❌ Error")
                         
         else:
             with st.form("form_profe", clear_on_submit=True):
                 profe_seleccionado = st.selectbox(
-                    "Selecciona tu Nombre",
-                    PROFESORES,
-                    index=None,
-                    placeholder="Busca aquí...",
-                    label_visibility="dense"
+                    "Nombre", PROFESORES, index=None, placeholder="Selecciona..."
                 )
                 
-                if st.form_submit_button("ENTRAR COMO PROFESOR", use_container_width=True, type="primary"):
+                if st.form_submit_button("ENTRAR", use_container_width=True, type="primary"):
                     if profe_seleccionado:
                         st.session_state.logged = True
                         st.session_state.role = "profesor"
                         st.session_state.profesor_name = profe_seleccionado
                         st.rerun()
                     else:
-                        st.error("⚠️ Selecciona un nombre.")
+                        st.error("⚠️ Elige nombre")
                         
     st.stop()
 # ------------------------------------------------------------------
