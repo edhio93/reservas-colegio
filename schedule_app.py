@@ -185,26 +185,34 @@ def send_email(subject, body, recipient_email):
         pass # Silencioso si no hay configurado el st.secrets
 
 # ------------------------------------------------------------------
-# 1) CARGA DE DATOS INICIAL (ORDEN CORREGIDO PARA EVITAR ERRORES)
+# 1) INICIALIZACIÓN DE DATOS (PARA EVITAR NameError)
 # ------------------------------------------------------------------
+# Definimos valores por defecto por si la base de datos tarda en responder
+if 'PROFESORES' not in globals():
+    PROFESORES = []
+if 'RECURSOS' not in globals():
+    RECURSOS = []
+if 'CURSOS' not in globals():
+    CURSOS = []
+
 @st.cache_data(ttl=60)
-def obtener_catalogos_iniciales():
+def cargar_datos_login():
     try:
-        p_data = supabase.table("profesores").select("nombre").execute().data
-        profs = sorted([p["nombre"] for p in p_data]) if p_data else []
-        r_data = supabase.table("recursos").select("nombre").execute().data
-        recs = sorted([r["nombre"] for r in r_data]) if r_data else []
-        c_data = supabase.table("cursos").select("nombre").execute().data
-        curs = sorted([c["nombre"] for c in c_data], key=custom_course_sort_key) if c_data else []
+        p_res = supabase.table("profesores").select("nombre").execute().data
+        profs = sorted([p["nombre"] for p in p_res]) if p_res else []
+        r_res = supabase.table("recursos").select("nombre").execute().data
+        recs = sorted([r["nombre"] for r in r_res]) if r_res else []
+        c_res = supabase.table("cursos").select("nombre").execute().data
+        curs = sorted([c["nombre"] for c in c_res], key=custom_course_sort_key) if c_res else []
         return profs, recs, curs
     except:
-        return ["Error de conexión"], [], []
+        return [], [], []
 
-# Definición global para que el Login no falle
-PROFESORES, RECURSOS, CURSOS = obtener_catalogos_iniciales()
+# Cargamos las listas globales antes de entrar al Login
+PROFESORES, RECURSOS, CURSOS = cargar_datos_login()
 
 # ------------------------------------------------------------------
-# SISTEMA DE LOGIN "SINGLE-SCREEN", ORDENADO Y SIN CORTES
+# 2) SISTEMA DE LOGIN HORIZONTAL Y AESTHETIC
 # ------------------------------------------------------------------
 if "logged" not in st.session_state:
     st.session_state.logged = False
@@ -212,85 +220,79 @@ if "logged" not in st.session_state:
     st.session_state.profesor_name = None
 
 if not st.session_state.logged:
-    # 1. INYECCIÓN DE CSS PARA COMPRIMIR ESPACIOS AL MÁXIMO
+    # CSS PARA DISEÑO LIMPIO Y SIN SCROLL
     st.markdown("""
         <style>
-            /* Reducir el espacio superior de la página */
-            .block-container { padding-top: 1rem !important; }
-            /* Reducir espacio entre elementos de Streamlit (gap) */
-            [data-testid="stVerticalBlock"] { gap: 0.3rem !important; }
-            /* Quitar márgenes de los inputs para que sean "densos" */
-            .stTextInput, .stSelectbox { margin-bottom: -15px; }
-            /* Achicar el título y centrarlo */
-            div.stMarkdown h3 { text-align: center; margin-bottom: -10px; font-size: 1.4rem; }
+            .block-container { padding-top: 3rem !important; }
+            [data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
+            /* Estilo de la tarjeta de login */
+            .login-card {
+                padding: 20px;
+                border-radius: 15px;
+                border: 1px solid #eeeeee;
+                background-color: white;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            }
+            /* Hacer los inputs más limpios */
+            .stTextInput, .stSelectbox { margin-bottom: -10px; }
+            label { font-size: 0.85rem !important; font-weight: 600 !important; }
         </style>
     """, unsafe_allow_html=True)
 
-    # 2. LOGO CHIQUITO Y CENTRADO ARRIBA
-    BASE_DIR = Path(__file__).parent
-    logo_path = BASE_DIR / "login.png"
+    # Contenedor principal para centrar todo en la pantalla
+    main_container = st.container()
     
-    if logo_path.exists():
-        # [Izquierda, Centro, Derecha] -> El centro con 0.6 es seguro para que sea chiquito y nítido
-        col1_img, col2_img, col3_img = st.columns([1.2, 0.6, 1.2])
-        with col2_img:
-            st.image(str(logo_path), use_container_width=True)
-    
-    st.markdown("<br>", unsafe_allow_html=True) # Un pequeño espacio aesthetic
-    
-    # 3. DATOS DE ACCESO
-    LISTA_ADMINS = ["EDGAR", "GLORIA", "CARLOS", "ALEXIS"]
-    PASSWORD_ADMIN = "cav690"
-    PASSWORD_PROFE = "6904"
+    with main_container:
+        # Usamos columnas con espacio para que no se corte el formulario
+        # Logo (1 parte) | Formulario (2 partes)
+        col_logo, col_form = st.columns([1, 1.8], gap="large")
 
-    # 4. TARJETA DE LOGIN CENTRAL Y COMPACTA (Nunca se corta)
-    with st.container(border=True):
-        st.markdown(f"<div style='text-align: center; color: var(--primary-color); font-weight: bold; margin-bottom: 5px; font-size: 1.1em; letter-spacing: 1px;'>ACCESO</div>", unsafe_allow_html=True)
-        
-        tipo_usuario = st.radio(
-            "Perfil", ["Profesor", "Administrador"],
-            horizontal=True, key="login_type", label_visibility="collapsed" 
-        )
-        
-        st.markdown("<hr style='margin: 5px 0px 10px 0px; padding: 0;'>", unsafe_allow_html=True)
-        
-        if tipo_usuario == "Administrador":
-            with st.form("form_admin", clear_on_submit=True):
-                admin_nombre = st.text_input("Nombre", placeholder="Ej: Edgar Hidalgo")
-                admin_pass = st.text_input("Contraseña", type="password", placeholder="••••••••")
+        with col_logo:
+            st.markdown("<br><br>", unsafe_allow_html=True) # Bajar un poco el logo
+            BASE_DIR = Path(__file__).parent
+            logo_path = BASE_DIR / "logocav.png"
+            if logo_path.exists():
+                st.image(str(logo_path), use_container_width=True)
+            else:
+                st.info("Logo CAV")
+
+        with col_form:
+            st.markdown("<h2 style='text-align: center; color: #1E3A8A; margin-bottom: 0px;'>SISTEMA CAV</h2>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: gray; font-size: 0.9rem;'>Reserva de Recursos y Espacios</p>", unsafe_allow_html=True)
+            
+            with st.container(border=True):
+                tipo_user = st.radio("Acceder como:", ["Profesor", "Administrador"], horizontal=True)
+                st.markdown("---")
                 
-                if st.form_submit_button("INGRESAR COMO ADMIN", use_container_width=True, type="primary"):
-                    nombre_limpio = admin_nombre.strip().upper()
-                    # 5. Validación de seguridad
-                    if nombre_limpio in LISTA_ADMINS and admin_pass == PASSWORD_ADMIN:
-                        st.session_state.logged = True
-                        st.session_state.role = "admin"
-                        # Guardamos el nombre "bonito": Edgar Hidalgo -> Edgar
-                        st.session_state.profesor_name = nombre_limpio.capitalize()
-                        st.rerun()
-                    else:
-                        st.error("❌ Nombre o contraseña incorrectos. Acceso denegado.")
-                        
-        else:
-            with st.form("form_profe", clear_on_submit=True):
-                # 6. Lista desplegable para profesores, obligando a elegir un nombre real
-                profe_seleccionado = st.selectbox(
-                    "Nombre Completo", PROFESORES, index=None, placeholder="Busca tu nombre..."
-                )
-                admin_pass_profe = st.text_input("Contraseña Profesores", type="password", placeholder="6904")
-                
-                if st.form_submit_button("INGRESAR COMO PROFESOR", use_container_width=True, type="primary"):
-                    if profe_seleccionado and admin_pass_profe == PASSWORD_PROFE:
-                        st.session_state.logged = True
-                        st.session_state.role = "profesor"
-                        st.session_state.profesor_name = profe_seleccionado
-                        st.rerun()
-                    elif not profe_seleccionado:
-                        st.error("⚠️ Elige tu nombre")
-                    else:
-                        st.error("❌ Contraseña de profesor incorrecta")
-                        
-    st.stop()
+                if tipo_user == "Administrador":
+                    with st.form("admin_form", clear_on_submit=True):
+                        u_adm = st.text_input("Nombre de Administrador", placeholder="Ej: Edgar")
+                        p_adm = st.text_input("Contraseña", type="password", placeholder="••••••••")
+                        if st.form_submit_button("INICIAR SESIÓN ADMIN", use_container_width=True, type="primary"):
+                            if u_adm.strip().upper() in ["EDGAR", "GLORIA", "CARLOS", "ALEXIS"] and p_adm == "cav690":
+                                st.session_state.logged = True
+                                st.session_state.role = "admin"
+                                st.session_state.profesor_name = u_adm.strip().capitalize()
+                                st.rerun()
+                            else:
+                                st.error("Acceso denegado")
+                else:
+                    with st.form("profe_form", clear_on_submit=True):
+                        # Aquí PROFESORES ya está garantizado que existe
+                        u_profe = st.selectbox("Busca tu nombre", PROFESORES, index=None, placeholder="Selecciona...")
+                        p_profe = st.text_input("Clave de Acceso", type="password", placeholder="6904")
+                        if st.form_submit_button("ENTRAR AL PANEL", use_container_width=True, type="primary"):
+                            if u_profe and p_profe == "6904":
+                                st.session_state.logged = True
+                                st.session_state.role = "profesor"
+                                st.session_state.profesor_name = u_profe
+                                st.rerun()
+                            elif not u_profe:
+                                st.warning("Por favor selecciona tu nombre")
+                            else:
+                                st.error("Contraseña incorrecta")
+
+    st.stop() # No mostrar el resto de la app hasta loguearse
 # ------------------------------------------------------------------
 # 2) NAVEGACIÓN Y VISTAS
 # ------------------------------------------------------------------
