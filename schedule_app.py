@@ -185,7 +185,58 @@ def send_email(subject, body, recipient_email):
         pass # Silencioso si no hay configurado el st.secrets
 
 # ------------------------------------------------------------------
-# SISTEMA DE LOGIN DE SEGURIDAD "AESTHETIC" (FASE 4)
+# 2) CARGA DE DATOS (Para evitar NameError en el Login)
+# ------------------------------------------------------------------
+
+@st.cache_data(ttl=30)
+def cargar_datos_nube():
+    try:
+        res_data = supabase.table("reservas").select("id, fecha, hora_inicio, hora_fin, observaciones, profesores(nombre), cursos(nombre), recursos(nombre)").execute().data
+        reservas_limpias = []
+        for r in res_data:
+            reservas_limpias.append({
+                "id": r["id"],
+                "Fecha": parse_date(r["fecha"]),
+                "Hora inicio": as_time(r["hora_inicio"]),
+                "Hora fin": as_time(r["hora_fin"]),
+                "Profesor": r["profesores"]["nombre"] if r.get("profesores") else "",
+                "Curso": r["cursos"]["nombre"] if r.get("cursos") else "",
+                "Recurso": r["recursos"]["nombre"] if r.get("recursos") else "",
+                "Observaciones": r["observaciones"]
+            })
+        df_res = pd.DataFrame(reservas_limpias) if reservas_limpias else pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones'])
+
+        profesores_data = supabase.table("profesores").select("nombre, email").execute().data
+        profesores = sorted([p["nombre"] for p in profesores_data])
+        profesor_dict = {p["nombre"]: p.get("email", "") for p in profesores_data}
+        
+        cursos = sorted([c["nombre"] for c in supabase.table("cursos").select("nombre").execute().data], key=custom_course_sort_key)
+        recursos = sorted([r["nombre"] for r in supabase.table("recursos").select("nombre").execute().data])
+        
+        try: horas = sorted([h["nombre"] for h in supabase.table("horas").select("nombre").execute().data], key=sort_time_key)
+        except: horas = ['8:00 a 9:30', '9:45 a 11:15', '11:30 a 13:00', '14:00 a 15:30', '15:45 a 16:30']
+            
+        try:
+            df_mant = pd.DataFrame(supabase.table("mantenimientos").select("*").execute().data)
+            if not df_mant.empty:
+                df_mant['FechaInicio_dt'] = df_mant['fecha_inicio'].apply(parse_date)
+                df_mant['FechaFin_dt'] = df_mant['fecha_fin'].apply(parse_date)
+                df_mant['HoraInicio'] = df_mant['hora_inicio']
+                df_mant['HoraFin'] = df_mant['hora_fin']
+                df_mant['Recurso'] = df_mant['recurso']
+        except: df_mant = pd.DataFrame(columns=['Recurso', 'FechaInicio_dt', 'HoraInicio', 'FechaFin_dt', 'HoraFin'])
+
+        return df_res, recursos, profesores, cursos, horas, profesor_dict, df_mant
+    except Exception as e:
+        st.error(f"Error de conexión a la nube: {e}")
+        st.stop()
+
+# Inicializamos las variables globales de los catálogos antes del login
+df, RECURSOS, PROFESORES, CURSOS, HORAS, PROFESOR_DATA, df_mantenimiento = cargar_datos_nube()
+
+
+# ------------------------------------------------------------------
+# 3) SISTEMA DE LOGIN DE SEGURIDAD "AESTHETIC"
 # ------------------------------------------------------------------
 if "logged" not in st.session_state:
     st.session_state.logged = False
@@ -193,66 +244,51 @@ if "logged" not in st.session_state:
     st.session_state.profesor_name = None
 
 if not st.session_state.logged:
-    # 1. MOSTRAR EL LOGO DEL COLEGIO CENTRADO ARRIBA
     BASE_DIR = Path(__file__).parent
     logo_path = BASE_DIR / "logocav.png"
     
     if logo_path.exists():
-        # Truco de columnas para centrar la imagen: [izq, centro, der]
-        col1_img, col2_img, col3_img = st.columns([0.8, 1.4, 0.8])
+        # AQUÍ ACHICAMOS EL LOGO: ampliamos los márgenes laterales [1.2, 0.6, 1.2] para que el del centro sea pequeño
+        col1_img, col2_img, col3_img = st.columns([1.2, 0.6, 1.2])
         with col2_img:
-            # use_container_width=True asegura que la imagen se adapte al ancho de la columna central
             st.image(str(logo_path), use_container_width=True)
     
-    # Un pequeño espacio aesthetic debajo del logo
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # 2. DEFINIR DATOS DE ACCESO (ADMINS)
     LISTA_ADMINS = ["EDGAR", "GLORIA", "CARLOS", "ALEXIS"]
     PASSWORD_ADMIN = "cav690"
 
-    # 3. CREAR EL CONTENEDOR DE LOGIN (LA TARJETA BLANCA)
     with st.container(border=True):
-        # Título centrado y elegante con CSS inyectado
         st.markdown(f"<div style='text-align: center; color: var(--primary-color); font-weight: bold; margin-bottom: 25px; font-size: 1.5em; letter-spacing: 1px;'>ACCESO AL SISTEMA</div>", unsafe_allow_html=True)
         
-        # Selector horizontal centrado
         tipo_usuario = st.radio(
             "Selecciona tu perfil:",
             ["Profesor", "Administrador"],
             horizontal=True,
-            label_visibility="visible",
             key="login_type"
         )
         
         st.markdown("<hr style='margin: 15px 0px 20px 0px; padding: 0;'>", unsafe_allow_html=True)
         
-        # 4. LÓGICA DE LOGIN PARA ADMINISTRADOR
         if tipo_usuario == "Administrador":
             st.info("💻 Bienvenido, Administrador. Ingresa tu nombre corto y contraseña.")
             with st.form("form_admin"):
                 admin_nombre = st.text_input("Tu Nombre", placeholder="Ej: Edgar, Gloria...")
                 admin_pass = st.text_input("Contraseña", type="password", placeholder="••••••••")
                 
-                # Botón grande y principal (type="primary")
                 if st.form_submit_button("INICIAR SESIÓN ADMIN", use_container_width=True, type="primary"):
                     nombre_limpio = admin_nombre.strip().upper()
-                    # Validación de seguridad
                     if nombre_limpio in LISTA_ADMINS and admin_pass == PASSWORD_ADMIN:
                         st.session_state.logged = True
                         st.session_state.role = "admin"
-                        # Guardamos el nombre "bonito": Edgar Hidalgo -> Edgar
                         st.session_state.profesor_name = nombre_limpio.capitalize()
-                        st.cache_data.clear() # Limpiar caché para cargar datos frescos
                         st.rerun()
                     else:
                         st.error("❌ Nombre o contraseña incorrectos. Acceso denegado.")
                         
-        # 5. LÓGICA DE LOGIN PARA PROFESOR
         else:
             st.info("🏫 ¡Hola Profe! Selecciona tu nombre de la lista oficial para entrar.")
             with st.form("form_profe"):
-                # Lista desplegable para profesores, obligando a elegir un nombre real
                 profe_seleccionado = st.selectbox(
                     "Tu Nombre Completo",
                     PROFESORES,
@@ -265,12 +301,9 @@ if not st.session_state.logged:
                         st.session_state.logged = True
                         st.session_state.role = "profesor"
                         st.session_state.profesor_name = profe_seleccionado
-                        st.cache_data.clear() # Limpiar caché para cargar datos frescos
                         st.rerun()
                     else:
                         st.error("⚠️ Por favor, selecciona tu nombre de la lista para entrar.")
-                        
-    # Detener la ejecución del resto de la app hasta que se logueen
     st.stop()
 
 # ------------------------------------------------------------------
