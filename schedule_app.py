@@ -286,25 +286,37 @@ if st.session_state.role == 'profesor' and not st.session_state.profesor_name:
 # 2) NAVEGACIÓN Y VISTAS
 # ------------------------------------------------------------------
 
+# 1. Definir el título de perfil
 sidebar_title = f"Panel de {st.session_state.role.capitalize()}"
 if st.session_state.role == 'profesor':
     sidebar_title = f"Hola, {st.session_state.profesor_name.split(' ')[0]}"
-st.sidebar.title(sidebar_title)
 
+# 2. LOGO CAV CENTRADO, GRANDE Y AESTHETIC ARRIBA DEL TODO
 BASE_DIR = Path(__file__).parent
 logo_path = BASE_DIR / "logocav.png"
+
 if logo_path.exists():
-    # Creamos 3 columnas invisibles en la barra lateral ([espacio_izq, imagen, espacio_der])
-    col1, col2, col3 = st.sidebar.columns([0.5, 1.5, 0.5])
+    # Inyección de CSS para ocultar el espacio superior por defecto del sidebar
+    st.markdown("""
+        <style>
+            [data-testid="stSidebarNav"]::before { content: ""; display: none; margin-top: 0px; }
+            section[data-testid="stSidebar"] div.st-emotion-cache-16t70r2 { padding-top: 0.5rem !important; }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # Columnas ajustadas para agrandar el logo al máximo centrado
+    col1, col2, col3 = st.sidebar.columns([0.1, 2.8, 0.1])
     with col2:
-        # Colocamos la imagen en la columna central
         st.image(str(logo_path), use_container_width=True)
 
-# La línea divisoria comprimida que ya teníamos
-st.sidebar.markdown("<hr style='margin: 5px 0px 5px 0px; padding: 0;'>", unsafe_allow_html=True)
+# 3. Mostrar la identificación de usuario de forma elegante y sutil
+st.sidebar.markdown(f"<div style='text-align: center; color: var(--primary-color); font-weight: bold; margin-bottom: 0px; font-size: 1.1em; letter-spacing: 1px;'>{sidebar_title.upper()}</div>", unsafe_allow_html=True)
+
+# Línea divisoria comprimida
+st.sidebar.markdown("<hr style='margin: 8px 0px 5px 0px; padding: 0;'>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# RELOJ EN TIEMPO REAL Y MENSAJES (HTML/JS) COMPRIMIDO
+# 4. RELOJ EN TIEMPO REAL Y MENSAJES (HTML/JS) COMPRIMIDO
 # ---------------------------------------------------------
 html_reloj = """
 <!DOCTYPE html>
@@ -319,13 +331,12 @@ html_reloj = """
         display: flex;
         justify-content: center;
         align-items: center;
-        overflow: hidden; /* Evita que aparezcan barras de scroll si ajustamos mucho */
+        overflow: hidden;
     }
     .container {
         padding: 0px;
         width: 100%;
     }
-    /* Adaptación automática a Modo Claro / Modo Oscuro */
     @media (prefers-color-scheme: dark) {
         .container { background-color: transparent; color: #FAFAFA; }
         .reloj { color: #ff4b4b; }
@@ -336,7 +347,6 @@ html_reloj = """
         .reloj { color: #ff4b4b; }
         .mensaje { color: #555555; }
     }
-    /* Redujimos los márgenes (margin) al mínimo en estas 3 clases */
     .fecha { font-weight: 600; font-size: 0.9em; text-transform: capitalize; margin-bottom: 2px;}
     .reloj { font-size: 1.6em; font-weight: 700; margin: 2px 0; font-variant-numeric: tabular-nums;}
     .mensaje { font-size: 0.8em; font-style: italic; margin-top: 2px;}
@@ -381,11 +391,13 @@ html_reloj = """
 </html>
 """
 
-# Redujimos la altura reservada de 130 a 85 píxeles
 with st.sidebar:
     components.html(html_reloj, height=85)
     st.markdown("<hr style='margin: 0px 0px 10px 0px; padding: 0;'>", unsafe_allow_html=True)
 
+# ---------------------------------------------------------
+# 5. CONFIGURACIÓN DEL MENÚ DE PÁGINAS
+# ---------------------------------------------------------
 PAGES_CONFIG = {
     "Mis Reservas": {"icon": "👤", "roles": ["profesor"]},
     "Registrar": {"icon": "📝", "roles": ["admin"]},
@@ -395,7 +407,7 @@ PAGES_CONFIG = {
     "Configuración": {"icon": "⚙️", "roles": ["admin"]},
 }
 
-available_pages = [page for page, conf in PAGES_CONFIG.items() if st.session_state.role in conf["roles"]]
+available_pages = [p for p, conf in PAGES_CONFIG.items() if st.session_state.role in conf["roles"]]
 default_page = "Mis Reservas" if st.session_state.role == 'profesor' else "Registrar"
 page = st.sidebar.radio("Navegación", available_pages, index=available_pages.index(default_page), format_func=lambda p: f"{PAGES_CONFIG[p]['icon']} {p}", label_visibility="collapsed")
 
