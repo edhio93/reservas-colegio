@@ -204,7 +204,7 @@ def obtener_catalogos_iniciales():
 PROFESORES, RECURSOS, CURSOS = obtener_catalogos_iniciales()
 
 # ------------------------------------------------------------------
-# 2) SISTEMA DE LOGIN HORIZONTAL "AESTHETIC" (SIN SCROLL)
+# SISTEMA DE LOGIN "SINGLE-SCREEN", ORDENADO Y SIN CORTES
 # ------------------------------------------------------------------
 if "logged" not in st.session_state:
     st.session_state.logged = False
@@ -212,70 +212,85 @@ if "logged" not in st.session_state:
     st.session_state.profesor_name = None
 
 if not st.session_state.logged:
-    # CSS para diseño horizontal y compacto
+    # 1. INYECCIÓN DE CSS PARA COMPRIMIR ESPACIOS AL MÁXIMO
     st.markdown("""
         <style>
-            .block-container { padding-top: 2rem !important; }
-            [data-testid="stVerticalBlock"] { gap: 0rem !important; }
-            div[data-testid="stForm"] { padding: 1rem !important; border: 1px solid #ddd; }
-            label { font-size: 0.8rem !important; margin-bottom: 0px !important; }
-            .stTextInput, .stSelectbox { margin-bottom: -10px; }
+            /* Reducir el espacio superior de la página */
+            .block-container { padding-top: 1rem !important; }
+            /* Reducir espacio entre elementos de Streamlit (gap) */
+            [data-testid="stVerticalBlock"] { gap: 0.3rem !important; }
+            /* Quitar márgenes de los inputs para que sean "densos" */
+            .stTextInput, .stSelectbox { margin-bottom: -15px; }
+            /* Achicar el título y centrarlo */
+            div.stMarkdown h3 { text-align: center; margin-bottom: -10px; font-size: 1.4rem; }
         </style>
     """, unsafe_allow_html=True)
 
-    # Creamos dos columnas: Izquierda para Logo, Derecha para Login
-    col_logo, col_login = st.columns([1, 1.2], gap="large")
-
-    # --- COLUMNA IZQUIERDA: LOGO ---
-    with col_logo:
-        BASE_DIR = Path(__file__).parent
-        logo_path = BASE_DIR / "logocav.png"
-        if logo_path.exists():
+    # 2. LOGO CHIQUITO Y CENTRADO ARRIBA
+    BASE_DIR = Path(__file__).parent
+    logo_path = BASE_DIR / "logocav.png"
+    
+    if logo_path.exists():
+        # [Izquierda, Centro, Derecha] -> El centro con 0.6 es seguro para que sea chiquito y nítido
+        col1_img, col2_img, col3_img = st.columns([1.2, 0.6, 1.2])
+        with col2_img:
             st.image(str(logo_path), use_container_width=True)
-        else:
-            st.write("### LOGO CAV")
+    
+    st.markdown("<br>", unsafe_allow_html=True) # Un pequeño espacio aesthetic
+    
+    # 3. DATOS DE ACCESO
+    LISTA_ADMINS = ["EDGAR", "GLORIA", "CARLOS", "ALEXIS"]
+    PASSWORD_ADMIN = "cav690"
+    PASSWORD_PROFE = "6904"
 
-    # --- COLUMNA DERECHA: FORMULARIO ---
-    with col_login:
-        st.markdown("<h3 style='text-align: center; margin-bottom: 10px;'>ACCESO</h3>", unsafe_allow_html=True)
+    # 4. TARJETA DE LOGIN CENTRAL Y COMPACTA (Nunca se corta)
+    with st.container(border=True):
+        st.markdown(f"<div style='text-align: center; color: var(--primary-color); font-weight: bold; margin-bottom: 5px; font-size: 1.1em; letter-spacing: 1px;'>ACCESO</div>", unsafe_allow_html=True)
         
-        tipo_usuario = st.radio("Perfil", ["Profesor", "Administrador"], horizontal=True, label_visibility="collapsed")
+        tipo_usuario = st.radio(
+            "Perfil", ["Profesor", "Administrador"],
+            horizontal=True, key="login_type", label_visibility="collapsed" 
+        )
         
-        LISTA_ADMINS = ["EDGAR", "GLORIA", "CARLOS", "ALEXIS"]
-        PASS_ADMIN = "cav690"
-        PASS_PROFE = "6904"
-
+        st.markdown("<hr style='margin: 5px 0px 10px 0px; padding: 0;'>", unsafe_allow_html=True)
+        
         if tipo_usuario == "Administrador":
-            with st.form("form_admin"):
-                u_admin = st.text_input("Tu Nombre", placeholder="Ej: Edgar")
-                p_admin = st.text_input("Contraseña Admin", type="password")
-                if st.form_submit_button("INGRESAR", use_container_width=True, type="primary"):
-                    nombre_up = u_admin.strip().upper()
-                    if nombre_up in LISTA_ADMINS and p_admin == PASS_ADMIN:
+            with st.form("form_admin", clear_on_submit=True):
+                admin_nombre = st.text_input("Nombre", placeholder="Ej: Edgar Hidalgo")
+                admin_pass = st.text_input("Contraseña", type="password", placeholder="••••••••")
+                
+                if st.form_submit_button("INGRESAR COMO ADMIN", use_container_width=True, type="primary"):
+                    nombre_limpio = admin_nombre.strip().upper()
+                    # 5. Validación de seguridad
+                    if nombre_limpio in LISTA_ADMINS and admin_pass == PASSWORD_ADMIN:
                         st.session_state.logged = True
                         st.session_state.role = "admin"
-                        st.session_state.profesor_name = nombre_up.capitalize()
+                        # Guardamos el nombre "bonito": Edgar Hidalgo -> Edgar
+                        st.session_state.profesor_name = nombre_limpio.capitalize()
                         st.rerun()
                     else:
-                        st.error("❌ Credenciales incorrectas")
+                        st.error("❌ Nombre o contraseña incorrectos. Acceso denegado.")
+                        
         else:
-            with st.form("form_profe"):
-                u_profe = st.selectbox("Selecciona tu nombre", PROFESORES, index=None, placeholder="Tu nombre...")
-                p_profe = st.text_input("Contraseña Profesores", type="password", placeholder="Clave de 4 dígitos")
-                if st.form_submit_button("INGRESAR", use_container_width=True, type="primary"):
-                    if u_profe and p_profe == PASS_PROFE:
+            with st.form("form_profe", clear_on_submit=True):
+                # 6. Lista desplegable para profesores, obligando a elegir un nombre real
+                profe_seleccionado = st.selectbox(
+                    "Nombre Completo", PROFESORES, index=None, placeholder="Busca tu nombre..."
+                )
+                admin_pass_profe = st.text_input("Contraseña Profesores", type="password", placeholder="6904")
+                
+                if st.form_submit_button("INGRESAR COMO PROFESOR", use_container_width=True, type="primary"):
+                    if profe_seleccionado and admin_pass_profe == PASSWORD_PROFE:
                         st.session_state.logged = True
                         st.session_state.role = "profesor"
-                        st.session_state.profesor_name = u_profe
+                        st.session_state.profesor_name = profe_seleccionado
                         st.rerun()
-                    elif not u_profe:
-                        st.warning("⚠️ Selecciona tu nombre")
+                    elif not profe_seleccionado:
+                        st.error("⚠️ Elige tu nombre")
                     else:
                         st.error("❌ Contraseña de profesor incorrecta")
-    
-    st.stop() # Bloquea el resto de la app hasta loguearse
-
-
+                        
+    st.stop()
 # ------------------------------------------------------------------
 # 2) NAVEGACIÓN Y VISTAS
 # ------------------------------------------------------------------
