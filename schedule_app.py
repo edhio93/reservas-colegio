@@ -279,6 +279,16 @@ if not st.session_state.logged:
 # ------------------------------------------------------------------
 @st.cache_data(ttl=30)
 def cargar_reservas_y_datos():
+    # LISTA DE HORAS CORREGIDA
+    horas_corregidas = [
+        '8:00 a 8:45', '8:45 a 9:30', '8:00 a 9:30',
+        '9:45 a 10:30', '10:30 a 11:15', '9:45 a 11:15',
+        '11:30 a 12:15', '12:15 a 13:00', '11:30 a 13:00',
+        '14:00 a 14:45', '14:45 a 15:30', '14:00 a 15:30',
+        '14:00 a 16:30', '14:45 a 16:30', '15:45 a 16:30',
+        '17:00 a 18:30', '17:30 a 18:30'
+    ]
+    
     try:
         res_data = supabase.table("reservas").select("id, fecha, hora_inicio, hora_fin, observaciones, profesores(nombre), cursos(nombre), recursos(nombre)").execute().data
         reservas_limpias = []
@@ -294,9 +304,6 @@ def cargar_reservas_y_datos():
                 "Observaciones": r["observaciones"]
             })
         df_res = pd.DataFrame(reservas_limpias) if reservas_limpias else pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones'])
-
-        # HORAS FORZADAS ESTRICTAMENTE PARA COINCIDIR CON LA IMAGEN
-        horas = ['8:00 a 9:30', '9:45 a 11:15', '11:30 a 13:00', '14:00 a 15:30', '15:45 a 17:15']
             
         try:
             df_mant = pd.DataFrame(supabase.table("mantenimientos").select("*").execute().data)
@@ -308,9 +315,9 @@ def cargar_reservas_y_datos():
                 df_mant['Recurso'] = df_mant['recurso']
         except: df_mant = pd.DataFrame(columns=['Recurso', 'FechaInicio_dt', 'HoraInicio', 'FechaFin_dt', 'HoraFin'])
 
-        return df_res, horas, df_mant
+        return df_res, horas_corregidas, df_mant
     except Exception as e:
-        return pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones']), ['8:00 a 9:30', '9:45 a 11:15', '11:30 a 13:00', '14:00 a 15:30', '15:45 a 17:15'], pd.DataFrame()
+        return pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones']), horas_corregidas, pd.DataFrame()
 
 df, HORAS, df_mantenimiento = cargar_reservas_y_datos()
 
