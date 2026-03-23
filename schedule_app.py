@@ -595,7 +595,7 @@ if page == "Dashboard":
                     st.plotly_chart(fig_recursos, use_container_width=True)
                 else: st.info("No hay datos de recursos en este periodo.")
 
-elif page == "Mantenimiento de Equipos":
+if page == "Mantenimiento de Equipos":
     st.header("🛠️ Mantenimiento de Equipos")
     st.write("Registra o revisa los equipos que están en reparación o presentan fallas.")
     
