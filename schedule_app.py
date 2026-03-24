@@ -847,16 +847,52 @@ if page == "Técnicos":
         with c2:
             st.write("#### Historial de Equipos y Reportes")
             try:
-                mants = supabase.table("mantenimientos").select("*, recursos(nombre)").execute().data
+                # Consulta simple sin JOIN que evita que Supabase colapse
+                mants = supabase.table("mantenimientos").select("*").execute().data
                 if mants:
                     df_mants = pd.DataFrame(mants)
-                    df_mants['Recurso'] = df_mants['recursos'].apply(lambda x: x['nombre'] if x else 'Desconocido')
-                    df_mants = df_mants.rename(columns={'fecha': 'Fecha', 'descripcion': 'Detalle', 'estado': 'Estado'})
-                    st.dataframe(df_mants[['Fecha', 'Recurso', 'Detalle', 'Estado']], use_container_width=True, hide_index=True)
+                    
+                    # Diccionario inverso para buscar el nombre usando el ID (Ej: 1 -> "Proyector 1")
+                    inv_map_rec = {v: k for k, v in map_rec.items()}
+                    
+                    # Detectar automáticamente cómo se llama la columna de recurso en tu base de datos
+                    if 'recurso_id' in df_mants.columns:
+                        df_mants['Recurso'] = df_mants['recurso_id'].apply(lambda x: inv_map_rec.get(x, 'Desconocido'))
+                    elif 'recurso' in df_mants.columns:
+                        df_mants['Recurso'] = df_mants['recurso']
+                    else:
+                        df_mants['Recurso'] = 'Desconocido'
+
+                    # Detectar nombres de columnas de fecha
+                    if 'fecha' in df_mants.columns:
+                        df_mants['Fecha_Ver'] = df_mants['fecha']
+                    elif 'fecha_inicio' in df_mants.columns:
+                        df_mants['Fecha_Ver'] = df_mants['fecha_inicio']
+                    else:
+                        df_mants['Fecha_Ver'] = 'Sin fecha'
+
+                    # Detectar columna de detalles/observaciones
+                    if 'descripcion' in df_mants.columns:
+                        df_mants['Detalle'] = df_mants['descripcion']
+                    elif 'observaciones' in df_mants.columns:
+                        df_mants['Detalle'] = df_mants['observaciones']
+                    else:
+                        df_mants['Detalle'] = 'Sin detalle'
+
+                    # Detectar estado
+                    if 'estado' in df_mants.columns:
+                        df_mants['Estado_Ver'] = df_mants['estado']
+                    else:
+                        df_mants['Estado_Ver'] = 'Reportado'
+
+                    # Mostrar tabla limpia
+                    st.dataframe(df_mants[['Fecha_Ver', 'Recurso', 'Detalle', 'Estado_Ver']], use_container_width=True, hide_index=True)
                 else:
                     st.info("No hay registros de mantenimiento ni fallas.")
+                    
             except Exception as e:
-                st.warning("Error al cargar el historial.")
+                # Ahora sí mostraremos el error exacto en color rojo si es que falla algo más
+                st.error(f"Error detallado del sistema: {e}")
 
     with tab_qr:
         st.subheader("🖨️ Generador de Códigos QR para Equipos")
