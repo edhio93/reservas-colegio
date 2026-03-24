@@ -240,18 +240,55 @@ def custom_course_sort_key(course_name):
         return (level_priority, int(num), letter or '')
     return (4, 0, course_name)
 
-@st.cache_data(ttl=60)
-def cargar_datos_login():
+@st.cache_data(ttl=30)
+def cargar_reservas_y_datos():
+    horas_corregidas = [
+        '8:00 a 8:45', '8:45 a 9:30', '8:00 a 9:30',
+        '9:45 a 10:30', '10:30 a 11:15', '9:45 a 11:15',
+        '11:30 a 12:15', '12:15 a 13:00', '11:30 a 13:00',
+        '14:00 a 14:45', '14:45 a 15:30', '14:00 a 15:30',
+        '14:00 a 16:30', '14:45 a 16:30', '15:45 a 16:30',
+        '17:00 a 18:30', '17:30 a 18:30'
+    ]
+    
     try:
-        p_res = supabase.table("profesores").select("nombre").execute().data
-        profs = sorted([p["nombre"] for p in p_res]) if p_res else []
-        r_res = supabase.table("recursos").select("nombre").execute().data
-        recs = sorted([r["nombre"] for r in r_res]) if r_res else []
-        c_res = supabase.table("cursos").select("nombre").execute().data
-        curs = sorted([c["nombre"] for c in c_res], key=custom_course_sort_key) if c_res else []
-        return profs, recs, curs
-    except:
-        return [], [], []
+        res_data = supabase.table("reservas").select("id, fecha, hora_inicio, hora_fin, observaciones, profesores(nombre), cursos(nombre), recursos(nombre)").execute().data
+        reservas_limpias = []
+        for r in res_data:
+            reservas_limpias.append({
+                "id": r["id"],
+                "Fecha": parse_date(r["fecha"]),
+                "Hora inicio": as_time(r["hora_inicio"]),
+                "Hora fin": as_time(r["hora_fin"]),
+                "Profesor": r["profesores"]["nombre"] if r.get("profesores") else "",
+                "Curso": r["cursos"]["nombre"] if r.get("cursos") else "",
+                "Recurso": r["recursos"]["nombre"] if r.get("recursos") else "",
+                "Observaciones": r["observaciones"]
+            })
+        df_res = pd.DataFrame(reservas_limpias) if reservas_limpias else pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones'])
+            
+        try:
+            # --- SECCIÓN CORREGIDA DE MANTENIMIENTO ---
+            mant_data = supabase.table("mantenimientos").select("*, recursos(nombre)").execute().data
+            df_mant = pd.DataFrame(mant_data) if mant_data else pd.DataFrame()
+            
+            if not df_mant.empty:
+                # Solo bloqueamos el recurso si NO está reparado
+                df_mant = df_mant[df_mant['estado'] != 'Reparado']
+                
+                df_mant['FechaInicio_dt'] = df_mant['fecha'].apply(parse_date)
+                df_mant['FechaFin_dt'] = df_mant['fecha'].apply(parse_date)
+                df_mant['HoraInicio'] = dt.time(0, 0)  # Bloquea desde las 00:00
+                df_mant['HoraFin'] = dt.time(23, 59)   # Hasta las 23:59
+                df_mant['Recurso'] = df_mant['recursos'].apply(lambda x: x['nombre'] if x else '')
+            else:
+                df_mant = pd.DataFrame(columns=['Recurso', 'FechaInicio_dt', 'HoraInicio', 'FechaFin_dt', 'HoraFin'])
+        except Exception as e: 
+            df_mant = pd.DataFrame(columns=['Recurso', 'FechaInicio_dt', 'HoraInicio', 'FechaFin_dt', 'HoraFin'])
+
+        return df_res, horas_corregidas, df_mant
+    except Exception as e:
+        return pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones']), horas_corregidas, pd.DataFrame()
 
 PROFESORES, RECURSOS, CURSOS = cargar_datos_login()
 
