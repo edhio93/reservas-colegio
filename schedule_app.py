@@ -546,9 +546,9 @@ if page == "Registrar":
                                     'fecha': str(fecha), 
                                     'hora_inicio': str(h_inicio), 
                                     'hora_fin': str(h_fin), 
-                                    'profesor_id': map_prof.get(prof), 
-                                    'curso_id': map_cur.get(curso), 
-                                    'recurso_id': map_rec.get(rec), 
+                                    'profesor': map_prof.get(prof), 
+                                    'curso': map_cur.get(curso), 
+                                    'recurso': map_rec.get(rec), 
                                     'observaciones': obs
                                 })
                         try:
@@ -600,9 +600,9 @@ if page == "Base de datos":
                                     "fecha": str(r["Fecha"]),
                                     "hora_inicio": str(r["Hora inicio"]),
                                     "hora_fin": str(r["Hora fin"]),
-                                    "profesor_id": map_prof.get(r["Profesor"]),
-                                    "curso_id": map_cur.get(r["Curso"]),
-                                    "recurso_id": map_rec.get(r["Recurso"]),
+                                    "profesor": map_prof.get(r["Profesor"]),
+                                    "curso": map_cur.get(r["Curso"]),
+                                    "recurso": map_rec.get(r["Recurso"]),
                                     "observaciones": r["Observaciones"]
                                 })
                             supabase.table("reservas").insert(nuevas_inserciones).execute()
