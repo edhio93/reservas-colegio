@@ -13,6 +13,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import plotly.express as px
 import streamlit.components.v1 as components
+from streamlit_autorefresh import st_autorefresh  # <-- NUEVA LIBRERÍA
 
 # ------------------------------------------------------------------
 # CONFIGURACIÓN SUPABASE (NUEVO MOTOR DE BASE DE DATOS)
@@ -279,7 +280,6 @@ if not st.session_state.logged:
 # ------------------------------------------------------------------
 @st.cache_data(ttl=30)
 def cargar_reservas_y_datos():
-    # LISTA DE HORAS CORREGIDA
     horas_corregidas = [
         '8:00 a 8:45', '8:45 a 9:30', '8:00 a 9:30',
         '9:45 a 10:30', '10:30 a 11:15', '9:45 a 11:15',
@@ -339,6 +339,9 @@ except: pass
 # ------------------------------------------------------------------
 # 4) NAVEGACIÓN Y VISTAS
 # ------------------------------------------------------------------
+
+# REFRESCO AUTOMÁTICO CADA 5 MINUTOS (300000 ms)
+st_autorefresh(interval=300000, key="data_refresh")
 
 sidebar_title = f"Panel de {st.session_state.role.capitalize()}"
 if st.session_state.role == 'profesor':
@@ -423,6 +426,12 @@ default_page = "Mis Reservas" if st.session_state.role == 'profesor' else "Regis
 page = st.sidebar.radio("Navegación", available_pages, index=available_pages.index(default_page), format_func=lambda p: f"{PAGES_CONFIG[p]['icon']} {p}", label_visibility="collapsed")
 
 st.sidebar.markdown("---")
+
+# BOTONES DE REFRESCO Y CIERRE DE SESIÓN
+if st.sidebar.button("🔄 Refrescar Pantalla", use_container_width=True):
+    st.cache_data.clear()
+    st.rerun()
+
 if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
     for key in st.session_state.keys(): del st.session_state[key]
     st.rerun()
@@ -585,25 +594,40 @@ if page == "Base de datos":
 
 if page == "Semana":
     st.title("🗓️ Vista Semanal")
+    
+    # NUEVO: Filtros Avanzados
     with st.container(border=True):
-        c1, c2 = st.columns(2)
-        selected_recursos = c1.multiselect("Filtrar por Recurso", RECURSOS, placeholder="Mostrar todos los recursos")
+        st.write("🔍 **Filtros de Búsqueda Avanzados**")
+        col_d, col_r, col_p, col_c = st.columns(4)
+        
         default_date_week = df['Fecha'].max() if not df.empty else dt.date.today()
-        selected_date = c2.date_input("Seleccionar semana", value=default_date_week, format="DD/MM/YYYY")
+        selected_date = col_d.date_input("Semana del", value=default_date_week, format="DD/MM/YYYY")
+        
+        selected_recursos = col_r.multiselect("Filtrar Recursos", RECURSOS, placeholder="Todos")
+        selected_profesores = col_p.multiselect("Filtrar Profesores", PROFESORES, placeholder="Todos")
+        selected_cursos = col_c.multiselect("Filtrar Cursos", CURSOS, placeholder="Todos")
     
     start_of_week = selected_date - dt.timedelta(days=selected_date.weekday())
     week_days = [start_of_week + dt.timedelta(days=i) for i in range(5)]
     
     if not df.empty:
-        df_week = df[(df['Fecha'] >= week_days[0]) & (df['Fecha'] <= week_days[-1]) & (df['Recurso'].isin(selected_recursos) if selected_recursos else df['Recurso'].notna())]
+        # Aplicación de los múltiples filtros
+        mask = (df['Fecha'] >= week_days[0]) & (df['Fecha'] <= week_days[-1])
+        
+        if selected_recursos:
+            mask &= df['Recurso'].isin(selected_recursos)
+        if selected_profesores:
+            mask &= df['Profesor'].isin(selected_profesores)
+        if selected_cursos:
+            mask &= df['Curso'].isin(selected_cursos)
+            
+        df_week = df[mask]
     else:
         df_week = pd.DataFrame()
 
     st.markdown("---")
     
-    # -------------------------------------------------------------
     # TRADUCCIÓN DE DÍAS Y ENCABEZADOS DE LA SEMANA A ESPAÑOL
-    # -------------------------------------------------------------
     dias_es = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
     column_names = [f"{dias_es[d.weekday()]} {d.strftime('%d/%m')}" for d in week_days]
     
