@@ -207,7 +207,7 @@ if "reportar" in st.query_params:
                         "estado": "Reportado (Vía QR)"
                     }
                     try:
-                        supabaseF.table("mantenimientos").insert(datos_mant).execute()
+                        supabase.table("mantenimientos").insert(datos_mant).execute()
                         st.success("✅ ¡Gracias! Tu reporte ha sido enviado al equipo técnico.")
                         st.balloons()
                     except Exception as e:
