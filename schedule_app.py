@@ -30,228 +30,592 @@ CLAVE_SUPABASE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
 supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 
-# ------------------------------------------------------------------
-# CONFIGURACIÓN DE PÁGINA
-# ------------------------------------------------------------------
-st.set_page_config(page_title="Sistema de Reservas - Enlaces", page_icon="📅", layout="wide")
+# ──────────────────────────────────────────────────────────────────────────────
+# 0) CONFIGURACIÓN GLOBAL Y ESTILO
+# ──────────────────────────────────────────────────────────────────────────────
+st.set_page_config(page_title="Sistema de Horarios CAV", page_icon="📅", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
-    <style>
-    .main { background-color: #f4f6f9; }
-    h1, h2, h3 { color: #2c3e50; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    .stButton>button { border-radius: 5px; font-weight: bold; width: 100%; transition: all 0.3s; }
-    .stButton>button:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-    .stSelectbox>div>div, .stDateInput>div>div, .stTimeInput>div>div, .stTextInput>div>div { border-radius: 5px; border: 1px solid #bdc3c7; }
-    .card { background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; border-left: 5px solid #3498db; }
-    .metric-value { font-size: 2em; font-weight: bold; color: #2980b9; }
-    .metric-label { font-size: 1em; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; }
-    .status-badge { padding: 5px 10px; border-radius: 15px; font-size: 0.8em; font-weight: bold; display: inline-block; }
-    .status-activa { background-color: #d4edda; color: #155724; }
-    .status-completada { background-color: #cce5ff; color: #004085; }
-    .status-cancelada { background-color: #f8d7da; color: #721c24; }
-    .grid-container {
-        display: grid;
-        grid-template-columns: 80px repeat(5, 1fr);
-        gap: 10px;
-        background-color: #ffffff;
-        padding: 15px;
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        overflow-x: auto;
+<style>
+    :root {
+        --primary-color: #0072C6;
+        --background-color: #F8F9FA;
+        --sidebar-background: #FFFFFF;
+        --card-background: #FFFFFF;
+        --text-color: #343A40;
+        --subtle-text-color: #6C757D;
+        --border-color: #DEE2E6;
+        --hover-color: #E9ECEF;
+        --card-shadow: 0 4px 6px rgba(0,0,0,0.05);
     }
-    .grid-header { background-color: #34495e; color: white; padding: 10px; text-align: center; font-weight: bold; border-radius: 5px; }
-    .time-column { background-color: #ecf0f1; color: #2c3e50; padding: 10px; text-align: center; font-weight: bold; border-radius: 5px; display: flex; align-items: center; justify-content: center;}
-    .day-column { min-height: 100px; padding: 10px; border: 1px dashed #bdc3c7; border-radius: 5px; display: flex; flex-direction: column; gap: 10px;}
-    .reservation-card { font-size: 0.9em; transition: transform 0.2s; cursor: pointer; }
-    .reservation-card:hover { transform: scale(1.02); }
-    </style>
+    .main .block-container { padding: 2rem; }
+    h1 {
+        color: var(--primary-color);
+        font-weight: 600;
+        border-bottom: 2px solid var(--border-color);
+        padding-bottom: 0.5rem;
+        margin-bottom: 1.5rem;
+    }
+    [data-testid="stSidebar"] {
+        background-color: var(--sidebar-background);
+        border-right: 1px solid var(--border-color);
+        padding: 1rem;
+    }
+    .st-emotion-cache-1r4qj8v, [data-testid="stForm"], [data-testid="stExpander"] {
+        border: 1px solid var(--border-color);
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+        box-shadow: var(--card-shadow);
+        background-color: var(--card-background);
+    }
+    [data-testid="stMetric"] {
+        background-color: var(--card-background);
+        border: 1px solid var(--border-color);
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+        box-shadow: var(--card-shadow);
+    }
+    [data-testid="stSidebarNav"] a:hover {
+        background-color: var(--hover-color);
+        color: var(--primary-color);
+    }
+    [data-testid="stSidebarNav"] a[aria-current="page"] {
+        background-color: var(--primary-color);
+        color: white;
+    }
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --primary-color: #58A6FF;
+            --background-color: #0D1117;
+            --sidebar-background: #161B22;
+            --card-background: #161B22;
+            --text-color: #C9D1D9;
+            --subtle-text-color: #8B949E;
+            --border-color: #30363D;
+            --hover-color: #252b33;
+        }
+        body, .stApp { background-color: var(--background-color); color: var(--text-color); }
+        .st-emotion-cache-1r4qj8v, [data-testid="stForm"], [data-testid="stExpander"], [data-testid="stMetric"] { border-color: var(--border-color); }
+        .tooltip-text { background-color: #f0f2f6 !important; color: #111 !important; }
+    }
+    .reservation-card { 
+        border-radius: 5px; 
+        padding: 6px; 
+        margin-bottom: 4px;
+        font-size: 0.8em; 
+        line-height: 1.3; 
+        word-wrap: break-word; 
+        border: 1px solid rgba(0,0,0,0.1);
+        position: relative;
+        cursor: default;
+    }
+    .tooltip-text {
+        visibility: hidden; width: 220px; background-color: #333; color: #fff; text-align: left;
+        border-radius: 6px; padding: 10px; position: absolute; z-index: 10; bottom: 105%;
+        left: 50%; margin-left: -110px; opacity: 0; transition: opacity 0.3s; box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        pointer-events: none;
+    }
+    .reservation-card:hover .tooltip-text { visibility: visible; opacity: 1; }
+    .dataframe td { vertical-align: top; }
+</style>
 """, unsafe_allow_html=True)
 
-# ------------------------------------------------------------------
-# FUNCIONES DE BASE DE DATOS (SUPABASE)
-# ------------------------------------------------------------------
-@st.cache_data(ttl=10)
-def cargar_reservas():
+# ---- Funciones de utilidad ----
+def parse_date(val):
+    if isinstance(val, date) and not isinstance(val, dt_datetime): return val
+    if isinstance(val, dt_datetime): return val.date()
+    if isinstance(val, pd.Timestamp): return val.to_pydatetime().date()
+    s = str(val).strip()
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%Y-%m-%d %H:%M:%S"):
+        try: return dt_datetime.strptime(s, fmt).date()
+        except (ValueError, TypeError): continue
+    raise ValueError(f"Formato de fecha inválido: {val!r}")
+
+def as_time(val):
+    if isinstance(val, dt.time): return val
+    if isinstance(val, dt.datetime): return val.time()
+    if isinstance(val, str):
+        s = val.strip()
+        for fmt in ('%H:%M:%S', '%H:%M'):
+            try: return dt_datetime.strptime(s, fmt).time()
+            except ValueError: continue
+    try: return pd.to_datetime(val).time()
+    except (ValueError, TypeError): raise ValueError(f"Formato de hora inválido: {val!r}")
+
+def overlap(s1, e1, s2, e2): return max(s1, s2) < min(e1, e2)
+
+def get_color_from_string(input_string: str) -> str:
+    if not input_string: return "#CCCCCC"
+    hash_obj = hashlib.md5(input_string.encode())
+    hash_int = int(hash_obj.hexdigest(), 16)
+    hue = hash_int % 360; saturation = 75; lightness = 90
+    return f"hsl({hue}, {saturation}%, {lightness}%)"
+
+def sort_time_key(time_string):
     try:
-        res = supabase.table("reservas").select("*").execute()
-        return pd.DataFrame(res.data) if res.data else pd.DataFrame(columns=['id', 'fecha', 'hora_inicio', 'hora_fin', 'profesor', 'curso', 'recurso', 'observaciones'])
+        start_time_str = time_string.split(' a ')[0].strip()
+        return dt.datetime.strptime(start_time_str, '%H:%M').time()
+    except (ValueError, IndexError): return dt.time(23, 59)
+
+def format_date_es(date_obj):
+    dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+    meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+    return f"{dias[date_obj.weekday()]}, {date_obj.day} de {meses[date_obj.month - 1]} de {date_obj.year}"
+
+def send_email(subject, body, recipient_email):
+    try:
+        creds = st.secrets["email_credentials"]
+        sender_email, password = creds["smtp_username"], creds["smtp_password"]
+        msg = MIMEMultipart(); msg['From'] = sender_email; msg['To'] = recipient_email; msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'html'))
+        server = smtplib.SMTP(creds["smtp_server"], creds["smtp_port"]); server.starttls()
+        server.login(sender_email, password); server.send_message(msg); server.quit()
+        st.toast(f"📧 Notificación enviada a {recipient_email}")
     except Exception as e:
-        st.error(f"Error cargando reservas: {e}")
-        return pd.DataFrame()
+        pass 
 
 # ------------------------------------------------------------------
-# AUTENTICACIÓN SIMPLE
+# 0.5) VISTA PÚBLICA DE REPORTE (ACCESO POR CÓDIGO QR MÓVIL)
 # ------------------------------------------------------------------
-if 'autenticado' not in st.session_state:
-    st.session_state.autenticado = False
+if "reportar" in st.query_params:
+    st.markdown("<style>.block-container { padding-top: 2rem !important; }</style>", unsafe_allow_html=True)
+    recurso_qr = st.query_params["reportar"]
+    
+    with st.container(border=True):
+        st.markdown(f"<h2 style='text-align: center; color: var(--primary-color);'>🚨 Reporte de Falla</h2>", unsafe_allow_html=True)
+        st.markdown(f"<h4 style='text-align: center; color: gray;'>Equipo: {recurso_qr}</h4>", unsafe_allow_html=True)
+        st.markdown("---")
+        
+        try:
+            rec_data = supabase.table("recursos").select("id").eq("nombre", recurso_qr).execute().data
+            if not rec_data:
+                st.error("❌ El equipo escaneado no existe en la base de datos.")
+                st.stop()
+            recurso_id = rec_data[0]["id"]
+        except:
+            st.error("Error de conexión al verificar el equipo.")
+            st.stop()
 
-def login():
-    st.markdown("<h1 style='text-align: center; color: #3498db;'>🔐 Acceso al Sistema</h1>", unsafe_allow_html=True)
-    with st.form("login_form"):
-        st.markdown("<div class='card'>", unsafe_allow_html=True)
-        usuario = st.text_input("👤 Usuario", placeholder="Ingresa tu nombre de usuario")
-        password = st.text_input("🔑 Contraseña", type="password", placeholder="Ingresa tu contraseña")
-        submit = st.form_submit_button("Ingresar", use_container_width=True)
-        if submit:
-            if usuario == "admin" and password == "1234":
-                st.session_state.autenticado = True
-                st.rerun()
-            else:
-                st.error("Credenciales incorrectas")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-if not st.session_state.autenticado:
-    login()
+        with st.form("qr_report_form"):
+            detalle = st.text_area("Describe el problema detalladamente (Ej. 'El cable HDMI está roto', 'No enciende', etc.)")
+            if st.form_submit_button("📤 Enviar Reporte a Técnicos", type="primary", use_container_width=True):
+                if detalle.strip():
+                    datos_mant = {
+                        "recurso_id": recurso_id,
+                        "fecha": dt.date.today().strftime("%Y-%m-%d"),
+                        "descripcion": detalle.strip(),
+                        "estado": "Reportado (Vía QR)"
+                    }
+                    try:
+                        supabaseF.table("mantenimientos").insert(datos_mant).execute()
+                        st.success("✅ ¡Gracias! Tu reporte ha sido enviado al equipo técnico.")
+                        st.balloons()
+                    except Exception as e:
+                        st.error("Ocurrió un error al enviar el reporte.")
+                else:
+                    st.error("⚠️ Debes escribir una descripción del problema.")
+        
+    st.info("💡 Ya puedes cerrar esta pestaña en tu celular.")
     st.stop()
 
 # ------------------------------------------------------------------
-# BARRA LATERAL (NAVEGACIÓN)
+# 1) INICIALIZACIÓN DE DATOS
 # ------------------------------------------------------------------
-with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/2830/2830305.png", width=100)
-    st.title("📚 Gestión Enlaces")
-    st.markdown("---")
-    
-    opciones_menu = {
-        "📊 Panel Principal": "dashboard",
-        "➕ Nueva Reserva": "nueva",
-        "📅 Vista Semanal": "semana",
-        "📋 Vista de Horarios": "lista",
-        "⚙️ Mantenedores": "mantenedores",
-        "🚪 Salir": "salir"
-    }
-    
-    tab_seleccionado = st.radio("Navegación", list(opciones_menu.keys()))
-    
-    if tab_seleccionado == "🚪 Salir":
-        st.session_state.autenticado = False
-        st.rerun()
-        
-    st.markdown("---")
-    st.info("💡 **Tip:** Usa la vista semanal para encontrar bloques disponibles rápidamente.")
+if 'PROFESORES' not in globals(): PROFESORES = []
+if 'RECURSOS' not in globals(): RECURSOS = []
+if 'CURSOS' not in globals(): CURSOS = []
+
+def custom_course_sort_key(course_name):
+    course_name = str(course_name).strip()
+    if 'Dif' in course_name: return (3, 0, course_name)
+    match = re.match(r"(\d+)°\s*(BÁSICO|MEDIO)\s*([A-Z])?", course_name, re.IGNORECASE)
+    if match:
+        num, level, letter = match.groups()
+        level_priority = 0 if 'BÁSICO' in level.upper() else 1
+        return (level_priority, int(num), letter or '')
+    return (4, 0, course_name)
+
+@st.cache_data(ttl=60)
+def cargar_datos_login():
+    try:
+        p_res = supabase.table("profesores").select("nombre").execute().data
+        profs = sorted([p["nombre"] for p in p_res]) if p_res else []
+        r_res = supabase.table("recursos").select("nombre").execute().data
+        recs = sorted([r["nombre"] for r in r_res]) if r_res else []
+        c_res = supabase.table("cursos").select("nombre").execute().data
+        curs = sorted([c["nombre"] for c in c_res], key=custom_course_sort_key) if c_res else []
+        return profs, recs, curs
+    except:
+        return [], [], []
+
+PROFESORES, RECURSOS, CURSOS = cargar_datos_login()
 
 # ------------------------------------------------------------------
-# CARGA DE DATOS PRINCIPAL
+# 2) SISTEMA DE LOGIN HORIZONTAL
 # ------------------------------------------------------------------
-with st.spinner('Cargando datos desde la nube...'):
-    df = cargar_reservas()
+if "logged" not in st.session_state:
+    st.session_state.logged = False
+    st.session_state.role = None
+    st.session_state.profesor_name = None
 
-# ------------------------------------------------------------------
-# RENDERIZADO DE VISTAS
-# ------------------------------------------------------------------
+if not st.session_state.logged:
+    st.markdown("""
+        <style>
+            .block-container { padding-top: 3rem !important; }
+            [data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
+            .login-card { padding: 20px; border-radius: 15px; border: 1px solid #eeeeee; background-color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+            .stTextInput, .stSelectbox { margin-bottom: -10px; }
+            label { font-size: 0.85rem !important; font-weight: 600 !important; }
+        </style>
+    """, unsafe_allow_html=True)
 
-# --- PANEL PRINCIPAL ---
-if tab_seleccionado == "📊 Panel Principal":
-    st.header("📊 Panel de Control")
-    if not df.empty:
-        col1, col2, col3, col4 = st.columns(4)
-        hoy = dt.date.today().strftime('%Y-%m-%d')
-        reservas_hoy = df[df['fecha'] == hoy]
-        
-        with col1:
-            st.markdown(f"""
-                <div class="card" style="border-left-color: #2ecc71;">
-                    <div class="metric-label">Total Reservas</div>
-                    <div class="metric-value">{len(df)}</div>
-                </div>
-            """, unsafe_allow_html=True)
-        with col2:
-            st.markdown(f"""
-                <div class="card" style="border-left-color: #e74c3c;">
-                    <div class="metric-label">Reservas Hoy</div>
-                    <div class="metric-value">{len(reservas_hoy)}</div>
-                </div>
-            """, unsafe_allow_html=True)
-        with col3:
-            recurso_top = df['recurso'].mode()[0] if not df['recurso'].empty else "N/A"
-            st.markdown(f"""
-                <div class="card" style="border-left-color: #f39c12;">
-                    <div class="metric-label">Recurso más usado</div>
-                    <div class="metric-value" style="font-size: 1.5em;">{recurso_top}</div>
-                </div>
-            """, unsafe_allow_html=True)
-        with col4:
-            profesor_top = df['profesor'].mode()[0] if not df['profesor'].empty else "N/A"
-            st.markdown(f"""
-                <div class="card" style="border-left-color: #9b59b6;">
-                    <div class="metric-label">Profesor Frecuente</div>
-                    <div class="metric-value" style="font-size: 1.2em;">{profesor_top[:15]}...</div>
-                </div>
-            """, unsafe_allow_html=True)
-
-        st.markdown("### Uso de Recursos")
-        uso_recursos = df['recurso'].value_counts().reset_index()
-        uso_recursos.columns = ['Recurso', 'Cantidad']
-        fig = px.bar(uso_recursos, x='Recurso', y='Cantidad', color='Recurso', 
-                     template='plotly_white', text_auto=True)
-        fig.update_layout(showlegend=False, margin=dict(t=20, b=20, l=20, r=20))
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("No hay reservas registradas en el sistema todavía.")
-
-# --- NUEVA RESERVA ---
-elif tab_seleccionado == "➕ Nueva Reserva":
-    st.header("➕ Registrar Nueva Reserva")
+    main_container = st.container()
     
-    # Cargar listas desde BD para selects
-    profesores_list = [p['nombre'] for p in supabase.table("profesores").select("nombre").order("nombre").execute().data]
-    cursos_list = [c['nombre'] for c in supabase.table("cursos").select("nombre").order("nombre").execute().data]
-    recursos_list = [r['nombre'] for r in supabase.table("recursos").select("nombre").order("nombre").execute().data]
-    
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    with st.form("form_nueva_reserva"):
-        col1, col2 = st.columns(2)
-        with col1:
-            fecha_res = st.date_input("📅 Fecha de Reserva", dt.date.today())
-            hora_inicio = st.time_input("⏰ Hora de Inicio", dt.time(8, 0))
-            hora_fin = st.time_input("⌛ Hora de Término", dt.time(9, 30))
-        with col2:
-            prof_res = st.selectbox("👨‍🏫 Profesor", profesores_list)
-            curso_res = st.selectbox("📚 Curso", cursos_list)
-            rec_res = st.selectbox("💻 Recurso", recursos_list)
-            obs_res = st.text_area("📝 Observaciones (Opcional)")
-        
-        btn_guardar = st.form_submit_button("💾 Guardar Reserva", type="primary")
-        
-        if btn_guardar:
-            # Validar choque
-            choque = False
-            if not df.empty:
-                fechas_df = df[df['fecha'] == fecha_res.strftime('%Y-%m-%d')]
-                for _, row in fechas_df.iterrows():
-                    if row['recurso'] == rec_res:
-                        # Convertir a objetos time para comparar
-                        h_ini_bd = dt.datetime.strptime(str(row['hora_inicio'])[:5], '%H:%M').time()
-                        h_fin_bd = dt.datetime.strptime(str(row['hora_fin'])[:5], '%H:%M').time()
-                        
-                        # Lógica de solapamiento de tiempo
-                        if max(hora_inicio, h_ini_bd) < min(hora_fin, h_fin_bd):
-                            choque = True
-                            st.error(f"⚠️ El recurso {rec_res} ya está reservado por {row['profesor']} en ese horario.")
-                            break
+    with main_container:
+        col_logo, col_form = st.columns([1, 1.8], gap="large")
+
+        with col_logo:
+            st.markdown("<br><br>", unsafe_allow_html=True)
+            BASE_DIR = Path(__file__).parent
+            logo_path = BASE_DIR / "logocav.png"
+            if logo_path.exists(): st.image(str(logo_path), use_container_width=True)
+            else: st.info("Logo CAV")
+
+        with col_form:
+            st.markdown("<h2 style='text-align: center; color: #1E3A8A; margin-bottom: 0px;'>SISTEMA CAV</h2>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: gray; font-size: 0.9rem;'>Reserva de Recursos y Espacios</p>", unsafe_allow_html=True)
             
-            if not choque:
-                nueva_data = {
-                    "fecha": fecha_res.strftime('%Y-%m-%d'),
-                    "hora_inicio": hora_inicio.strftime('%H:%M:%S'),
-                    "hora_fin": hora_fin.strftime('%H:%M:%S'),
-                    "profesor": prof_res,
-                    "curso": curso_res,
-                    "recurso": rec_res,
-                    "observaciones": obs_res
-                }
-                try:
-                    supabase.table("reservas").insert(nueva_data).execute()
-                    st.success("✅ ¡Reserva registrada con éxito!")
-                    st.cache_data.clear() # Limpiar caché para refrescar
-                    time.sleep(1)
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error al guardar: {e}")
-    st.markdown("</div>", unsafe_allow_html=True)
+            with st.container(border=True):
+                tipo_user = st.radio("Acceder como:", ["Profesor", "Administrador"], horizontal=True)
+                st.markdown("---")
+                
+                if tipo_user == "Administrador":
+                    with st.form("admin_form", clear_on_submit=True):
+                        u_adm = st.text_input("Nombre de Administrador", placeholder="Ej: Edgar")
+                        p_adm = st.text_input("Contraseña", type="password", placeholder="••••••••")
+                        if st.form_submit_button("INICIAR SESIÓN ADMIN", use_container_width=True, type="primary"):
+                            if u_adm.strip().upper() in ["EDGAR", "GLORIA", "CARLOS", "ALEXIS"] and p_adm == "cav690":
+                                st.session_state.logged = True
+                                st.session_state.role = "admin"
+                                st.session_state.profesor_name = u_adm.strip().capitalize()
+                                st.rerun()
+                            else:
+                                st.error("Acceso denegado")
+                else:
+                    with st.form("profe_form", clear_on_submit=True):
+                        u_profe = st.selectbox("Busca tu nombre", PROFESORES, index=None, placeholder="Selecciona...")
+                        p_profe = st.text_input("Clave de Acceso", type="password", placeholder="6904")
+                        if st.form_submit_button("ENTRAR AL PANEL", use_container_width=True, type="primary"):
+                            if u_profe and p_profe == "6904":
+                                st.session_state.logged = True
+                                st.session_state.role = "profesor"
+                                st.session_state.profesor_name = u_profe
+                                st.rerun()
+                            elif not u_profe: st.warning("Por favor selecciona tu nombre")
+                            else: st.error("Contraseña incorrecta")
+    st.stop() 
+
+# ------------------------------------------------------------------
+# 3) CARGA DE LA BASE DE DATOS PRINCIPAL 
+# ------------------------------------------------------------------
+@st.cache_data(ttl=30)
+def cargar_reservas_y_datos():
+    horas_corregidas = [
+        '8:00 a 8:45', '8:45 a 9:30', '8:00 a 9:30',
+        '9:45 a 10:30', '10:30 a 11:15', '9:45 a 11:15',
+        '11:30 a 12:15', '12:15 a 13:00', '11:30 a 13:00',
+        '14:00 a 14:45', '14:45 a 15:30', '14:00 a 15:30',
+        '14:00 a 16:30', '14:45 a 16:30', '15:45 a 16:30',
+        '17:00 a 18:30', '17:30 a 18:30'
+    ]
+    
+    try:
+        res_data = supabase.table("reservas").select("id, fecha, hora_inicio, hora_fin, observaciones, profesores(nombre), cursos(nombre), recursos(nombre)").execute().data
+        reservas_limpias = []
+        for r in res_data:
+            reservas_limpias.append({
+                "id": r["id"],
+                "Fecha": parse_date(r["fecha"]),
+                "Hora inicio": as_time(r["hora_inicio"]),
+                "Hora fin": as_time(r["hora_fin"]),
+                "Profesor": r["profesores"]["nombre"] if r.get("profesores") else "",
+                "Curso": r["cursos"]["nombre"] if r.get("cursos") else "",
+                "Recurso": r["recursos"]["nombre"] if r.get("recursos") else "",
+                "Observaciones": r["observaciones"]
+            })
+        df_res = pd.DataFrame(reservas_limpias) if reservas_limpias else pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones'])
+            
+        try:
+            # CORRECCIÓN DEFINITIVA DE MANTENIMIENTO: Carga simple sin JOIN para evitar errores
+            mant_data = supabase.table("mantenimientos").select("*").execute().data
+            rec_data = supabase.table("recursos").select("id, nombre").execute().data
+            mant_map_rec = {r['id']: r['nombre'] for r in rec_data} if rec_data else {}
+            
+            df_mant = pd.DataFrame(mant_data) if mant_data else pd.DataFrame()
+            
+            if not df_mant.empty:
+                df_mant = df_mant[df_mant['estado'] != 'Reparado']
+                df_mant['FechaInicio_dt'] = df_mant['fecha'].apply(parse_date) if 'fecha' in df_mant.columns else dt.date.today()
+                df_mant['FechaFin_dt'] = df_mant['FechaInicio_dt']
+                df_mant['HoraInicio'] = dt.time(0, 0)
+                df_mant['HoraFin'] = dt.time(23, 59)
+                if 'recurso_id' in df_mant.columns:
+                    df_mant['Recurso'] = df_mant['recurso_id'].apply(lambda x: mant_map_rec.get(x, 'Desconocido'))
+                else: df_mant['Recurso'] = 'Desconocido'
+            else:
+                df_mant = pd.DataFrame(columns=['Recurso', 'FechaInicio_dt', 'HoraInicio', 'FechaFin_dt', 'HoraFin'])
+        except Exception as e:
+            df_mant = pd.DataFrame(columns=['Recurso', 'FechaInicio_dt', 'HoraInicio', 'FechaFin_dt', 'HoraFin'])
+
+        return df_res, horas_corregidas, df_mant
+    except Exception as e:
+        return pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones']), horas_corregidas, pd.DataFrame()
+
+df, HORAS, df_mantenimiento = cargar_reservas_y_datos()
+
+map_prof, map_cur, map_rec, PROFESOR_DATA = {}, {}, {}, {}
+try: 
+    prof_data_db = supabase.table("profesores").select("id, nombre, email").execute().data
+    map_prof = {p["nombre"]: p["id"] for p in prof_data_db}; PROFESOR_DATA = {p["nombre"]: p.get("email", "") for p in prof_data_db}
+except: pass
+try: map_cur = {c["nombre"]: c["id"] for c in supabase.table("cursos").select("id, nombre").execute().data}
+except: pass
+try: map_rec = {r["nombre"]: r["id"] for r in supabase.table("recursos").select("id, nombre").execute().data}
+except: pass
+
+# ------------------------------------------------------------------
+# 4) NAVEGACIÓN Y VISTAS
+# ------------------------------------------------------------------
+st_autorefresh(interval=300000, key="data_refresh")
+
+sidebar_title = f"Panel de {st.session_state.role.capitalize()}"
+if st.session_state.role == 'profesor': sidebar_title = f"Hola, {st.session_state.profesor_name.split(' ')[0]}"
+
+BASE_DIR = Path(__file__).parent
+logo_path = BASE_DIR / "logocav.png"
+
+if logo_path.exists():
+    st.markdown("""<style>[data-testid="stSidebarNav"]::before { content: ""; display: none; margin-top: 0px; } section[data-testid="stSidebar"] div.st-emotion-cache-16t70r2 { padding-top: 0.5rem !important; }</style>""", unsafe_allow_html=True)
+    col1, col2, col3 = st.sidebar.columns([0.1, 2.8, 0.1])
+    with col2: st.image(str(logo_path), use_container_width=True)
+
+st.sidebar.markdown(f"<div style='text-align: center; color: var(--primary-color); font-weight: bold; margin-bottom: 0px; font-size: 1.1em; letter-spacing: 1px;'>{sidebar_title.upper()}</div>", unsafe_allow_html=True)
+st.sidebar.markdown("<hr style='margin: 8px 0px 5px 0px; padding: 0;'>", unsafe_allow_html=True)
+
+html_reloj = """
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+    body { margin: 0; padding: 0; font-family: "Source Sans Pro", sans-serif; text-align: center; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+    .container { padding: 0px; width: 100%; }
+    @media (prefers-color-scheme: dark) { .container { background-color: transparent; color: #FAFAFA; } .reloj { color: #ff4b4b; } .mensaje { color: #c6c6d1; } }
+    @media (prefers-color-scheme: light) { .container { background-color: transparent; color: #31333F; } .reloj { color: #ff4b4b; } .mensaje { color: #555555; } }
+    .fecha { font-weight: 600; font-size: 0.9em; text-transform: capitalize; margin-bottom: 2px;}
+    .reloj { font-size: 1.6em; font-weight: 700; margin: 2px 0; font-variant-numeric: tabular-nums;}
+    .mensaje { font-size: 0.8em; font-style: italic; margin-top: 2px;}
+</style>
+</head>
+<body>
+    <div class="container">
+        <div id="fecha" class="fecha"></div>
+        <div id="reloj" class="reloj"></div>
+        <div id="mensaje" class="mensaje"></div>
+    </div>
+    <script>
+        const mensajes = ["¡Que tengas un excelente día! ☀️", "Cada día es una nueva oportunidad para brillar. ✨", "Tu esfuerzo de hoy es el éxito de mañana. 💪", "Haz que las cosas pasen. ¡Tú puedes! 🚀", "Pequeños pasos todos los días llevan a grandes resultados. 🏔️", "Sonríe, respira y sigue adelante. 🌻", "La actitud lo es todo. ¡A dar el 100%! 💯", "Hoy es un buen día para hacer la diferencia. 🌟", "Tu trabajo y dedicación son muy valiosos. 🤝", "¡Mucho éxito en todas tus tareas de hoy! 🎯"];
+        document.getElementById("mensaje").innerText = mensajes[Math.floor(Math.random() * mensajes.length)];
+        function actualizarReloj() {
+            const ahora = new Date();
+            document.getElementById("reloj").innerText = ahora.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            document.getElementById("fecha").innerText = ahora.toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        }
+        setInterval(actualizarReloj, 1000); actualizarReloj();
+    </script>
+</body>
+</html>
+"""
+with st.sidebar:
+    components.html(html_reloj, height=85)
+    st.markdown("<hr style='margin: 0px 0px 10px 0px; padding: 0;'>", unsafe_allow_html=True)
+
+PAGES_CONFIG = {
+    "Mis Reservas": {"icon": "👤", "roles": ["profesor"]},
+    "Registrar": {"icon": "📝", "roles": ["admin"]},
+    "Base de datos": {"icon": "🗃️", "roles": ["admin"]},
+    "Semana": {"icon": "🗓️", "roles": ["admin", "profesor"]},
+    "Dashboard": {"icon": "📈", "roles": ["admin"]},
+    "Técnicos": {"icon": "🔧", "roles": ["admin"]},
+    "Configuración": {"icon": "⚙️", "roles": ["admin"]},
+}
+
+available_pages = [p for p, conf in PAGES_CONFIG.items() if st.session_state.role in conf["roles"]]
+default_page = "Mis Reservas" if st.session_state.role == 'profesor' else "Registrar"
+page = st.sidebar.radio("Navegación", available_pages, index=available_pages.index(default_page), format_func=lambda p: f"{PAGES_CONFIG[p]['icon']} {p}", label_visibility="collapsed")
+
+st.sidebar.markdown("---")
+
+if st.sidebar.button("🔄 Refrescar Pantalla", use_container_width=True):
+    st.cache_data.clear(); st.rerun()
+
+if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
+    for key in st.session_state.keys(): del st.session_state[key]
+    st.rerun()
+
+# ------------------------------------------------------------------
+# PÁGINAS
+# ------------------------------------------------------------------
+
+if page == "Mis Reservas":
+    st.title("👤 Mis Próximas Reservas")
+    if not df.empty:
+        prof_df = df[df['Profesor'] == st.session_state.profesor_name]
+        future_reservas = prof_df[prof_df['Fecha'] >= dt.date.today()].sort_values(by="Fecha")
+    else: future_reservas = pd.DataFrame()
+
+    if future_reservas.empty: st.info("No tienes reservas programadas para el futuro.")
+    else:
+        for _, row in future_reservas.iterrows():
+            with st.container(border=True):
+                st.markdown(f"#### {format_date_es(row['Fecha'])}")
+                st.markdown(f"**Hora:** {row['Hora inicio'].strftime('%H:%M')} - {row['Hora fin'].strftime('%H:%M')}<br>**Curso:** {row['Curso']}<br>**Recurso:** {row['Recurso']}", unsafe_allow_html=True)
+                if row['Observaciones']: st.markdown(f"> *{row['Observaciones']}*")
+
+if page == "Registrar":
+    st.title("📝 Registrar Nuevo Horario")
+    def check_all_conflicts(fechas, recursos, hora_inicio, hora_fin, df_reservas, df_mantenimiento):
+        conflictos_reserva, conflictos_mantenimiento = [], []
+        if not df_reservas.empty:
+            for fecha in fechas:
+                for rec in recursos:
+                    df_check = df_reservas[(df_reservas['Fecha'] == fecha) & (df_reservas['Recurso'] == rec)]
+                    for _, row in df_check.iterrows():
+                        if overlap(hora_inicio, hora_fin, row['Hora inicio'], row['Hora fin']):
+                            conflictos_reserva.append(f"<li>{rec} el {fecha.strftime('%d/%m/%Y')} (con {row['Profesor']})</li>")
+        if not df_mantenimiento.empty:
+            for fecha in fechas:
+                for rec in recursos:
+                    mant_check = df_mantenimiento[(df_mantenimiento['Recurso'] == rec) & (df_mantenimiento['FechaInicio_dt'] <= fecha) & (df_mantenimiento['FechaFin_dt'] >= fecha)]
+                    for _, m_row in mant_check.iterrows():
+                        if overlap(hora_inicio, hora_fin, as_time(m_row['HoraInicio']), as_time(m_row['HoraFin'])):
+                             conflictos_mantenimiento.append(f"<li>{rec} el {fecha.strftime('%d/%m/%Y')} (en mantenimiento)</li>")
+        return conflictos_reserva, list(set(conflictos_mantenimiento))
+        
+    with st.container(border=True):
+        tipo_reserva = st.radio("Tipo de Reserva", ["Única", "Múltiples Fechas", "Semanal Recurrente"], horizontal=True, key="tipo_reserva")
+        with st.form("entry_form"):
+            st.markdown("---")
+            c1, c2 = st.columns(2)
+            fechas_a_registrar = []
+            if tipo_reserva == "Única":
+                default_date = df['Fecha'].max() if not df.empty else dt.date.today()
+                fecha = c1.date_input('Fecha', value=default_date, format="DD/MM/YYYY")
+                fechas_a_registrar.append(fecha)
+            elif tipo_reserva == "Múltiples Fechas":
+                today = dt.date.today(); date_range = [today + dt.timedelta(days=i) for i in range(180)]
+                df_dates = pd.DataFrame({"Seleccionar": [False] * len(date_range), "Fecha Disponible": [format_date_es(d) for d in date_range], "_date_obj": date_range})
+                with c1:
+                    st.write("Selecciona las fechas deseadas:")
+                    edited_dates_df = st.data_editor(df_dates, column_config={"Seleccionar": st.column_config.CheckboxColumn(required=True), "_date_obj": None}, hide_index=True, height=200, use_container_width=True)
+                selected_dates_df = edited_dates_df[edited_dates_df["Seleccionar"]]
+                fechas_a_registrar = sorted(selected_dates_df["_date_obj"].tolist())
+            else:
+                fecha_inicio = c1.date_input('Fecha de Inicio', value=dt.date.today(), format="DD/MM/YYYY")
+                num_semanas = c1.number_input('Repetir durante (semanas)', min_value=1, max_value=52, value=4)
+                fechas_a_registrar = [fecha_inicio + dt.timedelta(weeks=i) for i in range(num_semanas)]
+                if fechas_a_registrar: c1.info(f"Se registrarán {len(fechas_a_registrar)} fechas.")
+            
+            hora  = c1.selectbox('Bloque Horario', HORAS)
+            obs   = c1.text_area('Observaciones (Opcional)')
+            prof   = c2.selectbox('Profesor', PROFESORES)
+            curso  = c2.selectbox('Curso',    CURSOS)
+            recs = c2.multiselect('Recursos', RECURSOS, placeholder="Selecciona uno o más recursos")
+            
+            if st.form_submit_button('💾 Guardar Registro', use_container_width=True, type="primary"):
+                if recs and fechas_a_registrar:
+                    h_inicio, h_fin = [dt.datetime.strptime(t.strip(), '%H:%M').time() for t in hora.split(' a ')]
+                    conflictos_r, conflictos_m = check_all_conflicts(fechas_a_registrar, recs, h_inicio, h_fin, df, df_mantenimiento)
+                    if conflictos_r or conflictos_m:
+                        if conflictos_r: st.error(f"❌ **Conflicto de Reserva:**"); st.markdown(f"<ul>{''.join(conflictos_r)}</ul>", unsafe_allow_html=True)
+                        if conflictos_m: st.error(f"❌ **Conflicto de Mantenimiento:**"); st.markdown(f"<ul>{''.join(conflictos_m)}</ul>", unsafe_allow_html=True)
+                    else:
+                        nuevas_reservas = []
+                        for fecha in fechas_a_registrar:
+                            for rec in recs:
+                                nuevas_reservas.append({
+                                    'fecha': str(fecha), 
+                                    'hora_inicio': str(h_inicio), 
+                                    'hora_fin': str(h_fin), 
+                                    'profesor': map_prof.get(prof), 
+                                    'curso': map_cur.get(curso), 
+                                    'recurso': map_rec.get(rec), 
+                                    'observaciones': obs
+                                })
+                        try:
+                            supabase.table("reservas").insert(nuevas_reservas).execute()
+                            st.success("✅ ¡Reservas guardadas exitosamente!")
+                            st.cache_data.clear()
+                            
+                            email_to = PROFESOR_DATA.get(prof)
+                            if email_to:
+                                subject = f"Confirmación de Reserva de Recursos - {curso}"
+                                body = f"""<html><body><p>Hola {prof.split(' ')[0]},</p><p>Se ha(n) confirmado la(s) siguiente(s) reserva(s) a tu nombre:</p><ul><li><b>Curso:</b> {curso}</li><li><b>Recurso(s):</b> {', '.join(recs)}</li><li><b>Horario:</b> {hora}</li></ul><p><b>Fechas Registradas:</b></p><ul>{''.join([f'<li>{format_date_es(f)}</li>' for f in fechas_a_registrar])}</ul>{f"<p><b>Observaciones:</b> {obs}</p>" if obs else ""}<p>Saludos,<br>Sistema de Horarios CAV</p></body></html>"""
+                                send_email(subject, body, email_to)
+                                
+                            time.sleep(1); st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al guardar en la nube: {e}")
+
+if page == "Base de datos":
+    st.title("🗃️ Base de Datos de Reservas")
+    st.info("Nota: Para eliminar una fila selecciónala y presiona Supr/Delete, luego guarda.")
+    with st.container(border=True):
+        if not df.empty:
+            df_display = df.drop(columns=['id'])
+            edited_df = st.data_editor(df_display, hide_index=True, use_container_width=True, num_rows="dynamic", column_config={"Fecha": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"), "Hora inicio": st.column_config.TimeColumn("Hora Inicio", format="HH:mm"), "Hora fin": st.column_config.TimeColumn("Hora Fin", format="HH:mm"), "Profesor": st.column_config.SelectboxColumn("Profesor", options=PROFESORES, required=True), "Curso": st.column_config.SelectboxColumn("Curso", options=CURSOS, required=True), "Recurso": st.column_config.SelectboxColumn("Recurso", options=RECURSOS, required=True)})
+            
+            if st.button("💾 Guardar Cambios en la Nube", use_container_width=True, type="primary"):
+                with st.spinner("Sincronizando con Supabase..."):
+                    try:
+                        original_indices = set(df.index)
+                        edited_indices = set(edited_df.index)
+                        deleted_indices = original_indices - edited_indices
+                        
+                        for idx in deleted_indices:
+                            id_borrar = df.loc[idx, 'id']
+                            supabase.table("reservas").delete().eq("id", id_borrar).execute()
+                            
+                            prof_name = df.loc[idx, 'Profesor']
+                            email_to = PROFESOR_DATA.get(prof_name)
+                            if email_to:
+                                subject = f"Cancelación de Reserva de Recursos - {df.loc[idx, 'Curso']}"
+                                body = f"""<html><body><p>Hola {prof_name.split(' ')[0]},</p><p>Te informamos que la siguiente reserva ha sido <b>cancelada</b>:</p><ul><li><b>Fecha:</b> {format_date_es(df.loc[idx, 'Fecha'])}</li><li><b>Horario:</b> {df.loc[idx, 'Hora inicio'].strftime('%H:%M')} - {df.loc[idx, 'Hora fin'].strftime('%H:%M')}</li><li><b>Curso:</b> {df.loc[idx, 'Curso']}</li><li><b>Recurso:</b> {df.loc[idx, 'Recurso']}</li></ul><p>Saludos,<br>Sistema de Horarios CAV</p></body></html>"""
+                                send_email(subject, body, email_to)
+
+                        new_rows = edited_df[~edited_df.index.isin(original_indices)]
+                        if not new_rows.empty:
+                            nuevas_inserciones = []
+                            for _, r in new_rows.iterrows():
+                                nuevas_inserciones.append({
+                                    "fecha": str(r["Fecha"]),
+                                    "hora_inicio": str(r["Hora inicio"]),
+                                    "hora_fin": str(r["Hora fin"]),
+                                    "profesor": map_prof.get(r["Profesor"]),
+                                    "curso": map_cur.get(r["Curso"]),
+                                    "recurso": map_rec.get(r["Recurso"]),
+                                    "observaciones": r["Observaciones"]
+                                })
+                            supabase.table("reservas").insert(nuevas_inserciones).execute()
+                            
+                        st.success("Sincronización completa.")
+                        st.cache_data.clear(); time.sleep(1); st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al sincronizar: {e}")
+        else:
+            st.write("No hay datos registrados.")
 
 # --- VISTA SEMANAL ---
-elif tab_seleccionado == "📅 Vista Semanal":
+if tab_seleccionado == "📅 Vista Semanal": # Ajusta el nombre de la pestaña si en tu código es distinto
     st.header("📅 Vista Semanal")
     
     col_d1, col_d2 = st.columns([1, 3])
@@ -265,7 +629,6 @@ elif tab_seleccionado == "📅 Vista Semanal":
     st.markdown("### 🔍 Filtros de Búsqueda")
     col_f1, col_f2, col_f3 = st.columns(3)
     
-    # Obtener valores únicos para los filtros manejando nulos
     opciones_prof = ["Todos"] + sorted([str(p) for p in df['profesor'].dropna().unique()])
     opciones_curso = ["Todos"] + sorted([str(c) for c in df['curso'].dropna().unique()])
     opciones_rec = ["Todos"] + sorted([str(r) for r in df['recurso'].dropna().unique()])
@@ -285,7 +648,6 @@ elif tab_seleccionado == "📅 Vista Semanal":
         if filtro_curso != "Todos": df_filtrado = df_filtrado[df_filtrado['curso'] == filtro_curso]
         if filtro_recurso != "Todos": df_filtrado = df_filtrado[df_filtrado['recurso'] == filtro_recurso]
         
-        # Agrupar por fecha en un diccionario (asegurando que la fecha sea string)
         reservas_por_fecha = {}
         for idx, row in df_filtrado.iterrows():
             fecha_str = str(row['fecha'])
@@ -301,28 +663,26 @@ elif tab_seleccionado == "📅 Vista Semanal":
             "TABLETS": "#9b59b6"
         }
 
-        # ¡AQUÍ ESTÁ LA MAGIA Y LA SOLUCIÓN AL BUG!
-        # Construimos todo el HTML de la cuadrícula en un solo texto antes de renderizarlo
+        # CONSTRUCCIÓN DEL HTML EN UNA SOLA VARIABLE (Esto arregla el bug visual)
         html_grid = '<div class="grid-container">'
         
-        # Fila de Cabeceras
+        # Cabeceras
         html_grid += '<div class="grid-header">Hora</div>'
         for i in range(5):
             dia = inicio_semana + dt.timedelta(days=i)
             html_grid += f'<div class="grid-header">{dias_semana_nombres[i]}<br>{dia.strftime("%d %m %Y")}</div>'
         
-        # Extraer y ordenar bloques de tiempo (quitando nulos)
+        # Tiempos ordenados
         tiempos_validos = df_filtrado['hora_inicio'].dropna().unique().tolist()
         bloques_tiempo = sorted([str(t) for t in tiempos_validos])
         
-        # Rellenar la cuadrícula
+        # Rellenar cuadrícula
         for hora_inicio in bloques_tiempo:
             html_grid += f'<div class="time-column">{hora_inicio[:5]}</div>'
             for i in range(5):
                 dia = inicio_semana + dt.timedelta(days=i)
                 fecha_actual_str = dia.strftime("%Y-%m-%d")
                 
-                # Filtrar las reservas que coinciden en fecha y hora
                 reservas_celda = [r for r in reservas_por_fecha.get(fecha_actual_str, []) if str(r['hora_inicio']) == hora_inicio]
                 
                 if reservas_celda:
@@ -349,102 +709,261 @@ elif tab_seleccionado == "📅 Vista Semanal":
                 else:
                     html_grid += '<div class="day-column" style="background-color: #fdfdfd;"></div>'
                     
-        html_grid += '</div>' # Cerrar el grid-container
+        html_grid += '</div>'
         
-        # Imprimir todo en Streamlit de una sola vez
+        # Renderizar todo junto
         st.markdown(html_grid, unsafe_allow_html=True)
-
-# --- VISTA DE HORARIOS (LISTA) ---
-elif tab_seleccionado == "📋 Vista de Horarios":
-    st.header("📋 Vista de Horarios (Detallada)")
-    
-    if df.empty:
-        st.info("No hay reservas registradas.")
-    else:
-        st.markdown("### 🔍 Filtros de Búsqueda")
-        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+if page == "Dashboard":
+    st.title("📈 Dashboard Analítico")
+    with st.container(border=True):
+        st.subheader("Filtrar por Rango de Fechas")
+        today = dt.date.today()
+        c1, c2 = st.columns(2)
+        start_date = c1.date_input("Fecha de Inicio", today - dt.timedelta(days=30), format="DD/MM/YYYY")
+        end_date = c2.date_input("Fecha de Fin", today, format="DD/MM/YYYY")
         
-        opc_prof = ["Todos"] + sorted([str(p) for p in df['profesor'].dropna().unique()])
-        opc_cur = ["Todos"] + sorted([str(c) for c in df['curso'].dropna().unique()])
-        opc_rec = ["Todos"] + sorted([str(r) for r in df['recurso'].dropna().unique()])
-
-        with col_f1:
-            filtro_fecha = st.date_input("Filtrar por Fecha", value=None)
-        with col_f2:
-            filtro_prof = st.selectbox("Filtrar por Profesor", opc_prof)
-        with col_f3:
-            filtro_cur = st.selectbox("Filtrar por Curso", opc_cur)
-        with col_f4:
-            filtro_rec = st.selectbox("Filtrar por Recurso", opc_rec)
+        if start_date > end_date:
+            st.error("Error: La fecha de inicio no puede ser posterior a la fecha de fin.")
+        else:
+            if not df.empty: df_filtered = df[(df['Fecha'] >= start_date) & (df['Fecha'] <= end_date)]
+            else: df_filtered = pd.DataFrame()
+                
+            st.markdown("---")
+            st.subheader("Métricas Generales del Periodo")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total de Reservas en Periodo", len(df_filtered))
+            if not df_filtered.empty:
+                try:
+                    recurso_mas_usado = df_filtered['Recurso'].mode()[0]
+                    c2.metric("Recurso Más Usado", recurso_mas_usado)
+                    profesor_mas_activo = df_filtered['Profesor'].mode()[0]
+                    c3.metric("Profesor Más Activo", profesor_mas_activo)
+                except IndexError:
+                    c2.info("No hay datos para mostrar métricas.")
+            else:
+                c2.info("No hay reservas en el periodo seleccionado.")
+                
+    if not df_filtered.empty:
+        st.markdown("---")
+        st.subheader("Mapa de Calor de Ocupación")
+        with st.container(border=True):
+            df_heatmap = df_filtered.copy()
+            dias_semana_es_cat = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+            df_heatmap['DiaSemana'] = pd.Categorical(df_heatmap['Fecha'].apply(lambda x: dias_semana_es_cat[x.weekday()]), categories=dias_semana_es_cat, ordered=True)
+            df_heatmap['BloqueHorario'] = df_heatmap.apply(lambda row: f"{row['Hora inicio'].strftime('%H:%M')} a {row['Hora fin'].strftime('%H:%M')}", axis=1)
+            heatmap_data = df_heatmap.groupby(['DiaSemana', 'BloqueHorario']).size().reset_index(name='count')
+            heatmap_pivot = heatmap_data.pivot_table(index='BloqueHorario', columns='DiaSemana', values='count', fill_value=0)
+            heatmap_pivot = heatmap_pivot.loc[sorted(heatmap_pivot.index, key=sort_time_key)]
+            heatmap_pivot = heatmap_pivot.reindex(columns=dias_semana_es_cat[:5], fill_value=0)
+            fig = px.imshow(heatmap_pivot, labels=dict(x="Día de la Semana", y="Bloque Horario", color="N° de Reservas"), color_continuous_scale=px.colors.sequential.Reds)
+            fig.update_layout(xaxis_title="", yaxis_title="")
+            st.plotly_chart(fig, use_container_width=True)
             
-        df_mostrar = df.copy()
-        if filtro_fecha: df_mostrar = df_mostrar[df_mostrar['fecha'] == filtro_fecha.strftime('%Y-%m-%d')]
-        if filtro_prof != "Todos": df_mostrar = df_mostrar[df_mostrar['profesor'] == filtro_prof]
-        if filtro_cur != "Todos": df_mostrar = df_mostrar[df_mostrar['curso'] == filtro_cur]
-        if filtro_rec != "Todos": df_mostrar = df_mostrar[df_mostrar['recurso'] == filtro_rec]
-        
-        # Renombrar columnas para la visualización en español
-        columnas_espanol = {
-            'fecha': 'Fecha',
-            'hora_inicio': 'Hora Inicio',
-            'hora_fin': 'Hora Fin',
-            'profesor': 'Profesor',
-            'curso': 'Curso',
-            'recurso': 'Recurso',
-            'observaciones': 'Observaciones'
-        }
-        
-        # Mostrar la tabla ordenada por Fecha y Hora de Inicio
-        df_mostrar = df_mostrar.sort_values(by=['fecha', 'hora_inicio'], ascending=[False, True])
-        
-        st.dataframe(
-            df_mostrar[['fecha', 'hora_inicio', 'hora_fin', 'profesor', 'curso', 'recurso', 'observaciones']].rename(columns=columnas_espanol), 
-            use_container_width=True, 
-            hide_index=True
-        )
-        
-        with st.expander("🗑️ Eliminar una reserva"):
-            if not df_mostrar.empty:
-                opciones_borrar = [f"ID: {row['id']} | {row['fecha']} - {row['profesor']} - {row['recurso']}" for _, row in df_mostrar.iterrows()]
-                res_borrar = st.selectbox("Selecciona la reserva a eliminar", opciones_borrar)
-                if st.button("Eliminar Reserva", type="primary"):
-                    try:
-                        id_borrar = int(res_borrar.split("|")[0].replace("ID:", "").strip())
-                        supabase.table("reservas").delete().eq("id", id_borrar).execute()
-                        st.success("Reserva eliminada.")
-                        st.cache_data.clear()
+        st.markdown("---")
+        c_cursos, c_recursos = st.columns(2)
+        with c_cursos:
+            with st.container(border=True):
+                st.subheader("Top 5 Cursos con más Reservas")
+                cursos_count = df_filtered['Curso'].value_counts().nlargest(5)
+                if not cursos_count.empty:
+                    fig_cursos = px.bar(cursos_count, x=cursos_count.index, y=cursos_count.values, labels={'x': 'Curso', 'y': 'Cantidad de Reservas'})
+                    st.plotly_chart(fig_cursos, use_container_width=True)
+                else: st.info("No hay datos de cursos en este periodo.")
+        with c_recursos:
+            with st.container(border=True):
+                st.subheader("Top 5 Recursos más Solicitados")
+                recursos_count = df_filtered['Recurso'].value_counts().nlargest(5)
+                if not recursos_count.empty:
+                    fig_recursos = px.bar(recursos_count, x=recursos_count.index, y=recursos_count.values, labels={'x': 'Recurso', 'y': 'Cantidad de Reservas'})
+                    st.plotly_chart(fig_recursos, use_container_width=True)
+                else: st.info("No hay datos de recursos en este periodo.")
+
+# ------------------------------------------------------------------
+# SECCIÓN: TÉCNICOS
+# ------------------------------------------------------------------
+if page == "Técnicos":
+    st.title("🔧 Área de Técnicos y Mantenimiento")
+    
+    tab_mant, tab_qr = st.tabs(["🛠️ Gestión de Reportes", "📲 Generador de Códigos QR"])
+    
+    with tab_mant:
+        c1, c2 = st.columns([1, 2])
+        with c1:
+            st.write("#### Actualizar / Nuevo Reporte")
+            with st.form("form_mant_config"):
+                rec_mant = st.selectbox("Selecciona el Recurso", list(map_rec.keys()) if map_rec else ["No hay recursos"])
+                fecha_mant = st.date_input("Fecha del reporte", dt.date.today())
+                estado = st.selectbox("Estado", ["Reportado (Vía QR)", "En Reparación", "Dado de Baja", "Reparado"])
+                detalle = st.text_area("Descripción de la falla")
+                
+                if st.form_submit_button("Guardar/Actualizar Reporte", use_container_width=True, type="primary"):
+                    if rec_mant == "No hay recursos" or not detalle.strip():
+                        st.error("Por favor completa la descripción.")
+                    else:
+                        datos_mant = {
+                            "recurso_id": map_rec[rec_mant],
+                            "fecha": fecha_mant.strftime("%Y-%m-%d"),
+                            "descripcion": detalle,
+                            "estado": estado
+                        }
+                        try:
+                            supabase.table("mantenimientos").insert(datos_mant).execute()
+                            st.success(f"Reporte guardado para {rec_mant}.")
+                            st.cache_data.clear(); time.sleep(1); st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al guardar: {e}")
+
+        with c2:
+            st.write("#### 📋 Historial de Equipos (Editable)")
+            st.caption("✏️ Doble clic en una celda para editar. Para eliminar, selecciona la fila (casilla izquierda) y presiona **Suprimir/Delete**. Luego haz clic en Guardar.")
+            
+            try:
+                mants = supabase.table("mantenimientos").select("*, recursos(nombre)").order("fecha", desc=True).execute().data
+                
+                if mants:
+                    df_mants = pd.DataFrame(mants)
+                    df_mants['Recurso'] = df_mants['recursos'].apply(lambda x: x['nombre'] if isinstance(x, dict) else 'Desconocido')
+                    
+                    df_mostrar = df_mants[['id', 'fecha', 'Recurso', 'descripcion', 'estado']].copy()
+                    df_mostrar = df_mostrar.rename(columns={'fecha': 'Fecha', 'descripcion': 'Detalle', 'estado': 'Estado'})
+
+                    # 🔥 SOLUCIÓN AQUÍ: Convertimos los textos a Objetos de Fecha Reales
+                    df_mostrar['Fecha'] = df_mostrar['Fecha'].apply(parse_date)
+
+                    editado = st.data_editor(
+                        df_mostrar,
+                        column_config={
+                            "id": None, 
+                            "Recurso": st.column_config.TextColumn("Recurso", disabled=True), 
+                            "Fecha": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"),
+                            "Estado": st.column_config.SelectboxColumn(
+                                "Estado",
+                                help="Selecciona el estado actual",
+                                options=["Reportado (Vía QR)", "En Revisión", "Reparado", "Dado de Baja"],
+                                required=True,
+                            )
+                        },
+                        use_container_width=True,
+                        hide_index=False,
+                        num_rows="dynamic",
+                        key="editor_mantenimientos"
+                    )
+
+                    if st.button("💾 Guardar Cambios en la Base de Datos", type="primary", use_container_width=True):
+                        cambios = st.session_state["editor_mantenimientos"]
+                        
+                        if cambios.get("deleted_rows"):
+                            for row_index in cambios["deleted_rows"]:
+                                registro_id = int(df_mostrar.iloc[row_index]['id'])
+                                supabase.table("mantenimientos").delete().eq("id", registro_id).execute()
+                        
+                        if cambios.get("edited_rows"):
+                            for row_index, modificaciones in cambios["edited_rows"].items():
+                                registro_id = int(df_mostrar.iloc[row_index]['id'])
+                                datos_actualizar = {}
+                                
+                                # 🔥 SOLUCIÓN AL GUARDAR: Convertimos la fecha de vuelta a texto para Supabase
+                                if "Fecha" in modificaciones: 
+                                    datos_actualizar["fecha"] = str(modificaciones["Fecha"])[:10] 
+                                if "Detalle" in modificaciones: 
+                                    datos_actualizar["descripcion"] = modificaciones["Detalle"]
+                                if "Estado" in modificaciones: 
+                                    datos_actualizar["estado"] = modificaciones["Estado"]
+                                
+                                if datos_actualizar:
+                                    supabase.table("mantenimientos").update(datos_actualizar).eq("id", registro_id).execute()
+
+                        st.success("✅ ¡Base de datos actualizada correctamente!")
                         time.sleep(1)
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"Error al eliminar: {e}")
 
-# --- MANTENEDORES ---
-elif tab_seleccionado == "⚙️ Mantenedores":
-    st.header("⚙️ Mantenedores del Sistema")
-    st.markdown("Administra los catálogos base de la aplicación.")
+                else:
+                    st.info("No hay registros de mantenimiento activos.")
+            except Exception as e:
+                st.warning(f"Error al cargar o modificar el historial: {e}")
+    with tab_qr:
+        st.subheader("🖨️ Generador de Códigos QR para Equipos")
+        st.write("Escribe el enlace de la aplicación. Al generarse los códigos, podrás descargar un archivo `.zip` con todos los QR listos para imprimir.")
+        
+        url_base = st.text_input("Enlace Público de la Aplicación (Ej: https://tu-colegio.streamlit.app):")
+        
+        # Muestra automáticamente los QR si se ha escrito un enlace
+        if url_base:
+            url_base = url_base.strip()
+            if not url_base.endswith("/"):
+                url_base += "/"
+                
+            # Creamos el archivo ZIP en memoria
+            zip_buffer = io.BytesIO()
+            
+            st.markdown("---")
+            cols = st.columns(4)
+            
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                for i, recurso in enumerate(RECURSOS):
+                    qr_url = f"{url_base}?reportar={urllib.parse.quote(recurso)}"
+                    qr = qrcode.QRCode(version=1, box_size=10, border=2)
+                    qr.add_data(qr_url)
+                    qr.make(fit=True)
+                    img = qr.make_image(fill_color="black", back_color="white")
+                    
+                    buf = io.BytesIO()
+                    img.save(buf, format="PNG")
+                    
+                    # Añadir al ZIP limpiando caracteres raros para el nombre del archivo
+                    safe_name = str(recurso).replace("/", "-").replace("\\", "-").replace(":", "-")
+                    zip_file.writestr(f"QR_{safe_name}.png", buf.getvalue())
+                    
+                    # Mostrar en pantalla
+                    with cols[i % 4]:
+                        with st.container(border=True):
+                            st.image(buf.getvalue(), use_container_width=True)
+                            st.markdown(f"<p style='text-align:center; font-weight:bold; font-size:14px; margin-top:-10px;'>{recurso}</p>", unsafe_allow_html=True)
+            
+            st.markdown("---")
+            c1, c2, c3 = st.columns([1, 2, 1])
+            with c2:
+                # BOTÓN DE DESCARGA ZIP
+                st.download_button(
+                    label="📦 Descargar Todos los QRs (.zip)",
+                    data=zip_buffer.getvalue(),
+                    file_name="Codigos_QR_CAV.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                    type="primary"
+                )
+
+# ------------------------------------------------------------------
+# SECCIÓN: CONFIGURACIÓN
+# ------------------------------------------------------------------
+if page == "Configuración":
+    st.title("⚙️ Configuración del Sistema")
+    st.write("Desde aquí puedes administrar los elementos centrales de la aplicación.")
     
-    tab_p, tab_c, tab_r = st.tabs(["👨‍🏫 Profesores", "📚 Cursos", "💻 Recursos"])
+    tab_prof, tab_cur, tab_rec = st.tabs(["Profesores", "Cursos", "Recursos"])
     
-    with tab_p:
-        col_form_p, col_list_p = st.columns([1, 2])
-        with col_form_p:
-            with st.form("form_nuevo_prof"):
-                st.subheader("Agregar Profesor")
-                nuevo_prof = st.text_input("Nombre Completo")
-                if st.form_submit_button("Guardar"):
+    with tab_prof:
+        st.write("### 👥 Administración de Profesores")
+        col_add, col_list = st.columns([1, 2])
+        with col_add:
+            with st.form("form_add_prof"):
+                nuevo_prof = st.text_input("Nombre y Apellidos")
+                nuevo_email = st.text_input("Correo Electrónico (Opcional)")
+                if st.form_submit_button("➕ Agregar Profesor", use_container_width=True):
                     if nuevo_prof.strip():
                         try:
-                            supabase.table("profesores").insert({"nombre": nuevo_prof.strip().upper()}).execute()
+                            supabase.table("profesores").insert({"nombre": nuevo_prof.strip().upper(), "email": nuevo_email.strip()}).execute()
                             st.success("¡Profesor agregado!")
                             st.cache_data.clear(); time.sleep(0.5); st.rerun()
                         except Exception as e: st.error(f"Error al agregar: {e}")
                     else: st.error("El nombre es obligatorio.")
-        with col_list_p:
+        with col_list:
             prof_data = supabase.table("profesores").select("*").order("nombre").execute().data
             if prof_data:
                 df_p = pd.DataFrame(prof_data)
-                st.dataframe(df_p[['nombre']], use_container_width=True, hide_index=True)
+                st.dataframe(df_p[['nombre', 'email']], use_container_width=True, hide_index=True)
                 with st.expander("🗑️ Eliminar un Profesor"):
+                    st.warning("⚠️ Nota: No puedes eliminar a un profesor si ya tiene reservas en el sistema.")
                     prof_borrar = st.selectbox("Selecciona el profesor a eliminar", df_p['nombre'].tolist(), key="del_prof")
                     if st.button("Eliminar Profesor Definitivamente", type="primary"):
                         try:
@@ -452,15 +971,15 @@ elif tab_seleccionado == "⚙️ Mantenedores":
                             supabase.table("profesores").delete().eq("id", id_b).execute()
                             st.success(f"Profesor {prof_borrar} eliminado.")
                             st.cache_data.clear(); time.sleep(0.5); st.rerun()
-                        except Exception as e: st.error("No se puede eliminar, posiblemente tenga reservas asociadas.")
-                        
-    with tab_c:
-        col_form_c, col_list_c = st.columns([1, 2])
-        with col_form_c:
-            with st.form("form_nuevo_curso"):
-                st.subheader("Agregar Curso")
-                nuevo_curso = st.text_input("Nombre del Curso (Ej: 5° BÁSICO A)")
-                if st.form_submit_button("Guardar"):
+                        except Exception as e: st.error("No se puede eliminar porque este profesor tiene reservas asociadas.")
+
+    with tab_cur:
+        st.write("### 📚 Administración de Cursos")
+        col_add_c, col_list_c = st.columns([1, 2])
+        with col_add_c:
+            with st.form("form_add_cur"):
+                nuevo_curso = st.text_input("Nombre del Curso (ej. 1° BÁSICO A)")
+                if st.form_submit_button("➕ Agregar Curso", use_container_width=True):
                     if nuevo_curso.strip():
                         try:
                             supabase.table("cursos").insert({"nombre": nuevo_curso.strip().upper()}).execute()
@@ -481,15 +1000,15 @@ elif tab_seleccionado == "⚙️ Mantenedores":
                             supabase.table("cursos").delete().eq("id", id_b).execute()
                             st.success(f"Curso {cur_borrar} eliminado.")
                             st.cache_data.clear(); time.sleep(0.5); st.rerun()
-                        except Exception as e: st.error("No se puede eliminar, posiblemente tenga reservas asociadas.")
+                        except Exception as e: st.error("No se puede eliminar porque este curso tiene reservas asociadas.")
 
-    with tab_r:
-        col_form_r, col_list_r = st.columns([1, 2])
-        with col_form_r:
-            with st.form("form_nuevo_recurso"):
-                st.subheader("Agregar Recurso")
-                nuevo_rec = st.text_input("Nombre del Recurso")
-                if st.form_submit_button("Guardar"):
+    with tab_rec:
+        st.write("### 💻 Administración de Recursos")
+        col_add_r, col_list_r = st.columns([1, 2])
+        with col_add_r:
+            with st.form("form_add_rec"):
+                nuevo_rec = st.text_input("Nombre del Recurso (ej. Proyector 5)")
+                if st.form_submit_button("➕ Agregar Recurso", use_container_width=True):
                     if nuevo_rec.strip():
                         try:
                             supabase.table("recursos").insert({"nombre": nuevo_rec.strip().upper()}).execute()
@@ -510,4 +1029,4 @@ elif tab_seleccionado == "⚙️ Mantenedores":
                             supabase.table("recursos").delete().eq("id", id_b).execute()
                             st.success(f"Recurso {rec_borrar} eliminado.")
                             st.cache_data.clear(); time.sleep(0.5); st.rerun()
-                        except Exception as e: st.error("No se puede eliminar porque tiene reservas asociadas.")
+                        except Exception as e: st.error("No se puede eliminar porque tiene reservas o reportes de mantenimiento asociados.")
