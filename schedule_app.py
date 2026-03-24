@@ -615,104 +615,107 @@ if page == "Base de datos":
             st.write("No hay datos registrados.")
 
 # --- VISTA SEMANAL ---
-elif tab_seleccionado == "📅 Vista Semanal":
-    st.header("📅 Vista Semanal")
+elif tab_seleccionado == "📅 Vista Semanal": # Asegúrate de que este nombre coincide con tu menú
+    st.header("🗓️ Vista Semanal")
     
-    col_d1, col_d2 = st.columns([1, 3])
-    with col_d1:
-        fecha_seleccionada = st.date_input("Selecciona una fecha para ver su semana", dt.date.today())
-    
-    # Calcular lunes de esa semana
-    inicio_semana = fecha_seleccionada - dt.timedelta(days=fecha_seleccionada.weekday())
-    dias_semana_nombres = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"]
-    
-    st.markdown("### 🔍 Filtros de Búsqueda")
-    col_f1, col_f2, col_f3 = st.columns(3)
-    
-    opciones_prof = ["Todos"] + sorted([str(p) for p in df['profesor'].dropna().unique()])
-    opciones_curso = ["Todos"] + sorted([str(c) for c in df['curso'].dropna().unique()])
-    opciones_rec = ["Todos"] + sorted([str(r) for r in df['recurso'].dropna().unique()])
+    # Función auxiliar para colores (crea un color pastel único para cada profesor)
+    def get_color_from_string(s):
+        import hashlib
+        hash_val = int(hashlib.md5(s.encode('utf-8')).hexdigest(), 16)
+        r = (hash_val & 0xFF0000) >> 16
+        g = (hash_val & 0x00FF00) >> 8
+        b = hash_val & 0x0000FF
+        return f"rgb({(r + 255) // 2}, {(g + 255) // 2}, {(b + 255) // 2})"
 
-    with col_f1:
-        filtro_profesor = st.selectbox("Filtrar por Profesor", opciones_prof, key="sem_prof")
-    with col_f2:
-        filtro_curso = st.selectbox("Filtrar por Curso", opciones_curso, key="sem_curso")
-    with col_f3:
-        filtro_recurso = st.selectbox("Filtrar por Recurso", opciones_rec, key="sem_rec")
-    
-    if df.empty:
-        st.warning("No hay datos para mostrar.")
-    else:
-        df_filtrado = df.copy()
-        if filtro_profesor != "Todos": df_filtrado = df_filtrado[df_filtrado['profesor'] == filtro_profesor]
-        if filtro_curso != "Todos": df_filtrado = df_filtrado[df_filtrado['curso'] == filtro_curso]
-        if filtro_recurso != "Todos": df_filtrado = df_filtrado[df_filtrado['recurso'] == filtro_recurso]
+    with st.container(border=True):
+        st.write("🔍 **Filtros de Búsqueda Avanzados**")
+        col_d, col_r, col_p, col_c = st.columns(4)
         
-        reservas_por_fecha = {}
-        for idx, row in df_filtrado.iterrows():
-            fecha_str = str(row['fecha'])
-            if fecha_str not in reservas_por_fecha:
-                reservas_por_fecha[fecha_str] = []
-            reservas_por_fecha[fecha_str].append(row)
+        # Obtener listas únicas directamente de los datos
+        recursos_list = df['recurso'].dropna().unique().tolist() if not df.empty else []
+        profesores_list = df['profesor'].dropna().unique().tolist() if not df.empty else []
+        cursos_list = df['curso'].dropna().unique().tolist() if not df.empty else []
+        
+        # Manejo de la fecha por defecto
+        if not df.empty:
+            df['fecha_obj'] = pd.to_datetime(df['fecha']).dt.date
+            default_date_week = df['fecha_obj'].max()
+        else:
+            default_date_week = dt.date.today()
             
-        colores_recursos = {
-            "ENLACE MEDIA": "#3498db",
-            "ENLACE BASICA": "#2ecc71",
-            "MOVIL 1": "#e74c3c",
-            "MOVIL 4": "#f1c40f",
-            "TABLETS": "#9b59b6"
-        }
+        selected_date = col_d.date_input("Semana del", value=default_date_week, format="DD/MM/YYYY")
+        
+        selected_recursos = col_r.multiselect("Filtrar Recursos", recursos_list, placeholder="Todos")
+        selected_profesores = col_p.multiselect("Filtrar Profesores", profesores_list, placeholder="Todos")
+        selected_cursos = col_c.multiselect("Filtrar Cursos", cursos_list, placeholder="Todos")
 
-        # CONSTRUCCIÓN DEL HTML EN UNA SOLA VARIABLE (Arregla el bug visual)
-        html_grid = '<div class="grid-container">'
-        
-        # Cabeceras
-        html_grid += '<div class="grid-header">Hora</div>'
-        for i in range(5):
-            dia = inicio_semana + dt.timedelta(days=i)
-            html_grid += f'<div class="grid-header">{dias_semana_nombres[i]}<br>{dia.strftime("%d %m %Y")}</div>'
-        
-        # Tiempos ordenados
-        tiempos_validos = df_filtrado['hora_inicio'].dropna().unique().tolist()
-        bloques_tiempo = sorted([str(t) for t in tiempos_validos])
-        
-        # Rellenar cuadrícula
-        for hora_inicio in bloques_tiempo:
-            html_grid += f'<div class="time-column">{hora_inicio[:5]}</div>'
-            for i in range(5):
-                dia = inicio_semana + dt.timedelta(days=i)
-                fecha_actual_str = dia.strftime("%Y-%m-%d")
+    start_of_week = selected_date - dt.timedelta(days=selected_date.weekday())
+    week_days = [start_of_week + dt.timedelta(days=i) for i in range(5)] # Lunes a Viernes
+    
+    if not df.empty:
+        mask = (df['fecha_obj'] >= week_days[0]) & (df['fecha_obj'] <= week_days[-1])
+        if selected_recursos: mask &= df['recurso'].isin(selected_recursos)
+        if selected_profesores: mask &= df['profesor'].isin(selected_profesores)
+        if selected_cursos: mask &= df['curso'].isin(selected_cursos)
+        df_week = df[mask]
+    else:
+        df_week = pd.DataFrame()
+
+    st.markdown("---")
+    
+    dias_es = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
+    column_names = [f"{dias_es[d.weekday()]} {d.strftime('%d/%m')}" for d in week_days]
+    
+    # Crear los bloques de HORAS dinámicamente según la base de datos (Ej: "08:00 a 09:30")
+    if not df.empty:
+        df['bloque_hora'] = df['hora_inicio'].astype(str).str[:5] + " a " + df['hora_fin'].astype(str).str[:5]
+        HORAS = sorted(df['bloque_hora'].unique().tolist())
+    else:
+        HORAS = []
+
+    if not HORAS:
+        st.info("No hay horarios registrados para generar la cuadrícula.")
+    else:
+        # Inicializar la tabla vacía
+        schedule = pd.DataFrame(index=HORAS, columns=column_names).fillna('')
+
+        if not df_week.empty:
+            for _, row in df_week.iterrows():
+                day_str = f"{dias_es[row['fecha_obj'].weekday()]} {row['fecha_obj'].strftime('%d/%m')}"
+                bloque_actual = f"{str(row['hora_inicio'])[:5]} a {str(row['hora_fin'])[:5]}"
                 
-                reservas_celda = [r for r in reservas_por_fecha.get(fecha_actual_str, []) if str(r['hora_inicio']) == hora_inicio]
-                
-                if reservas_celda:
-                    contenido_celda = ""
-                    for r in reservas_celda:
-                        rec_name = str(r.get('recurso', ''))
-                        color = colores_recursos.get(rec_name, "#95a5a6")
-                        
-                        prof_texto = str(r.get('profesor', 'N/A'))
-                        cur_texto = str(r.get('curso', 'N/A'))
-                        rec_texto = str(r.get('recurso', 'N/A'))
-                        hora_i = str(r.get('hora_inicio', ''))[:5]
-                        hora_f = str(r.get('hora_fin', ''))[:5]
-                        
-                        contenido_celda += f"""
-                            <div class="reservation-card" style="border-left: 4px solid {color}; padding: 10px; margin-bottom: 5px; background-color: #f8f9fa; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                                <div style="font-weight: bold; color: #2c3e50;">{prof_texto}</div>
-                                <div style="font-size: 0.9em; color: #34495e;">📚 {cur_texto}</div>
-                                <div style="font-size: 0.9em; color: #7f8c8d;">💻 {rec_texto}</div>
-                                <div style="font-size: 0.8em; color: #95a5a6; margin-top: 5px;">{hora_i} - {hora_f}</div>
-                            </div>
-                        """
-                    html_grid += f'<div class="day-column">{contenido_celda}</div>'
-                else:
-                    html_grid += '<div class="day-column" style="background-color: #fdfdfd;"></div>'
+                # Si el día de la reserva es de Lunes a Viernes (está en las columnas)
+                if day_str in column_names:
+                    prof_color = get_color_from_string(str(row['profesor']))
+                    observacion = str(row['observaciones']) if pd.notna(row['observaciones']) and str(row['observaciones']).strip() != '' else ""
+                    icon = " 📝" if observacion else ""
+
+                    card_content = f"<strong>{row['recurso']}</strong>{icon}<br>{row['profesor']}<br><em>{row['curso']}</em>"
                     
-        html_grid += '</div>'
+                    # Se agregó 'title' para el tooltip nativo de HTML y estilos integrados
+                    if icon:
+                        safe_observacion = html_sanitizer.escape(observacion)
+                        card_html = f"<div style='background-color:{prof_color}; padding:8px; margin-bottom:5px; border-radius:5px; border-left: 3px solid #2c3e50; font-size:0.85em; color:#1a1a1a; cursor:help;' title='{safe_observacion}'>{card_content}</div>"
+                    else:
+                        card_html = f"<div style='background-color:{prof_color}; padding:8px; margin-bottom:5px; border-radius:5px; border-left: 3px solid #2c3e50; font-size:0.85em; color:#1a1a1a;'>{card_content}</div>"
+
+                    if schedule.at[bloque_actual, day_str] == '': 
+                        schedule.at[bloque_actual, day_str] = card_html
+                    else: 
+                        schedule.at[bloque_actual, day_str] += card_html
+
+        # Estilos para asegurar que la tabla HTML de Pandas se vea moderna y ocupe el ancho
+        st.markdown("""
+            <style>
+            .dataframe { width: 100%; border-collapse: collapse; text-align: center; font-family: sans-serif; }
+            .dataframe th { background-color: #34495e; color: white; padding: 12px; text-align: center; }
+            .dataframe td { border: 1px solid #ddd; padding: 8px; vertical-align: top; min-width: 150px; }
+            .dataframe tbody tr:nth-child(even) { background-color: #f9f9f9; }
+            </style>
+        """, unsafe_allow_html=True)
         
-        # Renderizar todo junto
-        st.markdown(html_grid, unsafe_allow_html=True)
+        # Renderizar la tabla final
+        st.markdown(schedule.to_html(escape=False), unsafe_allow_html=True)
         
 
 
