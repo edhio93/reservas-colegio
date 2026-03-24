@@ -618,7 +618,7 @@ if page == "Base de datos":
 elif page == "Semana": 
     st.header("🗓️ Vista Semanal")
     
-    # Función auxiliar para colores: Genera colores bonitos basados en el nombre
+    # Función auxiliar para colores
     def get_color_from_string(s):
         import hashlib
         hash_val = int(hashlib.md5(s.encode('utf-8')).hexdigest(), 16)
@@ -659,80 +659,166 @@ elif page == "Semana":
 
     st.markdown("---")
     
+    # --- INTERRUPTOR MODO TV ---
+    modo_tv = st.toggle("📺 Activar Modo TV / Monitor (Animado)", value=False)
+    
     dias_es = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
-    column_names = [f"{dias_es[d.weekday()]}<br><span style='font-size:0.8em; font-weight:normal;'>{d.strftime('%d/%m')}</span>" for d in week_days]
-    
-    # --- RANGOS DE HORA ESPECÍFICOS DEL COLEGIO ---
-    base_horas = [
-        "08:00 a 08:45",
-        "08:00 a 09:30",
-        "08:45 a 09:30",
-        "09:45 a 10:30",
-        "09:45 a 11:15",
-        "10:30 a 11:15",
-        "11:30 a 12:15",
-        "11:30 a 13:00",
-        "12:15 a 13:00",
-        "14:00 a 14:45",
-        "14:00 a 15:30",
-        "14:00 a 16:30",
-        "14:45 a 15:30",
-        "14:45 a 16:30",
-        "15:45 a 16:30",
-        "17:00 a 18:30",
-        "17:30 a 18:30"
-    ]
-    
-    if not df.empty:
-        df['bloque_hora'] = df['Hora inicio'].astype(str).str[:5] + " a " + df['Hora fin'].astype(str).str[:5]
-        dynamic_horas = df['bloque_hora'].unique().tolist()
-    else:
-        dynamic_horas = []
 
-    # Se combinan los bloques base con cualquiera extra que venga de base de datos y se ordenan alfabéticamente/cronológicamente
-    HORAS = sorted(list(set(base_horas + dynamic_horas)))
-
-    # Inicializar la tabla vacía
-    schedule = pd.DataFrame(index=HORAS, columns=column_names).fillna('')
-
-    if not df_week.empty:
-        for _, row in df_week.iterrows():
-            day_col = f"{dias_es[row['fecha_obj'].weekday()]}<br><span style='font-size:0.8em; font-weight:normal;'>{row['fecha_obj'].strftime('%d/%m')}</span>"
-            bloque_actual = f"{str(row['Hora inicio'])[:5]} a {str(row['Hora fin'])[:5]}"
+    if modo_tv:
+        # ======= MODO PANTALLA ANIMADA =======
+        if df_week.empty:
+            st.info("No hay reservas esta semana para mostrar en la pantalla.")
+        else:
+            # Ordenar las reservas cronológicamente para la pantalla
+            df_tv = df_week.sort_values(by=['fecha_obj', 'Hora inicio'])
             
-            if day_col in column_names:
+            # Construir las tarjetas HTML para la animación
+            cards_html = ""
+            for _, row in df_tv.iterrows():
+                dia_nombre = dias_es[row['fecha_obj'].weekday()]
+                fecha_str = f"{dia_nombre} {row['fecha_obj'].strftime('%d/%m')}"
+                horario = f"{str(row['Hora inicio'])[:5]} a {str(row['Hora fin'])[:5]}"
                 prof_color = get_color_from_string(str(row['Profesor']))
-                observacion = str(row['Observaciones']) if pd.notna(row['Observaciones']) and str(row['Observaciones']).strip() != '' else ""
-                icon = " 📌" if observacion else ""
-
-                # Diseño interno de la tarjeta más limpio
-                card_content = f"<div style='font-weight:bold; color:#1e293b; margin-bottom:4px;'>{row['Recurso']}{icon}</div><div style='color:#334155; margin-bottom:2px; font-size:0.95em;'>👨‍🏫 {row['Profesor']}</div><div style='color:#64748b; font-style:italic; font-size:0.9em;'>📚 {row['Curso']}</div>"
                 
-                # Tarjeta moderna
-                safe_observacion = html_sanitizer.escape(observacion)
-                card_html = f"<div style='background-color:#ffffff; padding:12px; margin-bottom:8px; border-radius:6px; border-left: 5px solid {prof_color}; box-shadow: 0 2px 5px rgba(0,0,0,0.08); font-size:0.85em; text-align:left; cursor:help;' title='{safe_observacion}'>{card_content}</div>"
+                cards_html += f"""
+                <div class="tv-card" style="border-left-color: {prof_color};">
+                    <div class="tv-time">
+                        <div class="tv-date">{fecha_str}</div>
+                        <div>🕒 {horario}</div>
+                    </div>
+                    <div class="tv-details">
+                        <div class="tv-recurso">{row['Recurso']}</div>
+                        <div class="tv-profesor">👨‍🏫 {row['Profesor']} &nbsp;|&nbsp; 📚 {row['Curso']}</div>
+                    </div>
+                </div>
+                """
+            
+            # CSS y HTML para el efecto marquesina (scroll vertical infinito)
+            tv_html = f"""
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+                body {{ background-color: transparent; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }}
+                .tv-container {{ 
+                    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); 
+                    height: 70vh; 
+                    border-radius: 15px; 
+                    overflow: hidden; 
+                    position: relative;
+                    box-shadow: inset 0 0 50px rgba(0,0,0,0.5);
+                }}
+                .tv-header {{
+                    position: absolute; top: 0; left: 0; right: 0;
+                    background: rgba(15, 23, 42, 0.9);
+                    color: #38bdf8; text-align: center; padding: 15px;
+                    font-size: 24px; font-weight: 900; letter-spacing: 2px;
+                    z-index: 10; text-transform: uppercase;
+                    border-bottom: 2px solid #334155;
+                }}
+                .scroll-wrapper {{
+                    display: flex; flex-direction: column; gap: 20px;
+                    padding: 80px 30px 30px 30px;
+                    animation: scrollUp {max(15, len(df_tv) * 3)}s linear infinite;
+                }}
+                /* Pausar la animación si alguien pasa el mouse (opcional) */
+                .tv-container:hover .scroll-wrapper {{ animation-play-state: paused; }}
+                
+                .tv-card {{
+                    background: rgba(255, 255, 255, 0.05);
+                    backdrop-filter: blur(10px);
+                    border-left: 8px solid;
+                    border-radius: 12px;
+                    padding: 25px 30px;
+                    display: flex;
+                    align-items: center;
+                    color: white;
+                    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+                }}
+                .tv-time {{
+                    min-width: 220px;
+                    font-size: 26px;
+                    font-weight: 900;
+                    color: #e2e8f0;
+                    border-right: 2px solid rgba(255,255,255,0.1);
+                    margin-right: 30px;
+                }}
+                .tv-date {{ font-size: 16px; color: #94a3b8; font-weight: 700; margin-bottom: 5px; text-transform: uppercase; }}
+                .tv-details {{ flex-grow: 1; }}
+                .tv-recurso {{ font-size: 32px; font-weight: 900; color: #38bdf8; margin-bottom: 8px; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }}
+                .tv-profesor {{ font-size: 20px; color: #cbd5e1; font-weight: 400; }}
+                
+                @keyframes scrollUp {{
+                    0% {{ transform: translateY(100%); }}
+                    100% {{ transform: translateY(-150%); }}
+                }}
+            </style>
+            
+            <div class="tv-container">
+                <div class="tv-header">📡 HORARIO DE ENLACES Y RECURSOS</div>
+                <div class="scroll-wrapper">
+                    {cards_html}
+                    {cards_html}
+                </div>
+            </div>
+            """
+            
+            # Usar components para renderizar la pantalla completa aislada
+            components.html(tv_html, height=700)
 
-                if schedule.at[bloque_actual, day_col] == '': 
-                    schedule.at[bloque_actual, day_col] = card_html
-                else: 
-                    schedule.at[bloque_actual, day_col] += card_html
+    else:
+        # ======= MODO TABLA NORMAL (El que ya tenías) =======
+        column_names = [f"{dias_es[d.weekday()]}<br><span style='font-size:0.8em; font-weight:normal;'>{d.strftime('%d/%m')}</span>" for d in week_days]
+        
+        base_horas = [
+            "08:00 a 08:45", "08:00 a 09:30", "08:45 a 09:30", "09:45 a 10:30",
+            "09:45 a 11:15", "10:30 a 11:15", "11:30 a 12:15", "11:30 a 13:00",
+            "12:15 a 13:00", "14:00 a 14:45", "14:00 a 15:30", "14:00 a 16:30",
+            "14:45 a 15:30", "14:45 a 16:30", "15:45 a 16:30", "17:00 a 18:30",
+            "17:30 a 18:30"
+        ]
+        
+        if not df.empty:
+            df['bloque_hora'] = df['Hora inicio'].astype(str).str[:5] + " a " + df['Hora fin'].astype(str).str[:5]
+            dynamic_horas = df['bloque_hora'].unique().tolist()
+        else:
+            dynamic_horas = []
 
-    # Estilos CSS avanzados para la tabla
-    st.markdown("""
-        <style>
-        .dataframe { width: 100%; border-collapse: separate; border-spacing: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        .dataframe th { background: linear-gradient(135deg, #4A90E2 0%, #357ABD 100%); color: white; padding: 15px 10px; text-align: center; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; border-right: 1px solid rgba(255,255,255,0.2); }
-        .dataframe th:last-child { border-right: none; }
-        .dataframe td { border-bottom: 1px solid #E2E8F0; border-right: 1px solid #E2E8F0; padding: 12px; vertical-align: top; min-width: 170px; background-color: #F8FAFC; }
-        .dataframe td:last-child { border-right: none; }
-        .dataframe tbody tr:hover td { background-color: #F1F5F9; }
-        .dataframe th[scope="row"] { background: #EDF2F7; color: #2D3748; font-weight: bold; text-align: center; width: 110px; border-right: 1px solid #CBD5E1; }
-        </style>
-    """, unsafe_allow_html=True)
-    
-    # Renderizar la tabla final
-    st.markdown(schedule.to_html(escape=False), unsafe_allow_html=True)
+        HORAS = sorted(list(set(base_horas + dynamic_horas)))
+        schedule = pd.DataFrame(index=HORAS, columns=column_names).fillna('')
 
+        if not df_week.empty:
+            for _, row in df_week.iterrows():
+                day_col = f"{dias_es[row['fecha_obj'].weekday()]}<br><span style='font-size:0.8em; font-weight:normal;'>{row['fecha_obj'].strftime('%d/%m')}</span>"
+                bloque_actual = f"{str(row['Hora inicio'])[:5]} a {str(row['Hora fin'])[:5]}"
+                
+                if day_col in column_names:
+                    prof_color = get_color_from_string(str(row['Profesor']))
+                    observacion = str(row['Observaciones']) if pd.notna(row['Observaciones']) and str(row['Observaciones']).strip() != '' else ""
+                    icon = " 📌" if observacion else ""
+
+                    card_content = f"<div style='font-weight:bold; color:#1e293b; margin-bottom:4px;'>{row['Recurso']}{icon}</div><div style='color:#334155; margin-bottom:2px; font-size:0.95em;'>👨‍🏫 {row['Profesor']}</div><div style='color:#64748b; font-style:italic; font-size:0.9em;'>📚 {row['Curso']}</div>"
+                    
+                    safe_observacion = html_sanitizer.escape(observacion)
+                    card_html = f"<div style='background-color:#ffffff; padding:12px; margin-bottom:8px; border-radius:6px; border-left: 5px solid {prof_color}; box-shadow: 0 2px 5px rgba(0,0,0,0.08); font-size:0.85em; text-align:left; cursor:help;' title='{safe_observacion}'>{card_content}</div>"
+
+                    if schedule.at[bloque_actual, day_col] == '': 
+                        schedule.at[bloque_actual, day_col] = card_html
+                    else: 
+                        schedule.at[bloque_actual, day_col] += card_html
+
+        st.markdown("""
+            <style>
+            .dataframe { width: 100%; border-collapse: separate; border-spacing: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+            .dataframe th { background: linear-gradient(135deg, #4A90E2 0%, #357ABD 100%); color: white; padding: 15px 10px; text-align: center; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; border-right: 1px solid rgba(255,255,255,0.2); }
+            .dataframe th:last-child { border-right: none; }
+            .dataframe td { border-bottom: 1px solid #E2E8F0; border-right: 1px solid #E2E8F0; padding: 12px; vertical-align: top; min-width: 170px; background-color: #F8FAFC; }
+            .dataframe td:last-child { border-right: none; }
+            .dataframe tbody tr:hover td { background-color: #F1F5F9; }
+            .dataframe th[scope="row"] { background: #EDF2F7; color: #2D3748; font-weight: bold; text-align: center; width: 110px; border-right: 1px solid #CBD5E1; }
+            </style>
+        """, unsafe_allow_html=True)
+        
+        st.markdown(schedule.to_html(escape=False), unsafe_allow_html=True)
+        
 if page == "Dashboard":
     st.title("📈 Dashboard Analítico")
     with st.container(border=True):
