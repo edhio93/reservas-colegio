@@ -290,7 +290,7 @@ def cargar_reservas_y_datos():
     except Exception as e:
         return pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones']), horas_corregidas, pd.DataFrame()
 
-PROFESORES, RECURSOS, CURSOS = cargar_datos_login()
+
 
 # ------------------------------------------------------------------
 # 2) SISTEMA DE LOGIN HORIZONTAL Y AESTHETIC
