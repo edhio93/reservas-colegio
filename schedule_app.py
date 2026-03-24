@@ -615,7 +615,7 @@ if page == "Base de datos":
             st.write("No hay datos registrados.")
 
 # --- VISTA SEMANAL ---
-if tab_seleccionado == "📅 Vista Semanal": # Ajusta el nombre de la pestaña si en tu código es distinto
+if tab_seleccionado == "📅 Vista Semanal":
     st.header("📅 Vista Semanal")
     
     col_d1, col_d2 = st.columns([1, 3])
@@ -663,7 +663,7 @@ if tab_seleccionado == "📅 Vista Semanal": # Ajusta el nombre de la pestaña s
             "TABLETS": "#9b59b6"
         }
 
-        # CONSTRUCCIÓN DEL HTML EN UNA SOLA VARIABLE (Esto arregla el bug visual)
+        # CONSTRUCCIÓN DEL HTML EN UNA SOLA VARIABLE (Arregla el bug visual)
         html_grid = '<div class="grid-container">'
         
         # Cabeceras
@@ -713,6 +713,57 @@ if tab_seleccionado == "📅 Vista Semanal": # Ajusta el nombre de la pestaña s
         
         # Renderizar todo junto
         st.markdown(html_grid, unsafe_allow_html=True)
+        
+        # --- VISTA DE HORARIOS (LISTA) ---
+elif tab_seleccionado == "📋 Vista de Horarios":
+    st.header("📋 Vista de Horarios (Detallada)")
+    
+    if df.empty:
+        st.info("No hay reservas registradas.")
+    else:
+        st.markdown("### 🔍 Filtros de Búsqueda")
+        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+        
+        opc_prof = ["Todos"] + sorted([str(p) for p in df['profesor'].dropna().unique()])
+        opc_cur = ["Todos"] + sorted([str(c) for c in df['curso'].dropna().unique()])
+        opc_rec = ["Todos"] + sorted([str(r) for r in df['recurso'].dropna().unique()])
+
+        with col_f1:
+            filtro_fecha = st.date_input("Filtrar por Fecha", value=None)
+        with col_f2:
+            filtro_prof = st.selectbox("Filtrar por Profesor", opc_prof)
+        with col_f3:
+            filtro_cur = st.selectbox("Filtrar por Curso", opc_cur)
+        with col_f4:
+            filtro_rec = st.selectbox("Filtrar por Recurso", opc_rec)
+            
+        df_mostrar = df.copy()
+        if filtro_fecha: df_mostrar = df_mostrar[df_mostrar['fecha'] == filtro_fecha.strftime('%Y-%m-%d')]
+        if filtro_prof != "Todos": df_mostrar = df_mostrar[df_mostrar['profesor'] == filtro_prof]
+        if filtro_cur != "Todos": df_mostrar = df_mostrar[df_mostrar['curso'] == filtro_cur]
+        if filtro_rec != "Todos": df_mostrar = df_mostrar[df_mostrar['recurso'] == filtro_rec]
+        
+        # Renombrar columnas a Español
+        columnas_espanol = {
+            'fecha': 'Fecha',
+            'hora_inicio': 'Hora Inicio',
+            'hora_fin': 'Hora Fin',
+            'profesor': 'Profesor',
+            'curso': 'Curso',
+            'recurso': 'Recurso',
+            'observaciones': 'Observaciones'
+        }
+        
+        # Ordenar por Fecha y Hora
+        df_mostrar = df_mostrar.sort_values(by=['fecha', 'hora_inicio'], ascending=[False, True])
+        
+        st.dataframe(
+            df_mostrar[['fecha', 'hora_inicio', 'hora_fin', 'profesor', 'curso', 'recurso', 'observaciones']].rename(columns=columnas_espanol), 
+            use_container_width=True, 
+            hide_index=True
+        )
+
+
 if page == "Dashboard":
     st.title("📈 Dashboard Analítico")
     with st.container(border=True):
