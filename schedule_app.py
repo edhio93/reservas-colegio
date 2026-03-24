@@ -618,25 +618,21 @@ if page == "Base de datos":
 elif page == "Semana": 
     st.header("🗓️ Vista Semanal")
     
-    # Función auxiliar para colores (crea un color pastel único para cada profesor)
+    # Función auxiliar para colores: Genera colores bonitos basados en el nombre
     def get_color_from_string(s):
         import hashlib
         hash_val = int(hashlib.md5(s.encode('utf-8')).hexdigest(), 16)
-        r = (hash_val & 0xFF0000) >> 16
-        g = (hash_val & 0x00FF00) >> 8
-        b = hash_val & 0x0000FF
-        return f"rgb({(r + 255) // 2}, {(g + 255) // 2}, {(b + 255) // 2})"
+        hue = hash_val % 360
+        return f"hsl({hue}, 75%, 50%)"
 
     with st.container(border=True):
         st.write("🔍 **Filtros de Búsqueda Avanzados**")
         col_d, col_r, col_p, col_c = st.columns(4)
         
-        # Usando las mayúsculas exactas de tu Dataframe original
         recursos_list = df['Recurso'].dropna().unique().tolist() if not df.empty else []
         profesores_list = df['Profesor'].dropna().unique().tolist() if not df.empty else []
         cursos_list = df['Curso'].dropna().unique().tolist() if not df.empty else []
         
-        # Manejo de la fecha por defecto
         if not df.empty:
             df['fecha_obj'] = pd.to_datetime(df['Fecha']).dt.date
             default_date_week = df['fecha_obj'].max()
@@ -664,58 +660,78 @@ elif page == "Semana":
     st.markdown("---")
     
     dias_es = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
-    column_names = [f"{dias_es[d.weekday()]} {d.strftime('%d/%m')}" for d in week_days]
+    column_names = [f"{dias_es[d.weekday()]}<br><span style='font-size:0.8em; font-weight:normal;'>{d.strftime('%d/%m')}</span>" for d in week_days]
     
-    # Crear los bloques de HORAS dinámicamente según la base de datos (Ej: "08:00 a 09:30")
+    # --- RANGOS DE HORA ESPECÍFICOS DEL COLEGIO ---
+    base_horas = [
+        "08:00 a 08:45",
+        "08:00 a 09:30",
+        "08:45 a 09:30",
+        "09:45 a 10:30",
+        "09:45 a 11:15",
+        "10:30 a 11:15",
+        "11:30 a 12:15",
+        "11:30 a 13:00",
+        "12:15 a 13:00",
+        "14:00 a 14:45",
+        "14:00 a 15:30",
+        "14:00 a 16:30",
+        "14:45 a 15:30",
+        "14:45 a 16:30",
+        "15:45 a 16:30",
+        "17:00 a 18:30",
+        "17:30 a 18:30"
+    ]
+    
     if not df.empty:
         df['bloque_hora'] = df['Hora inicio'].astype(str).str[:5] + " a " + df['Hora fin'].astype(str).str[:5]
-        HORAS = sorted(df['bloque_hora'].unique().tolist())
+        dynamic_horas = df['bloque_hora'].unique().tolist()
     else:
-        HORAS = []
+        dynamic_horas = []
 
-    if not HORAS:
-        st.info("No hay horarios registrados para generar la cuadrícula.")
-    else:
-        # Inicializar la tabla vacía
-        schedule = pd.DataFrame(index=HORAS, columns=column_names).fillna('')
+    # Se combinan los bloques base con cualquiera extra que venga de base de datos y se ordenan alfabéticamente/cronológicamente
+    HORAS = sorted(list(set(base_horas + dynamic_horas)))
 
-        if not df_week.empty:
-            for _, row in df_week.iterrows():
-                day_str = f"{dias_es[row['fecha_obj'].weekday()]} {row['fecha_obj'].strftime('%d/%m')}"
-                bloque_actual = f"{str(row['Hora inicio'])[:5]} a {str(row['Hora fin'])[:5]}"
+    # Inicializar la tabla vacía
+    schedule = pd.DataFrame(index=HORAS, columns=column_names).fillna('')
+
+    if not df_week.empty:
+        for _, row in df_week.iterrows():
+            day_col = f"{dias_es[row['fecha_obj'].weekday()]}<br><span style='font-size:0.8em; font-weight:normal;'>{row['fecha_obj'].strftime('%d/%m')}</span>"
+            bloque_actual = f"{str(row['Hora inicio'])[:5]} a {str(row['Hora fin'])[:5]}"
+            
+            if day_col in column_names:
+                prof_color = get_color_from_string(str(row['Profesor']))
+                observacion = str(row['Observaciones']) if pd.notna(row['Observaciones']) and str(row['Observaciones']).strip() != '' else ""
+                icon = " 📌" if observacion else ""
+
+                # Diseño interno de la tarjeta más limpio
+                card_content = f"<div style='font-weight:bold; color:#1e293b; margin-bottom:4px;'>{row['Recurso']}{icon}</div><div style='color:#334155; margin-bottom:2px; font-size:0.95em;'>👨‍🏫 {row['Profesor']}</div><div style='color:#64748b; font-style:italic; font-size:0.9em;'>📚 {row['Curso']}</div>"
                 
-                # Si el día de la reserva es de Lunes a Viernes (está en las columnas)
-                if day_str in column_names:
-                    prof_color = get_color_from_string(str(row['Profesor']))
-                    observacion = str(row['Observaciones']) if pd.notna(row['Observaciones']) and str(row['Observaciones']).strip() != '' else ""
-                    icon = " 📝" if observacion else ""
+                # Tarjeta moderna
+                safe_observacion = html_sanitizer.escape(observacion)
+                card_html = f"<div style='background-color:#ffffff; padding:12px; margin-bottom:8px; border-radius:6px; border-left: 5px solid {prof_color}; box-shadow: 0 2px 5px rgba(0,0,0,0.08); font-size:0.85em; text-align:left; cursor:help;' title='{safe_observacion}'>{card_content}</div>"
 
-                    card_content = f"<strong>{row['Recurso']}</strong>{icon}<br>{row['Profesor']}<br><em>{row['Curso']}</em>"
-                    
-                    # Se agregó 'title' para el tooltip nativo de HTML y estilos integrados
-                    if icon:
-                        safe_observacion = html_sanitizer.escape(observacion)
-                        card_html = f"<div style='background-color:{prof_color}; padding:8px; margin-bottom:5px; border-radius:5px; border-left: 3px solid #2c3e50; font-size:0.85em; color:#1a1a1a; cursor:help;' title='{safe_observacion}'>{card_content}</div>"
-                    else:
-                        card_html = f"<div style='background-color:{prof_color}; padding:8px; margin-bottom:5px; border-radius:5px; border-left: 3px solid #2c3e50; font-size:0.85em; color:#1a1a1a;'>{card_content}</div>"
+                if schedule.at[bloque_actual, day_col] == '': 
+                    schedule.at[bloque_actual, day_col] = card_html
+                else: 
+                    schedule.at[bloque_actual, day_col] += card_html
 
-                    if schedule.at[bloque_actual, day_str] == '': 
-                        schedule.at[bloque_actual, day_str] = card_html
-                    else: 
-                        schedule.at[bloque_actual, day_str] += card_html
-
-        # Estilos para asegurar que la tabla HTML de Pandas se vea moderna y ocupe el ancho
-        st.markdown("""
-            <style>
-            .dataframe { width: 100%; border-collapse: collapse; text-align: center; font-family: sans-serif; }
-            .dataframe th { background-color: #34495e; color: white; padding: 12px; text-align: center; }
-            .dataframe td { border: 1px solid #ddd; padding: 8px; vertical-align: top; min-width: 150px; }
-            .dataframe tbody tr:nth-child(even) { background-color: #f9f9f9; }
-            </style>
-        """, unsafe_allow_html=True)
-        
-        # Renderizar la tabla final
-        st.markdown(schedule.to_html(escape=False), unsafe_allow_html=True)
+    # Estilos CSS avanzados para la tabla
+    st.markdown("""
+        <style>
+        .dataframe { width: 100%; border-collapse: separate; border-spacing: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .dataframe th { background: linear-gradient(135deg, #4A90E2 0%, #357ABD 100%); color: white; padding: 15px 10px; text-align: center; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; border-right: 1px solid rgba(255,255,255,0.2); }
+        .dataframe th:last-child { border-right: none; }
+        .dataframe td { border-bottom: 1px solid #E2E8F0; border-right: 1px solid #E2E8F0; padding: 12px; vertical-align: top; min-width: 170px; background-color: #F8FAFC; }
+        .dataframe td:last-child { border-right: none; }
+        .dataframe tbody tr:hover td { background-color: #F1F5F9; }
+        .dataframe th[scope="row"] { background: #EDF2F7; color: #2D3748; font-weight: bold; text-align: center; width: 110px; border-right: 1px solid #CBD5E1; }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    # Renderizar la tabla final
+    st.markdown(schedule.to_html(escape=False), unsafe_allow_html=True)
 
 if page == "Dashboard":
     st.title("📈 Dashboard Analítico")
