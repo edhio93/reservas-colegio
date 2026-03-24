@@ -17,6 +17,7 @@ from streamlit_autorefresh import st_autorefresh
 import qrcode
 import io
 import urllib.parse
+import zipfile
 
 # ------------------------------------------------------------------
 # CONFIGURACIÓN SUPABASE (NUEVO MOTOR DE BASE DE DATOS)
@@ -176,18 +177,15 @@ def send_email(subject, body, recipient_email):
 # ------------------------------------------------------------------
 # 0.5) VISTA PÚBLICA DE REPORTE (ACCESO POR CÓDIGO QR MÓVIL)
 # ------------------------------------------------------------------
-# Si alguien escanea el QR, la URL tendrá "?reportar=NombreDelRecurso"
 if "reportar" in st.query_params:
     st.markdown("<style>.block-container { padding-top: 2rem !important; }</style>", unsafe_allow_html=True)
     recurso_qr = st.query_params["reportar"]
     
-    # Diseño especial modo móvil
     with st.container(border=True):
         st.markdown(f"<h2 style='text-align: center; color: var(--primary-color);'>🚨 Reporte de Falla</h2>", unsafe_allow_html=True)
         st.markdown(f"<h4 style='text-align: center; color: gray;'>Equipo: {recurso_qr}</h4>", unsafe_allow_html=True)
         st.markdown("---")
         
-        # Buscar ID del recurso
         try:
             rec_data = supabase.table("recursos").select("id").eq("nombre", recurso_qr).execute().data
             if not rec_data:
@@ -218,17 +216,14 @@ if "reportar" in st.query_params:
                     st.error("⚠️ Debes escribir una descripción del problema.")
         
     st.info("💡 Ya puedes cerrar esta pestaña en tu celular.")
-    st.stop() # IMPORTANTE: Detiene la app aquí para que no pida login a quien escaneó
+    st.stop()
 
 # ------------------------------------------------------------------
-# 1) INICIALIZACIÓN DE DATOS (PARA EVITAR NameError)
+# 1) INICIALIZACIÓN DE DATOS
 # ------------------------------------------------------------------
-if 'PROFESORES' not in globals():
-    PROFESORES = []
-if 'RECURSOS' not in globals():
-    RECURSOS = []
-if 'CURSOS' not in globals():
-    CURSOS = []
+if 'PROFESORES' not in globals(): PROFESORES = []
+if 'RECURSOS' not in globals(): RECURSOS = []
+if 'CURSOS' not in globals(): CURSOS = []
 
 def custom_course_sort_key(course_name):
     course_name = str(course_name).strip()
@@ -240,60 +235,23 @@ def custom_course_sort_key(course_name):
         return (level_priority, int(num), letter or '')
     return (4, 0, course_name)
 
-@st.cache_data(ttl=30)
-def cargar_reservas_y_datos():
-    horas_corregidas = [
-        '8:00 a 8:45', '8:45 a 9:30', '8:00 a 9:30',
-        '9:45 a 10:30', '10:30 a 11:15', '9:45 a 11:15',
-        '11:30 a 12:15', '12:15 a 13:00', '11:30 a 13:00',
-        '14:00 a 14:45', '14:45 a 15:30', '14:00 a 15:30',
-        '14:00 a 16:30', '14:45 a 16:30', '15:45 a 16:30',
-        '17:00 a 18:30', '17:30 a 18:30'
-    ]
-    
+@st.cache_data(ttl=60)
+def cargar_datos_login():
     try:
-        res_data = supabase.table("reservas").select("id, fecha, hora_inicio, hora_fin, observaciones, profesores(nombre), cursos(nombre), recursos(nombre)").execute().data
-        reservas_limpias = []
-        for r in res_data:
-            reservas_limpias.append({
-                "id": r["id"],
-                "Fecha": parse_date(r["fecha"]),
-                "Hora inicio": as_time(r["hora_inicio"]),
-                "Hora fin": as_time(r["hora_fin"]),
-                "Profesor": r["profesores"]["nombre"] if r.get("profesores") else "",
-                "Curso": r["cursos"]["nombre"] if r.get("cursos") else "",
-                "Recurso": r["recursos"]["nombre"] if r.get("recursos") else "",
-                "Observaciones": r["observaciones"]
-            })
-        df_res = pd.DataFrame(reservas_limpias) if reservas_limpias else pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones'])
-            
-        try:
-            # --- SECCIÓN CORREGIDA DE MANTENIMIENTO ---
-            mant_data = supabase.table("mantenimientos").select("*, recursos(nombre)").execute().data
-            df_mant = pd.DataFrame(mant_data) if mant_data else pd.DataFrame()
-            
-            if not df_mant.empty:
-                # Solo bloqueamos el recurso si NO está reparado
-                df_mant = df_mant[df_mant['estado'] != 'Reparado']
-                
-                df_mant['FechaInicio_dt'] = df_mant['fecha'].apply(parse_date)
-                df_mant['FechaFin_dt'] = df_mant['fecha'].apply(parse_date)
-                df_mant['HoraInicio'] = dt.time(0, 0)  # Bloquea desde las 00:00
-                df_mant['HoraFin'] = dt.time(23, 59)   # Hasta las 23:59
-                df_mant['Recurso'] = df_mant['recursos'].apply(lambda x: x['nombre'] if x else '')
-            else:
-                df_mant = pd.DataFrame(columns=['Recurso', 'FechaInicio_dt', 'HoraInicio', 'FechaFin_dt', 'HoraFin'])
-        except Exception as e: 
-            df_mant = pd.DataFrame(columns=['Recurso', 'FechaInicio_dt', 'HoraInicio', 'FechaFin_dt', 'HoraFin'])
+        p_res = supabase.table("profesores").select("nombre").execute().data
+        profs = sorted([p["nombre"] for p in p_res]) if p_res else []
+        r_res = supabase.table("recursos").select("nombre").execute().data
+        recs = sorted([r["nombre"] for r in r_res]) if r_res else []
+        c_res = supabase.table("cursos").select("nombre").execute().data
+        curs = sorted([c["nombre"] for c in c_res], key=custom_course_sort_key) if c_res else []
+        return profs, recs, curs
+    except:
+        return [], [], []
 
-        return df_res, horas_corregidas, df_mant
-    except Exception as e:
-        return pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones']), horas_corregidas, pd.DataFrame()
-
-
+PROFESORES, RECURSOS, CURSOS = cargar_datos_login()
 
 # ------------------------------------------------------------------
-# 2) SISTEMA DE LOGIN HORIZONTAL Y AESTHETIC
+# 2) SISTEMA DE LOGIN HORIZONTAL
 # ------------------------------------------------------------------
 if "logged" not in st.session_state:
     st.session_state.logged = False
@@ -320,10 +278,8 @@ if not st.session_state.logged:
             st.markdown("<br><br>", unsafe_allow_html=True)
             BASE_DIR = Path(__file__).parent
             logo_path = BASE_DIR / "logocav.png"
-            if logo_path.exists():
-                st.image(str(logo_path), use_container_width=True)
-            else:
-                st.info("Logo CAV")
+            if logo_path.exists(): st.image(str(logo_path), use_container_width=True)
+            else: st.info("Logo CAV")
 
         with col_form:
             st.markdown("<h2 style='text-align: center; color: #1E3A8A; margin-bottom: 0px;'>SISTEMA CAV</h2>", unsafe_allow_html=True)
@@ -355,15 +311,12 @@ if not st.session_state.logged:
                                 st.session_state.role = "profesor"
                                 st.session_state.profesor_name = u_profe
                                 st.rerun()
-                            elif not u_profe:
-                                st.warning("Por favor selecciona tu nombre")
-                            else:
-                                st.error("Contraseña incorrecta")
-
+                            elif not u_profe: st.warning("Por favor selecciona tu nombre")
+                            else: st.error("Contraseña incorrecta")
     st.stop() 
 
 # ------------------------------------------------------------------
-# 3) CARGA DE LA BASE DE DATOS PRINCIPAL (SÓLO SI ESTÁ LOGUEADO)
+# 3) CARGA DE LA BASE DE DATOS PRINCIPAL 
 # ------------------------------------------------------------------
 @st.cache_data(ttl=30)
 def cargar_reservas_y_datos():
@@ -393,14 +346,26 @@ def cargar_reservas_y_datos():
         df_res = pd.DataFrame(reservas_limpias) if reservas_limpias else pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones'])
             
         try:
-            df_mant = pd.DataFrame(supabase.table("mantenimientos").select("*").execute().data)
+            # CORRECCIÓN DEFINITIVA DE MANTENIMIENTO: Carga simple sin JOIN para evitar errores
+            mant_data = supabase.table("mantenimientos").select("*").execute().data
+            rec_data = supabase.table("recursos").select("id, nombre").execute().data
+            mant_map_rec = {r['id']: r['nombre'] for r in rec_data} if rec_data else {}
+            
+            df_mant = pd.DataFrame(mant_data) if mant_data else pd.DataFrame()
+            
             if not df_mant.empty:
-                df_mant['FechaInicio_dt'] = df_mant['fecha_inicio'].apply(parse_date)
-                df_mant['FechaFin_dt'] = df_mant['fecha_fin'].apply(parse_date)
-                df_mant['HoraInicio'] = df_mant['hora_inicio']
-                df_mant['HoraFin'] = df_mant['hora_fin']
-                df_mant['Recurso'] = df_mant['recurso']
-        except: df_mant = pd.DataFrame(columns=['Recurso', 'FechaInicio_dt', 'HoraInicio', 'FechaFin_dt', 'HoraFin'])
+                df_mant = df_mant[df_mant['estado'] != 'Reparado']
+                df_mant['FechaInicio_dt'] = df_mant['fecha'].apply(parse_date) if 'fecha' in df_mant.columns else dt.date.today()
+                df_mant['FechaFin_dt'] = df_mant['FechaInicio_dt']
+                df_mant['HoraInicio'] = dt.time(0, 0)
+                df_mant['HoraFin'] = dt.time(23, 59)
+                if 'recurso_id' in df_mant.columns:
+                    df_mant['Recurso'] = df_mant['recurso_id'].apply(lambda x: mant_map_rec.get(x, 'Desconocido'))
+                else: df_mant['Recurso'] = 'Desconocido'
+            else:
+                df_mant = pd.DataFrame(columns=['Recurso', 'FechaInicio_dt', 'HoraInicio', 'FechaFin_dt', 'HoraFin'])
+        except Exception as e:
+            df_mant = pd.DataFrame(columns=['Recurso', 'FechaInicio_dt', 'HoraInicio', 'FechaFin_dt', 'HoraFin'])
 
         return df_res, horas_corregidas, df_mant
     except Exception as e:
@@ -408,15 +373,10 @@ def cargar_reservas_y_datos():
 
 df, HORAS, df_mantenimiento = cargar_reservas_y_datos()
 
-map_prof = {}
-map_cur = {}
-map_rec = {}
-PROFESOR_DATA = {}
-
+map_prof, map_cur, map_rec, PROFESOR_DATA = {}, {}, {}, {}
 try: 
     prof_data_db = supabase.table("profesores").select("id, nombre, email").execute().data
-    map_prof = {p["nombre"]: p["id"] for p in prof_data_db}
-    PROFESOR_DATA = {p["nombre"]: p.get("email", "") for p in prof_data_db}
+    map_prof = {p["nombre"]: p["id"] for p in prof_data_db}; PROFESOR_DATA = {p["nombre"]: p.get("email", "") for p in prof_data_db}
 except: pass
 try: map_cur = {c["nombre"]: c["id"] for c in supabase.table("cursos").select("id, nombre").execute().data}
 except: pass
@@ -426,28 +386,18 @@ except: pass
 # ------------------------------------------------------------------
 # 4) NAVEGACIÓN Y VISTAS
 # ------------------------------------------------------------------
-
-# REFRESCO AUTOMÁTICO CADA 5 MINUTOS
 st_autorefresh(interval=300000, key="data_refresh")
 
 sidebar_title = f"Panel de {st.session_state.role.capitalize()}"
-if st.session_state.role == 'profesor':
-    sidebar_title = f"Hola, {st.session_state.profesor_name.split(' ')[0]}"
+if st.session_state.role == 'profesor': sidebar_title = f"Hola, {st.session_state.profesor_name.split(' ')[0]}"
 
 BASE_DIR = Path(__file__).parent
 logo_path = BASE_DIR / "logocav.png"
 
 if logo_path.exists():
-    st.markdown("""
-        <style>
-            [data-testid="stSidebarNav"]::before { content: ""; display: none; margin-top: 0px; }
-            section[data-testid="stSidebar"] div.st-emotion-cache-16t70r2 { padding-top: 0.5rem !important; }
-        </style>
-    """, unsafe_allow_html=True)
-
+    st.markdown("""<style>[data-testid="stSidebarNav"]::before { content: ""; display: none; margin-top: 0px; } section[data-testid="stSidebar"] div.st-emotion-cache-16t70r2 { padding-top: 0.5rem !important; }</style>""", unsafe_allow_html=True)
     col1, col2, col3 = st.sidebar.columns([0.1, 2.8, 0.1])
-    with col2:
-        st.image(str(logo_path), use_container_width=True)
+    with col2: st.image(str(logo_path), use_container_width=True)
 
 st.sidebar.markdown(f"<div style='text-align: center; color: var(--primary-color); font-weight: bold; margin-bottom: 0px; font-size: 1.1em; letter-spacing: 1px;'>{sidebar_title.upper()}</div>", unsafe_allow_html=True)
 st.sidebar.markdown("<hr style='margin: 8px 0px 5px 0px; padding: 0;'>", unsafe_allow_html=True)
@@ -473,33 +423,22 @@ html_reloj = """
         <div id="mensaje" class="mensaje"></div>
     </div>
     <script>
-        const mensajes = [
-            "¡Que tengas un excelente día! ☀️", "Cada día es una nueva oportunidad para brillar. ✨",
-            "Tu esfuerzo de hoy es el éxito de mañana. 💪", "Haz que las cosas pasen. ¡Tú puedes! 🚀",
-            "Pequeños pasos todos los días llevan a grandes resultados. 🏔️", "Sonríe, respira y sigue adelante. 🌻",
-            "La actitud lo es todo. ¡A dar el 100%! 💯", "Hoy es un buen día para hacer la diferencia. 🌟",
-            "Tu trabajo y dedicación son muy valiosos. 🤝", "¡Mucho éxito en todas tus tareas de hoy! 🎯"
-        ];
+        const mensajes = ["¡Que tengas un excelente día! ☀️", "Cada día es una nueva oportunidad para brillar. ✨", "Tu esfuerzo de hoy es el éxito de mañana. 💪", "Haz que las cosas pasen. ¡Tú puedes! 🚀", "Pequeños pasos todos los días llevan a grandes resultados. 🏔️", "Sonríe, respira y sigue adelante. 🌻", "La actitud lo es todo. ¡A dar el 100%! 💯", "Hoy es un buen día para hacer la diferencia. 🌟", "Tu trabajo y dedicación son muy valiosos. 🤝", "¡Mucho éxito en todas tus tareas de hoy! 🎯"];
         document.getElementById("mensaje").innerText = mensajes[Math.floor(Math.random() * mensajes.length)];
         function actualizarReloj() {
             const ahora = new Date();
-            const opcionesHora = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
-            document.getElementById("reloj").innerText = ahora.toLocaleTimeString('es-CL', opcionesHora);
-            const opcionesFecha = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            document.getElementById("fecha").innerText = ahora.toLocaleDateString('es-CL', opcionesFecha);
+            document.getElementById("reloj").innerText = ahora.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            document.getElementById("fecha").innerText = ahora.toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         }
-        setInterval(actualizarReloj, 1000);
-        actualizarReloj();
+        setInterval(actualizarReloj, 1000); actualizarReloj();
     </script>
 </body>
 </html>
 """
-
 with st.sidebar:
     components.html(html_reloj, height=85)
     st.markdown("<hr style='margin: 0px 0px 10px 0px; padding: 0;'>", unsafe_allow_html=True)
 
-# NUEVA ESTRUCTURA DEL MENÚ (Técnicos justo antes de Configuración)
 PAGES_CONFIG = {
     "Mis Reservas": {"icon": "👤", "roles": ["profesor"]},
     "Registrar": {"icon": "📝", "roles": ["admin"]},
@@ -517,8 +456,7 @@ page = st.sidebar.radio("Navegación", available_pages, index=available_pages.in
 st.sidebar.markdown("---")
 
 if st.sidebar.button("🔄 Refrescar Pantalla", use_container_width=True):
-    st.cache_data.clear()
-    st.rerun()
+    st.cache_data.clear(); st.rerun()
 
 if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
     for key in st.session_state.keys(): del st.session_state[key]
@@ -533,18 +471,15 @@ if page == "Mis Reservas":
     if not df.empty:
         prof_df = df[df['Profesor'] == st.session_state.profesor_name]
         future_reservas = prof_df[prof_df['Fecha'] >= dt.date.today()].sort_values(by="Fecha")
-    else:
-        future_reservas = pd.DataFrame()
+    else: future_reservas = pd.DataFrame()
 
-    if future_reservas.empty:
-        st.info("No tienes reservas programadas para el futuro.")
+    if future_reservas.empty: st.info("No tienes reservas programadas para el futuro.")
     else:
         for _, row in future_reservas.iterrows():
             with st.container(border=True):
                 st.markdown(f"#### {format_date_es(row['Fecha'])}")
                 st.markdown(f"**Hora:** {row['Hora inicio'].strftime('%H:%M')} - {row['Hora fin'].strftime('%H:%M')}<br>**Curso:** {row['Curso']}<br>**Recurso:** {row['Recurso']}", unsafe_allow_html=True)
-                if row['Observaciones']:
-                    st.markdown(f"> *{row['Observaciones']}*")
+                if row['Observaciones']: st.markdown(f"> *{row['Observaciones']}*")
 
 if page == "Registrar":
     st.title("📝 Registrar Nuevo Horario")
@@ -673,8 +608,7 @@ if page == "Base de datos":
                             supabase.table("reservas").insert(nuevas_inserciones).execute()
                             
                         st.success("Sincronización completa.")
-                        st.cache_data.clear()
-                        time.sleep(1); st.rerun()
+                        st.cache_data.clear(); time.sleep(1); st.rerun()
                     except Exception as e:
                         st.error(f"Error al sincronizar: {e}")
         else:
@@ -748,10 +682,8 @@ if page == "Dashboard":
         if start_date > end_date:
             st.error("Error: La fecha de inicio no puede ser posterior a la fecha de fin.")
         else:
-            if not df.empty:
-                df_filtered = df[(df['Fecha'] >= start_date) & (df['Fecha'] <= end_date)]
-            else:
-                df_filtered = pd.DataFrame()
+            if not df.empty: df_filtered = df[(df['Fecha'] >= start_date) & (df['Fecha'] <= end_date)]
+            else: df_filtered = pd.DataFrame()
                 
             st.markdown("---")
             st.subheader("Métricas Generales del Periodo")
@@ -804,7 +736,7 @@ if page == "Dashboard":
                 else: st.info("No hay datos de recursos en este periodo.")
 
 # ------------------------------------------------------------------
-# NUEVA SECCIÓN: TÉCNICOS
+# SECCIÓN: TÉCNICOS
 # ------------------------------------------------------------------
 if page == "Técnicos":
     st.title("🔧 Área de Técnicos y Mantenimiento")
@@ -818,19 +750,15 @@ if page == "Técnicos":
             with st.form("form_mant_config"):
                 rec_mant = st.selectbox("Selecciona el Recurso", list(map_rec.keys()) if map_rec else ["No hay recursos"])
                 fecha_mant = st.date_input("Fecha del reporte", dt.date.today())
-                # NUEVO ESTADO: Reportado (Vía QR) añadido para mantener congruencia
                 estado = st.selectbox("Estado", ["Reportado (Vía QR)", "En Reparación", "Dado de Baja", "Reparado"])
                 detalle = st.text_area("Descripción de la falla")
                 
-                submit_mant = st.form_submit_button("Guardar/Actualizar Reporte", use_container_width=True, type="primary")
-                
-                if submit_mant:
+                if st.form_submit_button("Guardar/Actualizar Reporte", use_container_width=True, type="primary"):
                     if rec_mant == "No hay recursos" or not detalle.strip():
                         st.error("Por favor completa la descripción.")
                     else:
-                        recurso_id = map_rec[rec_mant]
                         datos_mant = {
-                            "recurso_id": recurso_id,
+                            "recurso_id": map_rec[rec_mant],
                             "fecha": fecha_mant.strftime("%Y-%m-%d"),
                             "descripcion": detalle,
                             "estado": estado
@@ -838,98 +766,91 @@ if page == "Técnicos":
                         try:
                             supabase.table("mantenimientos").insert(datos_mant).execute()
                             st.success(f"Reporte guardado para {rec_mant}.")
-                            st.cache_data.clear() 
-                            time.sleep(1)
-                            st.rerun()
+                            st.cache_data.clear(); time.sleep(1); st.rerun()
                         except Exception as e:
                             st.error(f"Error al guardar: {e}")
 
         with c2:
             st.write("#### Historial de Equipos y Reportes")
             try:
-                # Consulta simple sin JOIN que evita que Supabase colapse
+                # CORRECCIÓN DE ERROR "historial de equipos": Sin JOIN que rompe la BD
                 mants = supabase.table("mantenimientos").select("*").execute().data
                 if mants:
                     df_mants = pd.DataFrame(mants)
-                    
-                    # Diccionario inverso para buscar el nombre usando el ID (Ej: 1 -> "Proyector 1")
                     inv_map_rec = {v: k for k, v in map_rec.items()}
                     
-                    # Detectar automáticamente cómo se llama la columna de recurso en tu base de datos
-                    if 'recurso_id' in df_mants.columns:
-                        df_mants['Recurso'] = df_mants['recurso_id'].apply(lambda x: inv_map_rec.get(x, 'Desconocido'))
-                    elif 'recurso' in df_mants.columns:
-                        df_mants['Recurso'] = df_mants['recurso']
-                    else:
-                        df_mants['Recurso'] = 'Desconocido'
+                    if 'recurso_id' in df_mants.columns: df_mants['Recurso'] = df_mants['recurso_id'].apply(lambda x: inv_map_rec.get(x, 'Desconocido'))
+                    elif 'recurso' in df_mants.columns: df_mants['Recurso'] = df_mants['recurso']
+                    else: df_mants['Recurso'] = 'Desconocido'
 
-                    # Detectar nombres de columnas de fecha
-                    if 'fecha' in df_mants.columns:
-                        df_mants['Fecha_Ver'] = df_mants['fecha']
-                    elif 'fecha_inicio' in df_mants.columns:
-                        df_mants['Fecha_Ver'] = df_mants['fecha_inicio']
-                    else:
-                        df_mants['Fecha_Ver'] = 'Sin fecha'
+                    if 'fecha' in df_mants.columns: df_mants['Fecha_Ver'] = df_mants['fecha']
+                    elif 'fecha_inicio' in df_mants.columns: df_mants['Fecha_Ver'] = df_mants['fecha_inicio']
+                    else: df_mants['Fecha_Ver'] = 'Sin fecha'
 
-                    # Detectar columna de detalles/observaciones
-                    if 'descripcion' in df_mants.columns:
-                        df_mants['Detalle'] = df_mants['descripcion']
-                    elif 'observaciones' in df_mants.columns:
-                        df_mants['Detalle'] = df_mants['observaciones']
-                    else:
-                        df_mants['Detalle'] = 'Sin detalle'
+                    if 'descripcion' in df_mants.columns: df_mants['Detalle'] = df_mants['descripcion']
+                    elif 'observaciones' in df_mants.columns: df_mants['Detalle'] = df_mants['observaciones']
+                    else: df_mants['Detalle'] = 'Sin detalle'
 
-                    # Detectar estado
-                    if 'estado' in df_mants.columns:
-                        df_mants['Estado_Ver'] = df_mants['estado']
-                    else:
-                        df_mants['Estado_Ver'] = 'Reportado'
+                    if 'estado' in df_mants.columns: df_mants['Estado_Ver'] = df_mants['estado']
+                    else: df_mants['Estado_Ver'] = 'Reportado'
 
-                    # Mostrar tabla limpia
                     st.dataframe(df_mants[['Fecha_Ver', 'Recurso', 'Detalle', 'Estado_Ver']], use_container_width=True, hide_index=True)
                 else:
                     st.info("No hay registros de mantenimiento ni fallas.")
-                    
             except Exception as e:
-                # Ahora sí mostraremos el error exacto en color rojo si es que falla algo más
-                st.error(f"Error detallado del sistema: {e}")
+                st.error(f"Error detallado: {e}")
 
     with tab_qr:
         st.subheader("🖨️ Generador de Códigos QR para Equipos")
-        st.write("Imprime estos códigos QR y pégalos físicamente en cada recurso. Si un profesor nota una falla, solo escanea el código con la cámara de su celular y podrá enviar un reporte directo **sin iniciar sesión**.")
+        st.write("Escribe el enlace de la aplicación. Al generarse los códigos, podrás descargar un archivo `.zip` con todos los QR listos para imprimir.")
         
-        st.info("⚠️ Escribe aquí el enlace completo de la web que usas para entrar al sistema (Ej: *https://tu-colegio.streamlit.app*).")
-        url_base = st.text_input("Enlace Público de la Aplicación:")
+        url_base = st.text_input("Enlace Público de la Aplicación (Ej: https://tu-colegio.streamlit.app):")
         
-        if st.button("🚀 Generar QRs para Imprimir", type="primary"):
-            if not url_base:
-                st.error("Debes ingresar la URL de la aplicación primero.")
-            else:
-                url_base = url_base.strip()
-                if not url_base.endswith("/"):
-                    url_base += "/"
-                    
-                st.markdown("---")
-                cols = st.columns(4)
+        # Muestra automáticamente los QR si se ha escrito un enlace
+        if url_base:
+            url_base = url_base.strip()
+            if not url_base.endswith("/"):
+                url_base += "/"
+                
+            # Creamos el archivo ZIP en memoria
+            zip_buffer = io.BytesIO()
+            
+            st.markdown("---")
+            cols = st.columns(4)
+            
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                 for i, recurso in enumerate(RECURSOS):
-                    # Generar enlace especial
                     qr_url = f"{url_base}?reportar={urllib.parse.quote(recurso)}"
-                    
-                    # Crear el QR en sí
                     qr = qrcode.QRCode(version=1, box_size=10, border=2)
                     qr.add_data(qr_url)
                     qr.make(fit=True)
                     img = qr.make_image(fill_color="black", back_color="white")
                     
-                    # Convertirlo a imagen compatible con Streamlit
                     buf = io.BytesIO()
                     img.save(buf, format="PNG")
                     
-                    # Mostrarlo en pantalla
+                    # Añadir al ZIP limpiando caracteres raros para el nombre del archivo
+                    safe_name = str(recurso).replace("/", "-").replace("\\", "-").replace(":", "-")
+                    zip_file.writestr(f"QR_{safe_name}.png", buf.getvalue())
+                    
+                    # Mostrar en pantalla
                     with cols[i % 4]:
                         with st.container(border=True):
                             st.image(buf.getvalue(), use_container_width=True)
                             st.markdown(f"<p style='text-align:center; font-weight:bold; font-size:14px; margin-top:-10px;'>{recurso}</p>", unsafe_allow_html=True)
+            
+            st.markdown("---")
+            c1, c2, c3 = st.columns([1, 2, 1])
+            with c2:
+                # BOTÓN DE DESCARGA ZIP
+                st.download_button(
+                    label="📦 Descargar Todos los QRs (.zip)",
+                    data=zip_buffer.getvalue(),
+                    file_name="Codigos_QR_CAV.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                    type="primary"
+                )
 
 # ------------------------------------------------------------------
 # SECCIÓN: CONFIGURACIÓN
@@ -938,16 +859,13 @@ if page == "Configuración":
     st.title("⚙️ Configuración del Sistema")
     st.write("Desde aquí puedes administrar los elementos centrales de la aplicación.")
     
-    # Se eliminó tab_mant de aquí porque se mudó a la página "Técnicos"
     tab_prof, tab_cur, tab_rec = st.tabs(["Profesores", "Cursos", "Recursos"])
     
     with tab_prof:
         st.write("### 👥 Administración de Profesores")
         col_add, col_list = st.columns([1, 2])
-        
         with col_add:
             with st.form("form_add_prof"):
-                st.write("**Agregar Nuevo Profesor**")
                 nuevo_prof = st.text_input("Nombre y Apellidos")
                 nuevo_email = st.text_input("Correo Electrónico (Opcional)")
                 if st.form_submit_button("➕ Agregar Profesor", use_container_width=True):
@@ -955,21 +873,14 @@ if page == "Configuración":
                         try:
                             supabase.table("profesores").insert({"nombre": nuevo_prof.strip().upper(), "email": nuevo_email.strip()}).execute()
                             st.success("¡Profesor agregado!")
-                            st.cache_data.clear()
-                            time.sleep(0.5)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error al agregar: {e}")
-                    else:
-                        st.error("El nombre es obligatorio.")
-                        
+                            st.cache_data.clear(); time.sleep(0.5); st.rerun()
+                        except Exception as e: st.error(f"Error al agregar: {e}")
+                    else: st.error("El nombre es obligatorio.")
         with col_list:
-            st.write("**Directorio de Profesores**")
             prof_data = supabase.table("profesores").select("*").order("nombre").execute().data
             if prof_data:
                 df_p = pd.DataFrame(prof_data)
                 st.dataframe(df_p[['nombre', 'email']], use_container_width=True, hide_index=True)
-                
                 with st.expander("🗑️ Eliminar un Profesor"):
                     st.warning("⚠️ Nota: No puedes eliminar a un profesor si ya tiene reservas en el sistema.")
                     prof_borrar = st.selectbox("Selecciona el profesor a eliminar", df_p['nombre'].tolist(), key="del_prof")
@@ -978,40 +889,28 @@ if page == "Configuración":
                             id_b = int(df_p[df_p['nombre'] == prof_borrar]['id'].values[0])
                             supabase.table("profesores").delete().eq("id", id_b).execute()
                             st.success(f"Profesor {prof_borrar} eliminado.")
-                            st.cache_data.clear()
-                            time.sleep(0.5)
-                            st.rerun()
-                        except Exception as e:
-                            st.error("No se puede eliminar porque este profesor tiene reservas asociadas.")
+                            st.cache_data.clear(); time.sleep(0.5); st.rerun()
+                        except Exception as e: st.error("No se puede eliminar porque este profesor tiene reservas asociadas.")
 
     with tab_cur:
         st.write("### 📚 Administración de Cursos")
         col_add_c, col_list_c = st.columns([1, 2])
-        
         with col_add_c:
             with st.form("form_add_cur"):
-                st.write("**Agregar Nuevo Curso**")
                 nuevo_curso = st.text_input("Nombre del Curso (ej. 1° BÁSICO A)")
                 if st.form_submit_button("➕ Agregar Curso", use_container_width=True):
                     if nuevo_curso.strip():
                         try:
                             supabase.table("cursos").insert({"nombre": nuevo_curso.strip().upper()}).execute()
                             st.success("¡Curso agregado!")
-                            st.cache_data.clear()
-                            time.sleep(0.5)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error al agregar: {e}")
-                    else:
-                        st.error("El nombre es obligatorio.")
-                        
+                            st.cache_data.clear(); time.sleep(0.5); st.rerun()
+                        except Exception as e: st.error(f"Error al agregar: {e}")
+                    else: st.error("El nombre es obligatorio.")
         with col_list_c:
-            st.write("**Cursos Registrados**")
             cur_data = supabase.table("cursos").select("*").order("nombre").execute().data
             if cur_data:
                 df_c = pd.DataFrame(cur_data)
                 st.dataframe(df_c[['nombre']], use_container_width=True, hide_index=True)
-                
                 with st.expander("🗑️ Eliminar un Curso"):
                     cur_borrar = st.selectbox("Selecciona el curso a eliminar", df_c['nombre'].tolist(), key="del_cur")
                     if st.button("Eliminar Curso Definitivamente", type="primary"):
@@ -1019,40 +918,28 @@ if page == "Configuración":
                             id_b = int(df_c[df_c['nombre'] == cur_borrar]['id'].values[0])
                             supabase.table("cursos").delete().eq("id", id_b).execute()
                             st.success(f"Curso {cur_borrar} eliminado.")
-                            st.cache_data.clear()
-                            time.sleep(0.5)
-                            st.rerun()
-                        except Exception as e:
-                            st.error("No se puede eliminar porque este curso tiene reservas asociadas.")
+                            st.cache_data.clear(); time.sleep(0.5); st.rerun()
+                        except Exception as e: st.error("No se puede eliminar porque este curso tiene reservas asociadas.")
 
     with tab_rec:
         st.write("### 💻 Administración de Recursos")
         col_add_r, col_list_r = st.columns([1, 2])
-        
         with col_add_r:
             with st.form("form_add_rec"):
-                st.write("**Agregar Nuevo Recurso**")
                 nuevo_rec = st.text_input("Nombre del Recurso (ej. Proyector 5)")
                 if st.form_submit_button("➕ Agregar Recurso", use_container_width=True):
                     if nuevo_rec.strip():
                         try:
                             supabase.table("recursos").insert({"nombre": nuevo_rec.strip().upper()}).execute()
                             st.success("¡Recurso agregado!")
-                            st.cache_data.clear()
-                            time.sleep(0.5)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error al agregar: {e}")
-                    else:
-                        st.error("El nombre es obligatorio.")
-                        
+                            st.cache_data.clear(); time.sleep(0.5); st.rerun()
+                        except Exception as e: st.error(f"Error al agregar: {e}")
+                    else: st.error("El nombre es obligatorio.")
         with col_list_r:
-            st.write("**Inventario de Recursos**")
             rec_data = supabase.table("recursos").select("*").order("nombre").execute().data
             if rec_data:
                 df_r = pd.DataFrame(rec_data)
                 st.dataframe(df_r[['nombre']], use_container_width=True, hide_index=True)
-                
                 with st.expander("🗑️ Eliminar un Recurso"):
                     rec_borrar = st.selectbox("Selecciona el recurso a eliminar", df_r['nombre'].tolist(), key="del_rec")
                     if st.button("Eliminar Recurso Definitivamente", type="primary"):
@@ -1060,8 +947,5 @@ if page == "Configuración":
                             id_b = int(df_r[df_r['nombre'] == rec_borrar]['id'].values[0])
                             supabase.table("recursos").delete().eq("id", id_b).execute()
                             st.success(f"Recurso {rec_borrar} eliminado.")
-                            st.cache_data.clear()
-                            time.sleep(0.5)
-                            st.rerun()
-                        except Exception as e:
-                            st.error("No se puede eliminar porque tiene reservas o reportes de mantenimiento asociados.")
+                            st.cache_data.clear(); time.sleep(0.5); st.rerun()
+                        except Exception as e: st.error("No se puede eliminar porque tiene reservas o reportes de mantenimiento asociados.")
