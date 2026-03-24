@@ -13,7 +13,10 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import plotly.express as px
 import streamlit.components.v1 as components
-from streamlit_autorefresh import st_autorefresh  # <-- NUEVA LIBRERÍA
+from streamlit_autorefresh import st_autorefresh
+import qrcode
+import io
+import urllib.parse
 
 # ------------------------------------------------------------------
 # CONFIGURACIÓN SUPABASE (NUEVO MOTOR DE BASE DE DATOS)
@@ -169,6 +172,53 @@ def send_email(subject, body, recipient_email):
         st.toast(f"📧 Notificación enviada a {recipient_email}")
     except Exception as e:
         pass 
+
+# ------------------------------------------------------------------
+# 0.5) VISTA PÚBLICA DE REPORTE (ACCESO POR CÓDIGO QR MÓVIL)
+# ------------------------------------------------------------------
+# Si alguien escanea el QR, la URL tendrá "?reportar=NombreDelRecurso"
+if "reportar" in st.query_params:
+    st.markdown("<style>.block-container { padding-top: 2rem !important; }</style>", unsafe_allow_html=True)
+    recurso_qr = st.query_params["reportar"]
+    
+    # Diseño especial modo móvil
+    with st.container(border=True):
+        st.markdown(f"<h2 style='text-align: center; color: var(--primary-color);'>🚨 Reporte de Falla</h2>", unsafe_allow_html=True)
+        st.markdown(f"<h4 style='text-align: center; color: gray;'>Equipo: {recurso_qr}</h4>", unsafe_allow_html=True)
+        st.markdown("---")
+        
+        # Buscar ID del recurso
+        try:
+            rec_data = supabase.table("recursos").select("id").eq("nombre", recurso_qr).execute().data
+            if not rec_data:
+                st.error("❌ El equipo escaneado no existe en la base de datos.")
+                st.stop()
+            recurso_id = rec_data[0]["id"]
+        except:
+            st.error("Error de conexión al verificar el equipo.")
+            st.stop()
+
+        with st.form("qr_report_form"):
+            detalle = st.text_area("Describe el problema detalladamente (Ej. 'El cable HDMI está roto', 'No enciende', etc.)")
+            if st.form_submit_button("📤 Enviar Reporte a Técnicos", type="primary", use_container_width=True):
+                if detalle.strip():
+                    datos_mant = {
+                        "recurso_id": recurso_id,
+                        "fecha": dt.date.today().strftime("%Y-%m-%d"),
+                        "descripcion": detalle.strip(),
+                        "estado": "Reportado (Vía QR)"
+                    }
+                    try:
+                        supabase.table("mantenimientos").insert(datos_mant).execute()
+                        st.success("✅ ¡Gracias! Tu reporte ha sido enviado al equipo técnico.")
+                        st.balloons()
+                    except Exception as e:
+                        st.error("Ocurrió un error al enviar el reporte.")
+                else:
+                    st.error("⚠️ Debes escribir una descripción del problema.")
+        
+    st.info("💡 Ya puedes cerrar esta pestaña en tu celular.")
+    st.stop() # IMPORTANTE: Detiene la app aquí para que no pida login a quien escaneó
 
 # ------------------------------------------------------------------
 # 1) INICIALIZACIÓN DE DATOS (PARA EVITAR NameError)
@@ -340,7 +390,7 @@ except: pass
 # 4) NAVEGACIÓN Y VISTAS
 # ------------------------------------------------------------------
 
-# REFRESCO AUTOMÁTICO CADA 5 MINUTOS (300000 ms)
+# REFRESCO AUTOMÁTICO CADA 5 MINUTOS
 st_autorefresh(interval=300000, key="data_refresh")
 
 sidebar_title = f"Panel de {st.session_state.role.capitalize()}"
@@ -412,12 +462,14 @@ with st.sidebar:
     components.html(html_reloj, height=85)
     st.markdown("<hr style='margin: 0px 0px 10px 0px; padding: 0;'>", unsafe_allow_html=True)
 
+# NUEVA ESTRUCTURA DEL MENÚ (Técnicos justo antes de Configuración)
 PAGES_CONFIG = {
     "Mis Reservas": {"icon": "👤", "roles": ["profesor"]},
     "Registrar": {"icon": "📝", "roles": ["admin"]},
     "Base de datos": {"icon": "🗃️", "roles": ["admin"]},
     "Semana": {"icon": "🗓️", "roles": ["admin", "profesor"]},
     "Dashboard": {"icon": "📈", "roles": ["admin"]},
+    "Técnicos": {"icon": "🔧", "roles": ["admin"]},
     "Configuración": {"icon": "⚙️", "roles": ["admin"]},
 }
 
@@ -427,7 +479,6 @@ page = st.sidebar.radio("Navegación", available_pages, index=available_pages.in
 
 st.sidebar.markdown("---")
 
-# BOTONES DE REFRESCO Y CIERRE DE SESIÓN
 if st.sidebar.button("🔄 Refrescar Pantalla", use_container_width=True):
     st.cache_data.clear()
     st.rerun()
@@ -594,8 +645,6 @@ if page == "Base de datos":
 
 if page == "Semana":
     st.title("🗓️ Vista Semanal")
-    
-    # NUEVO: Filtros Avanzados
     with st.container(border=True):
         st.write("🔍 **Filtros de Búsqueda Avanzados**")
         col_d, col_r, col_p, col_c = st.columns(4)
@@ -611,32 +660,23 @@ if page == "Semana":
     week_days = [start_of_week + dt.timedelta(days=i) for i in range(5)]
     
     if not df.empty:
-        # Aplicación de los múltiples filtros
         mask = (df['Fecha'] >= week_days[0]) & (df['Fecha'] <= week_days[-1])
-        
-        if selected_recursos:
-            mask &= df['Recurso'].isin(selected_recursos)
-        if selected_profesores:
-            mask &= df['Profesor'].isin(selected_profesores)
-        if selected_cursos:
-            mask &= df['Curso'].isin(selected_cursos)
-            
+        if selected_recursos: mask &= df['Recurso'].isin(selected_recursos)
+        if selected_profesores: mask &= df['Profesor'].isin(selected_profesores)
+        if selected_cursos: mask &= df['Curso'].isin(selected_cursos)
         df_week = df[mask]
     else:
         df_week = pd.DataFrame()
 
     st.markdown("---")
     
-    # TRADUCCIÓN DE DÍAS Y ENCABEZADOS DE LA SEMANA A ESPAÑOL
     dias_es = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
     column_names = [f"{dias_es[d.weekday()]} {d.strftime('%d/%m')}" for d in week_days]
-    
     schedule = pd.DataFrame(index=HORAS, columns=column_names).fillna('')
 
     if not df_week.empty:
         for _, row in df_week.iterrows():
             day_str = f"{dias_es[row['Fecha'].weekday()]} {row['Fecha'].strftime('%d/%m')}"
-            
             for bloque in HORAS:
                 try:
                     h_inicio_b, h_fin_b = [dt.datetime.strptime(t.strip(), '%H:%M').time() for t in bloque.split(' a ')]
@@ -646,17 +686,14 @@ if page == "Semana":
                         icon = " 📝" if observacion and observacion.strip() != '' else ""
 
                         card_content = f"<strong>{row['Recurso']}</strong>{icon}<br>{row['Profesor']}<br><em>{row['Curso']}</em>"
-                        
                         if icon:
                             safe_observacion = html_sanitizer.escape(observacion)
                             card_html = f"<div class='reservation-card' style='background-color:{prof_color};'>{card_content}<span class='tooltip-text'>{safe_observacion}</span></div>"
                         else:
                             card_html = f"<div class='reservation-card' style='background-color:{prof_color};'>{card_content}</div>"
 
-                        if schedule.at[bloque, day_str] == '':
-                            schedule.at[bloque, day_str] = card_html
-                        else:
-                            schedule.at[bloque, day_str] += card_html
+                        if schedule.at[bloque, day_str] == '': schedule.at[bloque, day_str] = card_html
+                        else: schedule.at[bloque, day_str] += card_html
                 except Exception:
                     continue
 
@@ -729,11 +766,107 @@ if page == "Dashboard":
                     st.plotly_chart(fig_recursos, use_container_width=True)
                 else: st.info("No hay datos de recursos en este periodo.")
 
+# ------------------------------------------------------------------
+# NUEVA SECCIÓN: TÉCNICOS
+# ------------------------------------------------------------------
+if page == "Técnicos":
+    st.title("🔧 Área de Técnicos y Mantenimiento")
+    
+    tab_mant, tab_qr = st.tabs(["🛠️ Gestión de Reportes", "📲 Generador de Códigos QR"])
+    
+    with tab_mant:
+        c1, c2 = st.columns([1, 2])
+        with c1:
+            st.write("#### Actualizar / Nuevo Reporte")
+            with st.form("form_mant_config"):
+                rec_mant = st.selectbox("Selecciona el Recurso", list(map_rec.keys()) if map_rec else ["No hay recursos"])
+                fecha_mant = st.date_input("Fecha del reporte", dt.date.today())
+                # NUEVO ESTADO: Reportado (Vía QR) añadido para mantener congruencia
+                estado = st.selectbox("Estado", ["Reportado (Vía QR)", "En Reparación", "Dado de Baja", "Reparado"])
+                detalle = st.text_area("Descripción de la falla")
+                
+                submit_mant = st.form_submit_button("Guardar/Actualizar Reporte", use_container_width=True, type="primary")
+                
+                if submit_mant:
+                    if rec_mant == "No hay recursos" or not detalle.strip():
+                        st.error("Por favor completa la descripción.")
+                    else:
+                        recurso_id = map_rec[rec_mant]
+                        datos_mant = {
+                            "recurso_id": recurso_id,
+                            "fecha": fecha_mant.strftime("%Y-%m-%d"),
+                            "descripcion": detalle,
+                            "estado": estado
+                        }
+                        try:
+                            supabase.table("mantenimientos").insert(datos_mant).execute()
+                            st.success(f"Reporte guardado para {rec_mant}.")
+                            st.cache_data.clear() 
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al guardar: {e}")
+
+        with c2:
+            st.write("#### Historial de Equipos y Reportes")
+            try:
+                mants = supabase.table("mantenimientos").select("*, recursos(nombre)").execute().data
+                if mants:
+                    df_mants = pd.DataFrame(mants)
+                    df_mants['Recurso'] = df_mants['recursos'].apply(lambda x: x['nombre'] if x else 'Desconocido')
+                    df_mants = df_mants.rename(columns={'fecha': 'Fecha', 'descripcion': 'Detalle', 'estado': 'Estado'})
+                    st.dataframe(df_mants[['Fecha', 'Recurso', 'Detalle', 'Estado']], use_container_width=True, hide_index=True)
+                else:
+                    st.info("No hay registros de mantenimiento ni fallas.")
+            except Exception as e:
+                st.warning("Error al cargar el historial.")
+
+    with tab_qr:
+        st.subheader("🖨️ Generador de Códigos QR para Equipos")
+        st.write("Imprime estos códigos QR y pégalos físicamente en cada recurso. Si un profesor nota una falla, solo escanea el código con la cámara de su celular y podrá enviar un reporte directo **sin iniciar sesión**.")
+        
+        st.info("⚠️ Escribe aquí el enlace completo de la web que usas para entrar al sistema (Ej: *https://tu-colegio.streamlit.app*).")
+        url_base = st.text_input("Enlace Público de la Aplicación:")
+        
+        if st.button("🚀 Generar QRs para Imprimir", type="primary"):
+            if not url_base:
+                st.error("Debes ingresar la URL de la aplicación primero.")
+            else:
+                url_base = url_base.strip()
+                if not url_base.endswith("/"):
+                    url_base += "/"
+                    
+                st.markdown("---")
+                cols = st.columns(4)
+                for i, recurso in enumerate(RECURSOS):
+                    # Generar enlace especial
+                    qr_url = f"{url_base}?reportar={urllib.parse.quote(recurso)}"
+                    
+                    # Crear el QR en sí
+                    qr = qrcode.QRCode(version=1, box_size=10, border=2)
+                    qr.add_data(qr_url)
+                    qr.make(fit=True)
+                    img = qr.make_image(fill_color="black", back_color="white")
+                    
+                    # Convertirlo a imagen compatible con Streamlit
+                    buf = io.BytesIO()
+                    img.save(buf, format="PNG")
+                    
+                    # Mostrarlo en pantalla
+                    with cols[i % 4]:
+                        with st.container(border=True):
+                            st.image(buf.getvalue(), use_container_width=True)
+                            st.markdown(f"<p style='text-align:center; font-weight:bold; font-size:14px; margin-top:-10px;'>{recurso}</p>", unsafe_allow_html=True)
+
+# ------------------------------------------------------------------
+# SECCIÓN: CONFIGURACIÓN
+# ------------------------------------------------------------------
 if page == "Configuración":
     st.title("⚙️ Configuración del Sistema")
     st.write("Desde aquí puedes administrar los elementos centrales de la aplicación.")
     
-    tab_prof, tab_cur, tab_rec, tab_mant = st.tabs(["Profesores", "Cursos", "Recursos", "Mantenimientos"])
+    # Se eliminó tab_mant de aquí porque se mudó a la página "Técnicos"
+    tab_prof, tab_cur, tab_rec = st.tabs(["Profesores", "Cursos", "Recursos"])
     
     with tab_prof:
         st.write("### 👥 Administración de Profesores")
@@ -859,52 +992,3 @@ if page == "Configuración":
                             st.rerun()
                         except Exception as e:
                             st.error("No se puede eliminar porque tiene reservas o reportes de mantenimiento asociados.")
-
-    with tab_mant:
-        st.subheader("🛠️ Gestión de Mantenimientos")
-        
-        c1, c2 = st.columns([1, 2])
-        
-        with c1:
-            st.write("#### Reportar Falla")
-            with st.form("form_mant_config"):
-                rec_mant = st.selectbox("Selecciona el Recurso", list(map_rec.keys()) if map_rec else ["No hay recursos"])
-                fecha_mant = st.date_input("Fecha del reporte", dt.date.today())
-                estado = st.selectbox("Estado", ["En Reparación", "Dado de Baja", "Reparado"])
-                detalle = st.text_area("Descripción de la falla")
-                
-                submit_mant = st.form_submit_button("Guardar Reporte", use_container_width=True)
-                
-                if submit_mant:
-                    if rec_mant == "No hay recursos" or not detalle.strip():
-                        st.error("Por favor completa la descripción.")
-                    else:
-                        recurso_id = map_rec[rec_mant]
-                        datos_mant = {
-                            "recurso_id": recurso_id,
-                            "fecha": fecha_mant.strftime("%Y-%m-%d"),
-                            "descripcion": detalle,
-                            "estado": estado
-                        }
-                        try:
-                            supabase.table("mantenimientos").insert(datos_mant).execute()
-                            st.success(f"Reporte guardado para {rec_mant}.")
-                            st.cache_data.clear() 
-                            time.sleep(1)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error al guardar: {e}")
-
-        with c2:
-            st.write("#### Historial de Equipos")
-            try:
-                mants = supabase.table("mantenimientos").select("*, recursos(nombre)").execute().data
-                if mants:
-                    df_mants = pd.DataFrame(mants)
-                    df_mants['Recurso'] = df_mants['recursos'].apply(lambda x: x['nombre'] if x else 'Desconocido')
-                    df_mants = df_mants.rename(columns={'fecha': 'Fecha', 'descripcion': 'Detalle', 'estado': 'Estado'})
-                    st.dataframe(df_mants[['Fecha', 'Recurso', 'Detalle', 'Estado']], use_container_width=True, hide_index=True)
-                else:
-                    st.info("No hay registros de mantenimiento.")
-            except Exception as e:
-                st.warning("Error al cargar el historial.")
