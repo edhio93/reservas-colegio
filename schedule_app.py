@@ -616,9 +616,9 @@ if page == "Base de datos":
 
 # --- VISTA SEMANAL ---
 elif page == "Semana": 
+    import json # Necesario para la animación del monitor
     st.header("🗓️ Vista Semanal")
     
-    # Función auxiliar para colores
     def get_color_from_string(s):
         import hashlib
         hash_val = int(hashlib.md5(s.encode('utf-8')).hexdigest(), 16)
@@ -646,7 +646,7 @@ elif page == "Semana":
         selected_cursos = col_c.multiselect("Filtrar Cursos", cursos_list, placeholder="Todos")
 
     start_of_week = selected_date - dt.timedelta(days=selected_date.weekday())
-    week_days = [start_of_week + dt.timedelta(days=i) for i in range(5)] # Lunes a Viernes
+    week_days = [start_of_week + dt.timedelta(days=i) for i in range(5)]
     
     if not df.empty:
         mask = (df['fecha_obj'] >= week_days[0]) & (df['fecha_obj'] <= week_days[-1])
@@ -660,112 +660,156 @@ elif page == "Semana":
     st.markdown("---")
     
     # --- INTERRUPTOR MODO TV ---
-    modo_tv = st.toggle("📺 Activar Modo TV / Monitor (Animado)", value=False)
+    modo_tv = st.toggle("📺 Activar Modo Monitor (Pantalla Automática)", value=False)
     
     dias_es = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
 
     if modo_tv:
-        # ======= MODO PANTALLA ANIMADA =======
+        # ======= MODO PANTALLA ANIMADA Y FULLSCREEN =======
         if df_week.empty:
             st.info("No hay reservas esta semana para mostrar en la pantalla.")
         else:
-            # Ordenar las reservas cronológicamente para la pantalla
             df_tv = df_week.sort_values(by=['fecha_obj', 'Hora inicio'])
             
-            # Construir las tarjetas HTML para la animación
-            cards_html = ""
+            # Preparar los datos para Javascript
+            tv_data = []
             for _, row in df_tv.iterrows():
-                dia_nombre = dias_es[row['fecha_obj'].weekday()]
-                fecha_str = f"{dia_nombre} {row['fecha_obj'].strftime('%d/%m')}"
-                horario = f"{str(row['Hora inicio'])[:5]} a {str(row['Hora fin'])[:5]}"
-                prof_color = get_color_from_string(str(row['Profesor']))
-                
-                cards_html += f"""
-                <div class="tv-card" style="border-left-color: {prof_color};">
-                    <div class="tv-time">
-                        <div class="tv-date">{fecha_str}</div>
-                        <div>🕒 {horario}</div>
-                    </div>
-                    <div class="tv-details">
-                        <div class="tv-recurso">{row['Recurso']}</div>
-                        <div class="tv-profesor">👨‍🏫 {row['Profesor']} &nbsp;|&nbsp; 📚 {row['Curso']}</div>
-                    </div>
-                </div>
-                """
+                tv_data.append({
+                    "dia": dias_es[row['fecha_obj'].weekday()],
+                    "fecha": row['fecha_obj'].strftime('%d/%m'),
+                    "horario": f"{str(row['Hora inicio'])[:5]} a {str(row['Hora fin'])[:5]}",
+                    "recurso": str(row['Recurso']),
+                    "profesor": str(row['Profesor']),
+                    "curso": str(row['Curso']),
+                    "color": get_color_from_string(str(row['Profesor']))
+                })
             
-            # CSS y HTML para el efecto marquesina (scroll vertical infinito)
+            tv_data_json = json.dumps(tv_data)
+            
+            # Código HTML/JS con Carrusel Automático y Botón FullScreen
             tv_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-                body {{ background-color: transparent; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }}
-                .tv-container {{ 
-                    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); 
-                    height: 70vh; 
-                    border-radius: 15px; 
-                    overflow: hidden; 
-                    position: relative;
-                    box-shadow: inset 0 0 50px rgba(0,0,0,0.5);
-                }}
-                .tv-header {{
-                    position: absolute; top: 0; left: 0; right: 0;
-                    background: rgba(15, 23, 42, 0.9);
-                    color: #38bdf8; text-align: center; padding: 15px;
-                    font-size: 24px; font-weight: 900; letter-spacing: 2px;
-                    z-index: 10; text-transform: uppercase;
-                    border-bottom: 2px solid #334155;
-                }}
-                .scroll-wrapper {{
-                    display: flex; flex-direction: column; gap: 20px;
-                    padding: 80px 30px 30px 30px;
-                    animation: scrollUp {max(15, len(df_tv) * 3)}s linear infinite;
-                }}
-                /* Pausar la animación si alguien pasa el mouse (opcional) */
-                .tv-container:hover .scroll-wrapper {{ animation-play-state: paused; }}
+                body {{ margin: 0; padding: 0; background-color: #0f172a; font-family: 'Inter', sans-serif; color: white; overflow: hidden; }}
+                .tv-wrapper {{ display: flex; flex-direction: column; height: 100vh; width: 100vw; background: radial-gradient(circle at top right, #1e293b, #0f172a); }}
                 
-                .tv-card {{
-                    background: rgba(255, 255, 255, 0.05);
-                    backdrop-filter: blur(10px);
-                    border-left: 8px solid;
-                    border-radius: 12px;
-                    padding: 25px 30px;
-                    display: flex;
-                    align-items: center;
-                    color: white;
-                    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-                }}
-                .tv-time {{
-                    min-width: 220px;
-                    font-size: 26px;
-                    font-weight: 900;
-                    color: #e2e8f0;
-                    border-right: 2px solid rgba(255,255,255,0.1);
-                    margin-right: 30px;
-                }}
-                .tv-date {{ font-size: 16px; color: #94a3b8; font-weight: 700; margin-bottom: 5px; text-transform: uppercase; }}
-                .tv-details {{ flex-grow: 1; }}
-                .tv-recurso {{ font-size: 32px; font-weight: 900; color: #38bdf8; margin-bottom: 8px; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }}
-                .tv-profesor {{ font-size: 20px; color: #cbd5e1; font-weight: 400; }}
+                .header {{ display: flex; justify-content: space-between; align-items: center; padding: 25px 40px; background: rgba(15, 23, 42, 0.8); border-bottom: 2px solid #334155; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }}
+                .title {{ font-size: 32px; font-weight: 900; color: #38bdf8; letter-spacing: 2px; text-transform: uppercase; }}
+                .fullscreen-btn {{ background: #0284c7; color: white; border: none; padding: 12px 24px; font-size: 18px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: background 0.3s; }}
+                .fullscreen-btn:hover {{ background: #38bdf8; color: #0f172a; }}
                 
-                @keyframes scrollUp {{
-                    0% {{ transform: translateY(100%); }}
-                    100% {{ transform: translateY(-150%); }}
-                }}
+                .content {{ flex-grow: 1; padding: 40px; display: flex; flex-direction: column; justify-content: center; gap: 20px; }}
+                
+                .tv-card {{ background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border-left: 10px solid; border-radius: 15px; padding: 30px; display: flex; align-items: center; box-shadow: 0 10px 25px rgba(0,0,0,0.3); opacity: 0; transform: translateY(30px); transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1); }}
+                .tv-card.visible {{ opacity: 1; transform: translateY(0); }}
+                
+                .time-box {{ min-width: 280px; border-right: 3px solid rgba(255,255,255,0.1); margin-right: 40px; padding-right: 20px; }}
+                .date-text {{ font-size: 22px; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }}
+                .time-text {{ font-size: 40px; font-weight: 900; color: #e2e8f0; }}
+                
+                .details-box {{ flex-grow: 1; }}
+                .resource-text {{ font-size: 45px; font-weight: 900; color: #38bdf8; margin-bottom: 12px; text-shadow: 0 2px 5px rgba(0,0,0,0.5); }}
+                .prof-text {{ font-size: 28px; color: #cbd5e1; font-weight: 400; }}
+                
+                .progress-bar {{ position: absolute; bottom: 0; left: 0; height: 6px; background: #38bdf8; width: 0%; transition: width 8s linear; }}
             </style>
-            
-            <div class="tv-container">
-                <div class="tv-header">📡 HORARIO DE ENLACES Y RECURSOS</div>
-                <div class="scroll-wrapper">
-                    {cards_html}
-                    {cards_html}
+            </head>
+            <body>
+                <div class="tv-wrapper" id="tv-wrapper">
+                    <div class="header">
+                        <div class="title">📡 HORARIO DE ENLACES Y RECURSOS</div>
+                        <button class="fullscreen-btn" onclick="toggleFullScreen()">🔲 Pantalla Completa</button>
+                    </div>
+                    <div class="content" id="cards-container"></div>
+                    <div class="progress-bar" id="progress"></div>
                 </div>
-            </div>
+
+                <script>
+                    const data = {tv_data_json};
+                    const container = document.getElementById('cards-container');
+                    const progress = document.getElementById('progress');
+                    let currentIndex = 0;
+                    const itemsPerPage = 4; // Muestra 4 bloques por pantalla
+                    const slideDuration = 8000; // 8 segundos por pantalla
+
+                    function toggleFullScreen() {{
+                        const elem = document.documentElement;
+                        if (!document.fullscreenElement) {{
+                            elem.requestFullscreen().catch(err => console.log(err));
+                        }} else {{
+                            if (document.exitFullscreen) document.exitFullscreen();
+                        }}
+                    }}
+
+                    function renderCards() {{
+                        container.innerHTML = '';
+                        
+                        // Reiniciar barra de progreso
+                        progress.style.transition = 'none';
+                        progress.style.width = '0%';
+                        setTimeout(() => {{
+                            progress.style.transition = `width ${{slideDuration}}ms linear`;
+                            progress.style.width = '100%';
+                        }}, 50);
+
+                        // Seleccionar los datos de esta página
+                        const pageData = [];
+                        for(let i=0; i<itemsPerPage; i++) {{
+                            if(data.length > 0) {{
+                                pageData.push(data[(currentIndex + i) % data.length]);
+                            }}
+                        }}
+                        
+                        // Eliminar duplicados visuales si hay menos reservas que itemsPerPage
+                        const uniquePageData = [...new Set(pageData)];
+
+                        uniquePageData.forEach((item, index) => {{
+                            const card = document.createElement('div');
+                            card.className = 'tv-card';
+                            card.style.borderLeftColor = item.color;
+                            card.innerHTML = `
+                                <div class="time-box">
+                                    <div class="date-text">${{item.dia}} ${{item.fecha}}</div>
+                                    <div class="time-text">🕒 ${{item.horario}}</div>
+                                </div>
+                                <div class="details-box">
+                                    <div class="resource-text">${{item.recurso}}</div>
+                                    <div class="prof-text">👨‍🏫 ${{item.profesor}} &nbsp;|&nbsp; 📚 ${{item.curso}}</div>
+                                </div>
+                            `;
+                            container.appendChild(card);
+                            
+                            // Animación en cascada para entrar
+                            setTimeout(() => {{ card.classList.add('visible'); }}, index * 200);
+                        }});
+
+                        // Avanzar el índice
+                        if (data.length > itemsPerPage) {{
+                            currentIndex = (currentIndex + itemsPerPage) % data.length;
+                        }}
+                    }}
+
+                    renderCards();
+                    if(data.length > itemsPerPage) {{
+                        setInterval(renderCards, slideDuration);
+                    }} else {{
+                        // Si hay pocas reservas, dejar barra llena y no rotar
+                        progress.style.transition = 'width 1s linear';
+                        progress.style.width = '100%';
+                    }}
+                </script>
+            </body>
+            </html>
             """
             
-            # Usar components para renderizar la pantalla completa aislada
-            components.html(tv_html, height=700)
+            # Usamos una altura alta para visualizar bien antes del fullscreen
+            components.html(tv_html, height=800)
 
     else:
-        # ======= MODO TABLA NORMAL (El que ya tenías) =======
+        # ======= MODO TABLA NORMAL =======
         column_names = [f"{dias_es[d.weekday()]}<br><span style='font-size:0.8em; font-weight:normal;'>{d.strftime('%d/%m')}</span>" for d in week_days]
         
         base_horas = [
