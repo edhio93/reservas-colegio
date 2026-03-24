@@ -615,7 +615,7 @@ if page == "Base de datos":
             st.write("No hay datos registrados.")
 
 # --- VISTA SEMANAL ---
-if tab_seleccionado == "📅 Vista Semanal":
+elif tab_seleccionado == "📅 Vista Semanal":
     st.header("📅 Vista Semanal")
     
     col_d1, col_d2 = st.columns([1, 3])
