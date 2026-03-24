@@ -631,14 +631,14 @@ elif page == "Semana":
         st.write("🔍 **Filtros de Búsqueda Avanzados**")
         col_d, col_r, col_p, col_c = st.columns(4)
         
-        # Obtener listas únicas directamente de los datos
-        recursos_list = df['recurso'].dropna().unique().tolist() if not df.empty else []
-        profesores_list = df['profesor'].dropna().unique().tolist() if not df.empty else []
-        cursos_list = df['curso'].dropna().unique().tolist() if not df.empty else []
+        # Usando las mayúsculas exactas de tu Dataframe original
+        recursos_list = df['Recurso'].dropna().unique().tolist() if not df.empty else []
+        profesores_list = df['Profesor'].dropna().unique().tolist() if not df.empty else []
+        cursos_list = df['Curso'].dropna().unique().tolist() if not df.empty else []
         
         # Manejo de la fecha por defecto
         if not df.empty:
-            df['fecha_obj'] = pd.to_datetime(df['fecha']).dt.date
+            df['fecha_obj'] = pd.to_datetime(df['Fecha']).dt.date
             default_date_week = df['fecha_obj'].max()
         else:
             default_date_week = dt.date.today()
@@ -654,9 +654,9 @@ elif page == "Semana":
     
     if not df.empty:
         mask = (df['fecha_obj'] >= week_days[0]) & (df['fecha_obj'] <= week_days[-1])
-        if selected_recursos: mask &= df['recurso'].isin(selected_recursos)
-        if selected_profesores: mask &= df['profesor'].isin(selected_profesores)
-        if selected_cursos: mask &= df['curso'].isin(selected_cursos)
+        if selected_recursos: mask &= df['Recurso'].isin(selected_recursos)
+        if selected_profesores: mask &= df['Profesor'].isin(selected_profesores)
+        if selected_cursos: mask &= df['Curso'].isin(selected_cursos)
         df_week = df[mask]
     else:
         df_week = pd.DataFrame()
@@ -668,7 +668,7 @@ elif page == "Semana":
     
     # Crear los bloques de HORAS dinámicamente según la base de datos (Ej: "08:00 a 09:30")
     if not df.empty:
-        df['bloque_hora'] = df['hora_inicio'].astype(str).str[:5] + " a " + df['hora_fin'].astype(str).str[:5]
+        df['bloque_hora'] = df['Hora inicio'].astype(str).str[:5] + " a " + df['Hora fin'].astype(str).str[:5]
         HORAS = sorted(df['bloque_hora'].unique().tolist())
     else:
         HORAS = []
@@ -682,15 +682,15 @@ elif page == "Semana":
         if not df_week.empty:
             for _, row in df_week.iterrows():
                 day_str = f"{dias_es[row['fecha_obj'].weekday()]} {row['fecha_obj'].strftime('%d/%m')}"
-                bloque_actual = f"{str(row['hora_inicio'])[:5]} a {str(row['hora_fin'])[:5]}"
+                bloque_actual = f"{str(row['Hora inicio'])[:5]} a {str(row['Hora fin'])[:5]}"
                 
                 # Si el día de la reserva es de Lunes a Viernes (está en las columnas)
                 if day_str in column_names:
-                    prof_color = get_color_from_string(str(row['profesor']))
-                    observacion = str(row['observaciones']) if pd.notna(row['observaciones']) and str(row['observaciones']).strip() != '' else ""
+                    prof_color = get_color_from_string(str(row['Profesor']))
+                    observacion = str(row['Observaciones']) if pd.notna(row['Observaciones']) and str(row['Observaciones']).strip() != '' else ""
                     icon = " 📝" if observacion else ""
 
-                    card_content = f"<strong>{row['recurso']}</strong>{icon}<br>{row['profesor']}<br><em>{row['curso']}</em>"
+                    card_content = f"<strong>{row['Recurso']}</strong>{icon}<br>{row['Profesor']}<br><em>{row['Curso']}</em>"
                     
                     # Se agregó 'title' para el tooltip nativo de HTML y estilos integrados
                     if icon:
