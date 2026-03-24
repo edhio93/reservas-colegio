@@ -615,7 +615,7 @@ if page == "Base de datos":
             st.write("No hay datos registrados.")
 
 # --- VISTA SEMANAL ---
-elif tab_seleccionado == "📅 Vista Semanal": # Asegúrate de que este nombre coincide con tu menú
+elif page == "Semana": 
     st.header("🗓️ Vista Semanal")
     
     # Función auxiliar para colores (crea un color pastel único para cada profesor)
@@ -716,8 +716,6 @@ elif tab_seleccionado == "📅 Vista Semanal": # Asegúrate de que este nombre c
         
         # Renderizar la tabla final
         st.markdown(schedule.to_html(escape=False), unsafe_allow_html=True)
-        
-
 
 if page == "Dashboard":
     st.title("📈 Dashboard Analítico")
