@@ -207,7 +207,7 @@ if "reportar" in st.query_params:
                         "estado": "Reportado (Vía QR)"
                     }
                     try:
-                        supabase.table("mantenimientos").insert(datos_mant).execute()
+                        supabaseF.table("mantenimientos").insert(datos_mant).execute()
                         st.success("✅ ¡Gracias! Tu reporte ha sido enviado al equipo técnico.")
                         st.balloons()
                     except Exception as e:
@@ -772,29 +772,27 @@ if page == "Técnicos":
 
         with c2:
             st.write("#### 📋 Historial de Equipos (Editable)")
-            st.caption("✏️ Doble clic en una celda para editar. Para eliminar, selecciona la fila (en la casilla izquierda) y presiona la tecla **Suprimir/Delete** en tu teclado. Luego haz clic en Guardar.")
+            st.caption("✏️ Doble clic en una celda para editar. Para eliminar, selecciona la fila (casilla izquierda) y presiona **Suprimir/Delete**. Luego haz clic en Guardar.")
             
             try:
-                # 1. Traemos los datos de Supabase ordenados por fecha
                 mants = supabase.table("mantenimientos").select("*, recursos(nombre)").order("fecha", desc=True).execute().data
                 
                 if mants:
                     df_mants = pd.DataFrame(mants)
-                    
-                    # Extraer el nombre del recurso de la relación
                     df_mants['Recurso'] = df_mants['recursos'].apply(lambda x: x['nombre'] if isinstance(x, dict) else 'Desconocido')
                     
-                    # Preparamos las columnas que queremos mostrar (Mantenemos el ID oculto pero lo necesitamos para actualizar/borrar)
                     df_mostrar = df_mants[['id', 'fecha', 'Recurso', 'descripcion', 'estado']].copy()
                     df_mostrar = df_mostrar.rename(columns={'fecha': 'Fecha', 'descripcion': 'Detalle', 'estado': 'Estado'})
 
-                    # 2. Mostramos el Editor de Datos interactivo
+                    # 🔥 SOLUCIÓN AQUÍ: Convertimos los textos a Objetos de Fecha Reales
+                    df_mostrar['Fecha'] = df_mostrar['Fecha'].apply(parse_date)
+
                     editado = st.data_editor(
                         df_mostrar,
                         column_config={
-                            "id": None, # Ocultamos el ID real de la base de datos
-                            "Recurso": st.column_config.TextColumn("Recurso", disabled=True), # Bloqueamos editar el nombre del equipo para no romper enlaces
-                            "Fecha": st.column_config.DateColumn("Fecha"),
+                            "id": None, 
+                            "Recurso": st.column_config.TextColumn("Recurso", disabled=True), 
+                            "Fecha": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"),
                             "Estado": st.column_config.SelectboxColumn(
                                 "Estado",
                                 help="Selecciona el estado actual",
@@ -804,44 +802,42 @@ if page == "Técnicos":
                         },
                         use_container_width=True,
                         hide_index=False,
-                        num_rows="dynamic", # Esto es lo que permite eliminar filas
-                        key="editor_mantenimientos" # Clave para rastrear los cambios
+                        num_rows="dynamic",
+                        key="editor_mantenimientos"
                     )
 
-                    # 3. Botón para enviar los cambios a Supabase
                     if st.button("💾 Guardar Cambios en la Base de Datos", type="primary", use_container_width=True):
-                        # Capturamos qué celdas/filas modificó el usuario
                         cambios = st.session_state["editor_mantenimientos"]
                         
-                        # --- A. Procesar ELIMINACIONES ---
                         if cambios.get("deleted_rows"):
                             for row_index in cambios["deleted_rows"]:
                                 registro_id = int(df_mostrar.iloc[row_index]['id'])
                                 supabase.table("mantenimientos").delete().eq("id", registro_id).execute()
                         
-                        # --- B. Procesar EDICIONES ---
                         if cambios.get("edited_rows"):
                             for row_index, modificaciones in cambios["edited_rows"].items():
                                 registro_id = int(df_mostrar.iloc[row_index]['id'])
                                 datos_actualizar = {}
                                 
-                                # Verificamos qué columna exacta se modificó
-                                if "Fecha" in modificaciones: datos_actualizar["fecha"] = modificaciones["Fecha"]
-                                if "Detalle" in modificaciones: datos_actualizar["descripcion"] = modificaciones["Detalle"]
-                                if "Estado" in modificaciones: datos_actualizar["estado"] = modificaciones["Estado"]
+                                # 🔥 SOLUCIÓN AL GUARDAR: Convertimos la fecha de vuelta a texto para Supabase
+                                if "Fecha" in modificaciones: 
+                                    datos_actualizar["fecha"] = str(modificaciones["Fecha"])[:10] 
+                                if "Detalle" in modificaciones: 
+                                    datos_actualizar["descripcion"] = modificaciones["Detalle"]
+                                if "Estado" in modificaciones: 
+                                    datos_actualizar["estado"] = modificaciones["Estado"]
                                 
                                 if datos_actualizar:
                                     supabase.table("mantenimientos").update(datos_actualizar).eq("id", registro_id).execute()
 
                         st.success("✅ ¡Base de datos actualizada correctamente!")
-                        time.sleep(1) # Pequeña pausa para que el usuario lea el mensaje
-                        st.rerun() # Recargamos la app para mostrar los datos frescos
+                        time.sleep(1)
+                        st.rerun()
 
                 else:
                     st.info("No hay registros de mantenimiento activos.")
             except Exception as e:
                 st.warning(f"Error al cargar o modificar el historial: {e}")
-
     with tab_qr:
         st.subheader("🖨️ Generador de Códigos QR para Equipos")
         st.write("Escribe el enlace de la aplicación. Al generarse los códigos, podrás descargar un archivo `.zip` con todos los QR listos para imprimir.")
