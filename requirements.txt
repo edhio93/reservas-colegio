@@ -6,3 +6,4 @@ streamlit-autorefresh
 qrcode
 pillow
 fpdf
+matplotlib
