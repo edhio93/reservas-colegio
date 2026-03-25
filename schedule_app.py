@@ -22,7 +22,7 @@ import google.generativeai as genai
 
 # --- CONFIGURACIÓN DE GEMINI ---
 # Reemplaza 'TU_API_KEY_AQUI' con la que copiaste de AI Studio
-GEMINI_API_KEY = "TU_API_KEY_AQUI" 
+GEMINI_API_KEY = "AIzaSyCzirgDkhlTxUto1A2vk9P_MClwyUaRXQs" 
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
