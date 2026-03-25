@@ -568,7 +568,46 @@ if st.sidebar.button("🔄 Refrescar Pantalla", use_container_width=True):
 if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
     for key in st.session_state.keys(): del st.session_state[key]
     st.rerun()
+# ==============================================================================
+# 🤖 WIDGET DE CHATBOT EN EL PANEL IZQUIERDO
+# ==============================================================================
+st.sidebar.markdown("---")
 
+with st.sidebar.expander("💬 Asistente IA (Abrir Chat)", expanded=False):
+    st.info("💡 Pregúntame sobre reparaciones o fallas.")
+    
+    # 1. INICIALIZAR LA MEMORIA
+    if "chat_session" not in st.session_state:
+        st.session_state.chat_session = model.start_chat(
+            history=[
+                {"role": "user", "parts": ["Actúa como un ingeniero informático senior dando soporte a otros técnicos. Sé breve y directo."]},
+                {"role": "model", "parts": ["Entendido. Estoy aquí para ayudarte."]}
+            ]
+        )
+        
+    # 2. MOSTRAR EL HISTORIAL DE MENSAJES
+    contenedor_chat = st.container(height=400) 
+    
+    with contenedor_chat:
+        for mensaje in st.session_state.chat_session.history:
+            if "Actúa como un ingeniero" not in mensaje.parts[0].text and "Entendido" not in mensaje.parts[0].text:
+                rol = "assistant" if mensaje.role == "model" else "user"
+                with st.chat_message(rol):
+                    st.markdown(mensaje.parts[0].text)
+    
+    # 3. CAJA DE TEXTO PARA ESCRIBIR
+    if pregunta := st.chat_input("Escribe tu duda..."):
+        with contenedor_chat:
+            with st.chat_message("user"):
+                st.markdown(pregunta)
+            
+            with st.chat_message("assistant"):
+                with st.spinner("Pensando..."):
+                    try:
+                        respuesta = st.session_state.chat_session.send_message(pregunta)
+                        st.markdown(respuesta.text)
+                    except Exception as e:
+                        st.error(f"Error de red: {e}")
 
 # ------------------------------------------------------------------
 # PÁGINAS
