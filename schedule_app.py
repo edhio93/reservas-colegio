@@ -21,15 +21,15 @@ import zipfile
 import google.generativeai as genai
 
 # --- CONFIGURACIÓN DE GEMINI ---
-# Reemplaza 'TU_API_KEY_AQUI' con la que copiaste de AI Studio
 GEMINI_API_KEY = "AIzaSyCzirgDkhlTxUto1A2vk9P_MClwyUaRXQs" 
 genai.configure(api_key=GEMINI_API_KEY)
-model_ia = genai.GenerativeModel('gemini-1.5-flash-latest')
+
+# Cambiamos 'model_ia' por 'model' para que coincida con todo tu código de abajo
+model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
 def consultar_gemini(prompt):
     try:
-        # 2. AQUÍ ESTABA EL ERROR: Debe decir 'model_ia' para que coincida con el de arriba
-        response = model_ia.generate_content(prompt) 
+        response = model.generate_content(prompt) 
         return response.text
     except Exception as e:
         return f"Error con la IA: {e}"
