@@ -1239,19 +1239,15 @@ elif page == "Técnicos":
         def generar_docx_baja(datos, foto_data=None):
             try:
                 document = Document()
-                
-                # Definir estilos de fuente por defecto
                 style_n = document.styles['Normal']
                 style_n.font.name = 'Arial'
                 style_n.font.size = Pt(11)
 
-                # --- CABECERA ---
                 hdr = document.add_paragraph()
                 hdr.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-                # Nombre del colegio actualizado
                 r_hdr = hdr.add_run('DEPARTAMENTO DE ENLACES/INFORMÁTICA\nLICEO BICENTENARIO DE EXCELENCIA COLEGIO ANTONIO VARAS')
                 r_hdr.font.size = Pt(10)
-                r_hdr.font.color.rgb = RGBColor(100, 100, 100) # Gris
+                r_hdr.font.color.rgb = RGBColor(100, 100, 100) 
 
                 titulo = document.add_paragraph()
                 titulo.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
@@ -1260,10 +1256,8 @@ elif page == "Técnicos":
                 r_tit = titulo.add_run('INFORME TÉCNICO DE BAJA DE EQUIPO INFORMÁTICO')
                 r_tit.bold = True
                 r_tit.font.size = Pt(16)
-                # Tonalidad burdeo (RGB: 128, 0, 32)
-                r_tit.font.color.rgb = RGBColor(128, 0, 32) 
+                r_tit.font.color.rgb = RGBColor(128, 0, 32) # Tonalidad Burdeo
 
-                # --- 1. IDENTIFICACIÓN DEL EQUIPO (Tabla) ---
                 document.add_heading('1. IDENTIFICACIÓN DEL EQUIPO', level=1)
                 
                 table = document.add_table(rows=6, cols=2)
@@ -1296,7 +1290,6 @@ elif page == "Técnicos":
                 
                 document.add_paragraph().paragraph_format.space_after = Pt(12)
 
-                # --- SECCIONES DE TEXTO ---
                 def add_text_section(title, level, text):
                     document.add_heading(title, level=level)
                     p = document.add_paragraph(text)
@@ -1308,10 +1301,9 @@ elif page == "Técnicos":
 
                 document.add_paragraph().paragraph_format.space_after = Pt(12)
 
-                # --- PIE DE PÁGINA (Solo Fecha, sin firmas) ---
+                # Pie de página: Fecha, sin firmas
                 fecha_p = document.add_paragraph()
                 fecha_p.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
-                # Ajustado a Vicuña y eliminada la tabla de firmas
                 fecha_p.add_run(f"Vicuña, {dt.date.today().strftime('%d de %B de %Y')}")
                 fecha_p.paragraph_format.space_after = Pt(24)
 
@@ -1324,7 +1316,6 @@ elif page == "Técnicos":
                 st.error(f"Error técnico generando Word: {e}")
                 return None
 
-        # --- 2. FORMULARIO EN PANTALLA ---
         tab_baja, tab_historial = st.tabs(["🆕 Procesar Nueva Baja", "📋 Ver Historial y Descargar Reports"])
         
         with tab_baja:
@@ -1334,7 +1325,7 @@ elif page == "Técnicos":
             if res_data_raw:
                 nombres_recursos = sorted(list(set([r.get('nombre', r.get('Nombre', 'Sin nombre')) for r in res_data_raw])))
                 
-                with st.form("form_baja_indep", clear_on_submit=False): 
+                with st.form("form_baja_indep", clear_on_submit=True): 
                     col_sel, col_datos_m = st.columns([1, 2])
                     
                     with col_sel:
@@ -1398,24 +1389,30 @@ elif page == "Técnicos":
                                     
                                     docx_data = generar_docx_baja(datos_baja_form, foto_data_bytes)
                                     if docx_data:
-                                        st.download_button(
-                                            label="⬇️ Descargar Informe de Baja WORD",
-                                            data=docx_data,
-                                            file_name=f"Informe_Baja_{datos_baja_form['marca_modelo'].replace(' ', '_')}.docx",
-                                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                            use_container_width=True,
-                                            key="btn_descarga_reciente"
-                                        )
+                                        # ¡MAGIA STREAMLIT! Guardar en memoria temporal
+                                        st.session_state['baja_docx_data'] = docx_data
+                                        st.session_state['baja_docx_name'] = f"Informe_Baja_{datos_baja_form['marca_modelo'].replace(' ', '_')}.docx"
                                 
                                 except Exception as e:
                                     st.error(f"Error de base de datos: {e}")
+                
+                # --- BOTÓN DE DESCARGA FUERA DEL FORMULARIO ---
+                if 'baja_docx_data' in st.session_state:
+                    st.success("¡Informe generado y listo para descargar!")
+                    st.download_button(
+                        label="⬇️ Descargar Informe de Baja WORD",
+                        data=st.session_state['baja_docx_data'],
+                        file_name=st.session_state['baja_docx_name'],
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        use_container_width=True
+                    )
             else:
                 st.warning("No hay categorías de recursos registradas.")
 
         # --- 3. HISTORIAL INTERACTIVO ---
         with tab_historial:
             st.subheader("📋 Historial Histórico (Equipos Dados de Baja)")
-            st.write("Visualiza las bajas históricas. Puedes re-generar y descargar el informe Word de cualquier baja (solo texto, las fotos no se guardan en BD).")
+            st.write("Visualiza las bajas históricas y re-descarga el informe Word.")
             try:
                 equipos_data = supabase.table("equipos").select("*").order("fecha_baja", desc=True).execute().data
                 
