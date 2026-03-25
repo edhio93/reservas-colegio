@@ -177,25 +177,18 @@ def send_email(subject, body, recipient_email):
 # ==============================================================================
 # --- MODO PÚBLICO: ENRUTAMIENTO VÍA CÓDIGO QR ---
 # ==============================================================================
-# Captura segura de parámetros (evita errores con versiones de Streamlit)
-
-page_param = params.get("page", [""])[0] if isinstance(params.get("page"), list) else params.get("page", "")
+# 1. Captura limpia de parámetros (SIN imprimir nada en pantalla)
+query_params = st.query_params
+page_param = query_params.get("page", "")
 
 if page_param == "reporte":
-    # 1. ESTILOS AESTHETIC (Ocultar menús y decorar)
+    # 2. ESTILOS AESTHETIC (Ocultar menús y decorar)
     st.markdown("""
         <style>
-            /* Ocultar el header, el menú de Streamlit y el footer */
             [data-testid="stHeader"] {display: none;}
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
-            
-            /* Fondo suave para toda la app en celular */
-            .stApp {
-                background-color: #F8FAFC;
-            }
-            
-            /* Estilo tipo 'tarjeta' para el formulario */
+            .stApp { background-color: #F8FAFC; }
             [data-testid="stForm"] {
                 background-color: #FFFFFF;
                 border-radius: 16px;
@@ -206,17 +199,14 @@ if page_param == "reporte":
         </style>
     """, unsafe_allow_html=True)
 
-    # 2. ENCABEZADO CENTRADO
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.image("https://images.vexels.com/content/135222/preview/university-building-simple-icon-135222.png", use_container_width=True)
-    
+    # 3. ENCABEZADO (He quitado la imagen que causaba el cuadro con el "0")
+    st.markdown("<h1 style='text-align: center; font-size: 50px;'>🏫</h1>", unsafe_allow_html=True)
     st.markdown("<h2 style='text-align: center; color: #1E3A8A; font-weight: 800; margin-bottom: 0px;'>🚨 Reportar Falla</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #64748b; font-size: 14px; margin-top: 5px;'>Colegio Antonio Varas - Depto. Enlaces</p>", unsafe_allow_html=True)
-    st.write("") # Espacio
+    st.write("") 
     
-    # 3. LÓGICA DEL REPORTE
-    recurso_id = params.get("id", [""])[0] if isinstance(params.get("id"), list) else params.get("id", "")
+    # 4. LÓGICA DEL REPORTE
+    recurso_id = query_params.get("id", "")
     
     if recurso_id:
         try:
