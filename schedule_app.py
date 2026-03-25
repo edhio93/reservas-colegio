@@ -25,7 +25,7 @@ GEMINI_API_KEY = "AIzaSyCzirgDkhlTxUto1A2vk9P_MClwyUaRXQs"
 genai.configure(api_key=GEMINI_API_KEY)
 
 # Cambiamos 'model_ia' por 'model' para que coincida con todo tu código de abajo
-model = genai.GenerativeModel('gemini-1.5-flash-latest')
+model = genai.GenerativeModel('gemini-pro')
 
 def consultar_gemini(prompt):
     try:
