@@ -370,47 +370,6 @@ if not st.session_state.logged:
                             else: st.error("Contraseña incorrecta")
     st.stop() 
     
-# --- 3. EL SISTEMA PRINCIPAL (AQUÍ ENTRA EL CHATBOT) ---
-if st.session_state.login_exitoso:
-    st.success("✅ Bienvenido al Panel de Control")
-    
-    # Creamos pestañas para separar tus Tickets del Chatbot
-    tab1, tab2 = st.tabs(["📋 Gestión de Tickets", "🤖 Asistente IA"])
-    
-    with tab1:
-        st.write("Aquí va todo tu código de la tabla de Supabase y los botones de los técnicos...")
-        
-    with tab2:
-        st.header("💬 Chatbot de Soporte Técnico")
-        
-        # INICIALIZAR EL CHAT CON MEMORIA
-        if "chat_session" not in st.session_state:
-            # model.start_chat() crea un chat que recuerda el contexto
-            st.session_state.chat_session = model.start_chat(history=[])
-            
-        # DIBUJAR EL HISTORIAL EN PANTALLA
-        for mensaje in st.session_state.chat_session.history:
-            # Google usa 'model' y 'user', Streamlit usa 'assistant' y 'user'
-            rol = "assistant" if mensaje.role == "model" else "user"
-            with st.chat_message(rol):
-                st.markdown(mensaje.parts[0].text)
-                
-        # CAJA DE TEXTO PARA EL USUARIO
-        if pregunta := st.chat_input("Escribe tu duda técnica aquí..."):
-            
-            # Mostrar la pregunta del usuario
-            with st.chat_message("user"):
-                st.markdown(pregunta)
-                
-            # Generar y mostrar la respuesta de Gemini
-            with st.chat_message("assistant"):
-                with st.spinner("Analizando manuales..."):
-                    try:
-                        # send_message manda la pregunta y guarda la respuesta en la memoria
-                        respuesta = st.session_state.chat_session.send_message(pregunta)
-                        st.markdown(respuesta.text)
-                    except Exception as e:
-                        st.error(f"Error de conexión: {e}")
 # ------------------------------------------------------------------
 # 3) CARGA DE LA BASE DE DATOS PRINCIPAL 
 # ------------------------------------------------------------------
