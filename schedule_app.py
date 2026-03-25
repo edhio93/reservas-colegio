@@ -1173,7 +1173,6 @@ elif page == "Técnicos":
 
     st.header("🛠️ Panel de Soporte Técnico")
     
-    # Submenú con Radio Buttons actualizado
     modulo_tec = st.radio("Selecciona el módulo de trabajo:", 
                           ["🎫 Tickets", "🗑️ Baja de Equipos", "📋 Generador QR"], 
                           horizontal=True)
@@ -1200,7 +1199,6 @@ elif page == "Técnicos":
             else:
                 df_mant['notas_tecnico'] = df_mant['notas_tecnico'].fillna("")
             
-            # Métricas
             pendientes = len(df_mant[df_mant['estado'] == 'Reportado (Vía QR)'])
             en_revision = len(df_mant[df_mant['estado'] == 'En Revisión'])
             resueltos = len(df_mant[df_mant['estado'] == 'Resuelto'])
@@ -1247,7 +1245,7 @@ elif page == "Técnicos":
     # ---------------------------------------------------------
     elif modulo_tec == "🗑️ Baja de Equipos":
         st.subheader("🗑️ Procesar Baja y Generar Informe")
-        st.write("Selecciona un equipo para darlo de baja. **Este se eliminará definitivamente de la tabla 'recursos' y se archivará en la tabla 'equipos'.**")
+        st.write("Registra la baja de un equipo específico. **Esto NO afectará la disponibilidad del recurso general en la tabla de reservas.**")
 
         def generar_docx_baja(datos):
             try:
@@ -1283,7 +1281,7 @@ elif page == "Técnicos":
                     run_k.bold = True
                     p.add_run(value)
 
-                fill_cell(0, 0, 'Tipo de Equipo', datos['tipo'])
+                fill_cell(0, 0, 'Categoría / Recurso Base', datos['tipo'])
                 fill_cell(1, 0, 'Marca / Modelo', datos['marca_modelo'])
                 fill_cell(2, 0, 'N° de Serie / Inventario', datos['serie_inventario'])
                 fill_cell(3, 0, 'Ubicación Habitual', datos['ubicacion'])
@@ -1327,7 +1325,7 @@ elif page == "Técnicos":
                 st.error(f"Error generando Word: {e}")
                 return None
 
-        # Consultar recursos activos directamente para este formulario
+        # Consultar recursos activos para usar como "Categoría" del equipo dado de baja
         res_data_raw = supabase.table("recursos").select("*").execute().data
         res_data_activos = []
         if res_data_raw:
@@ -1337,14 +1335,14 @@ elif page == "Técnicos":
                 res_data_activos = res_data_raw
 
         if res_data_activos:
-            res_dict_baja = {r.get('nombre', r.get('Nombre', 'Sin nombre')): r['id'] for r in res_data_activos}
+            # Solo obtenemos los nombres para categorizar
+            nombres_recursos = [r.get('nombre', r.get('Nombre', 'Sin nombre')) for r in res_data_activos]
             
             with st.container(border=True):
                 col_sel, col_datos_m = st.columns([1, 2])
                 
                 with col_sel:
-                    recurso_baja_nom = st.selectbox("Equipo a dar de Baja:", list(res_dict_baja.keys()), key="sel_baja")
-                    recurso_baja_id = res_dict_baja[recurso_baja_nom]
+                    recurso_baja_nom = st.selectbox("Pertenece al Recurso/Categoría:", nombres_recursos, key="sel_baja")
                     marca_mod = st.text_input("Marca / Modelo", placeholder="Ej. HP ProBook")
                     num_serie = st.text_input("N° de Serie / Inventario", placeholder="Ej. SN123456")
                     ubicacion = st.text_input("Ubicación", placeholder="Ej. Sala Computación")
@@ -1356,11 +1354,12 @@ elif page == "Técnicos":
                     recomendacion = st.text_area("Recomendación", height=80, placeholder="Ej. Reciclaje, desguace...")
                     tecnico = st.text_input("Técnico Responsable", placeholder="Tu nombre")
 
-                if st.button("🚫 Procesar Baja (Mover a 'equipos' y Eliminar de 'recursos')", type="primary", use_container_width=True):
+                # EL BOTÓN AHORA SOLO REGISTRA, NO ELIMINA
+                if st.button("🚫 Registrar Baja de Equipo", type="primary", use_container_width=True):
                     if not diagnosis or not justificacion or not tecnico or not marca_mod:
                         st.warning("⚠️ Rellena Marca, Diagnosis, Justificación y Técnico.")
                     else:
-                        with st.spinner("Ejecutando proceso en base de datos..."):
+                        with st.spinner("Registrando en el historial..."):
                             datos_baja = {
                                 "tipo": html_sanitizer.escape(recurso_baja_nom).strip(),
                                 "marca_modelo": html_sanitizer.escape(marca_mod).strip(),
@@ -1386,29 +1385,27 @@ elif page == "Técnicos":
                             }
 
                             try:
+                                # 1. GUARDAR EN LA TABLA 'equipos'
                                 supabase.table("equipos").insert(datos_bd).execute()
-                                supabase.table("recursos").delete().eq("id", recurso_baja_id).execute()
                                 
-                                st.success(f"✅ ¡'{recurso_baja_nom}' ha sido eliminado de los recursos activos y archivado en 'equipos'!")
+                                # ELIMINAMOS LA LÍNEA QUE BORRABA DE RECURSOS.
+                                st.success(f"✅ ¡La baja del equipo '{marca_mod}' ha sido registrada correctamente en el historial!")
                                 
+                                # 2. GENERAR EL WORD
                                 docx_data = generar_docx_baja(datos_baja)
                                 if docx_data:
                                     st.download_button(
                                         label="⬇️ Descargar Informe de Baja (Word)",
                                         data=docx_data,
-                                        file_name=f"Informe_Baja_{datos_baja['tipo'].replace(' ', '_')}.docx",
+                                        file_name=f"Informe_Baja_{datos_baja['marca_modelo'].replace(' ', '_')}.docx",
                                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                         use_container_width=True
                                     )
-                                    st.info("⬆️ Tras descargar el archivo, haz clic en otro botón del menú lateral para refrescar.")
                             
                             except Exception as e:
-                                if "foreign key" in str(e).lower() or "violates" in str(e).lower():
-                                    st.error("⚠️ No se puede eliminar de 'recursos' porque el equipo tiene reservas o reportes técnicos asociados en el historial. Debes borrar sus reservas primero.")
-                                else:
-                                    st.error(f"Error de base de datos: {e}")
+                                st.error(f"Error de base de datos: {e}")
         else:
-            st.warning("No hay recursos activos para dar de baja.")
+            st.warning("No hay categorías de recursos activas.")
 
         st.markdown("---")
         st.subheader("📋 Historial de Equipos (Dados de Baja)")
@@ -1417,14 +1414,12 @@ elif page == "Técnicos":
             if equipos_data:
                 df_eq = pd.DataFrame(equipos_data)
                 df_eq = df_eq[['id', 'recurso_nombre', 'marca', 'serie', 'fecha_baja', 'tecnico_responsable']]
-                df_eq.columns = ['ID Baja', 'Equipo', 'Marca/Modelo', 'Serie', 'Fecha Baja', 'Técnico']
+                df_eq.columns = ['ID Baja', 'Categoría', 'Marca/Modelo', 'Serie', 'Fecha Baja', 'Técnico']
                 st.dataframe(df_eq, use_container_width=True, hide_index=True)
             else:
                 st.info("No hay equipos dados de baja en la tabla 'equipos'.")
         except Exception as e:
-            # Aquí te mostrará el error real (RLS, tabla inexistente, etc.)
             st.warning(f"⚠️ No se pudo cargar el historial. Detalle técnico: {e}")
-            st.info("💡 Asegúrate de haber creado la tabla 'equipos' y revisado las políticas de seguridad (RLS) en Supabase.")
 
     # ---------------------------------------------------------
     # MÓDULO 3: GENERADOR DE CÓDIGOS QR
@@ -1433,7 +1428,6 @@ elif page == "Técnicos":
         st.subheader("📋 Generación de Códigos QR para Equipos")
         st.write("Selecciona un recurso para generar su código QR único. Pégalo en el equipo físico para que los usuarios puedan reportar fallas.")
         
-        # Consultar recursos activos directamente
         res_data_raw = supabase.table("recursos").select("*").execute().data
         res_data_activos = []
         if res_data_raw:
@@ -1449,7 +1443,6 @@ elif page == "Técnicos":
                 res_qr_nom = st.selectbox("Recurso para QR", list(res_dict_qr.keys()), index=0)
                 res_qr_id = res_dict_qr[res_qr_nom]
                 
-                # ¡Cambia esta URL por la definitiva de tu aplicación publicada!
                 base_url = "https://escuela-san-rafael.streamlit.app/" 
                 report_url = f"{base_url}?page=reporte&id={res_qr_id}"
                 
@@ -1467,7 +1460,7 @@ elif page == "Técnicos":
                         st.download_button(
                             label="⬇️ Descargar Imagen QR",
                             data=response_img.content,
-                            file_name=f"QR_Enlaces_{res_qr_nom.replace(' ', '_')}.png",
+                            file_name=f"QR_{res_qr_nom.replace(' ', '_')}.png",
                             mime="image/png",
                             use_container_width=True
                         )
