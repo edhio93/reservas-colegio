@@ -569,14 +569,16 @@ if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
     for key in st.session_state.keys(): del st.session_state[key]
     st.rerun()
 # ==============================================================================
-# 🤖 WIDGET DE CHATBOT EN EL PANEL IZQUIERDO
+# 🤖 WIDGET DE CHATBOT (VENTANA FLOTANTE / MODAL)
 # ==============================================================================
 st.sidebar.markdown("---")
 
-with st.sidebar.expander("💬 Asistente IA (Abrir Chat)", expanded=False):
-    st.info("💡 Pregúntame sobre reparaciones o fallas.")
+# 1. Definimos la estructura de la ventana flotante (con ancho "large")
+@st.dialog("🤖 Asistente Técnico IA", width="large")
+def abrir_ventana_chat():
+    st.info("💡 Pregúntame sobre reparaciones, fallas o configuraciones. Cierra esta ventana con la 'X' arriba a la derecha.")
     
-    # 1. INICIALIZAR LA MEMORIA
+    # Inicializar la memoria de la IA
     if "chat_session" not in st.session_state:
         st.session_state.chat_session = model.start_chat(
             history=[
@@ -585,18 +587,19 @@ with st.sidebar.expander("💬 Asistente IA (Abrir Chat)", expanded=False):
             ]
         )
         
-    # 2. MOSTRAR EL HISTORIAL DE MENSAJES
+    # Contenedor para que el chat tenga barra de desplazamiento
     contenedor_chat = st.container(height=400) 
     
     with contenedor_chat:
+        # Mostrar el historial
         for mensaje in st.session_state.chat_session.history:
             if "Actúa como un ingeniero" not in mensaje.parts[0].text and "Entendido" not in mensaje.parts[0].text:
                 rol = "assistant" if mensaje.role == "model" else "user"
                 with st.chat_message(rol):
                     st.markdown(mensaje.parts[0].text)
     
-    # 3. CAJA DE TEXTO PARA ESCRIBIR
-    if pregunta := st.chat_input("Escribe tu duda..."):
+    # Caja de texto para el usuario
+    if pregunta := st.chat_input("Escribe tu duda técnica aquí..."):
         with contenedor_chat:
             with st.chat_message("user"):
                 st.markdown(pregunta)
@@ -609,6 +612,13 @@ with st.sidebar.expander("💬 Asistente IA (Abrir Chat)", expanded=False):
                     except Exception as e:
                         st.error(f"Error de red: {e}")
 
+# 2. El botón en la barra lateral que activa la ventana flotante
+if st.sidebar.button("💬 Abrir Asistente IA", type="primary", use_container_width=True):
+    abrir_ventana_chat()
+
+# ------------------------------------------------------------------
+# PÁGINAS (Aquí continúa tu código original...)
+# ------------------------------------------------------------------
 # ------------------------------------------------------------------
 # PÁGINAS
 # ------------------------------------------------------------------
