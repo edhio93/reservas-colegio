@@ -559,16 +559,6 @@ PAGES_CONFIG = {
 available_pages = [p for p, conf in PAGES_CONFIG.items() if st.session_state.role in conf["roles"]]
 default_page = "Mis Reservas" if st.session_state.role == 'profesor' else "Registrar"
 page = st.sidebar.radio("Navegación", available_pages, index=available_pages.index(default_page), format_func=lambda p: f"{PAGES_CONFIG[p]['icon']} {p}", label_visibility="collapsed")
-
-st.sidebar.markdown("---")
-
-if st.sidebar.button("🔄 Refrescar Pantalla", use_container_width=True):
-    st.cache_data.clear(); st.rerun()
-
-if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
-    for key in st.session_state.keys(): del st.session_state[key]
-    st.rerun()
-
 # ... (tu código del menú st.sidebar.radio) ...
 
     # ---------------------------------------------------------
@@ -617,6 +607,17 @@ if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
                             st.markdown(respuesta.text)
                         except Exception as e:
                             st.error(f"Error de red: {e}")
+
+
+st.sidebar.markdown("---")
+
+if st.sidebar.button("🔄 Refrescar Pantalla", use_container_width=True):
+    st.cache_data.clear(); st.rerun()
+
+if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
+    for key in st.session_state.keys(): del st.session_state[key]
+    st.rerun()
+
 
 # ------------------------------------------------------------------
 # PÁGINAS
