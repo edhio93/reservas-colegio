@@ -1213,7 +1213,6 @@ elif page == "Dashboard":
 # --- SECCIÓN TÉCNICOS (TICKETS, BAJAS INDEPENDIENTES Y CÓDIGOS QR) ---
 # ==============================================================================
 elif page == "Técnicos":
-    # Importar librerías necesarias
     import io
     from io import BytesIO
     import qrcode
@@ -1228,7 +1227,6 @@ elif page == "Técnicos":
 
     st.header("🛠️ Panel de Soporte Técnico")
     
-    # Submenú con Radio Buttons
     modulo_tec = st.radio("Selecciona el módulo de trabajo:", 
                           ["🎫 Tickets", "🗑️ Baja de Equipos", "📋 Generador QR"], 
                           horizontal=True)
@@ -1249,29 +1247,29 @@ elif page == "Técnicos":
             df_mant['Recurso'] = df_mant['recursos'].apply(lambda x: x.get('nombre', 'Desconocido') if isinstance(x, dict) else "Desconocido")
             if 'notas_tecnico' not in df_mant.columns: df_mant['notas_tecnico'] = ""
             else: df_mant['notas_tecnico'] = df_mant['notas_tecnico'].fillna("")
+            
             pendientes = len(df_mant[df_mant['estado'] == 'Reportado (Vía QR)'])
             en_revision = len(df_mant[df_mant['estado'] == 'En Revisión'])
             resueltos = len(df_mant[df_mant['estado'] == 'Resuelto'])
+            
             c1, c2, c3 = st.columns(3)
             estilo_metrica = "background:white; border-radius:12px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 5px solid"
             with c1: st.markdown(f'<div style="{estilo_metrica} #EF4444;"><div style="color:#64748b; font-size:0.85em; font-weight:bold;">🔴 PENDIENTES</div><div style="font-size:2.2em; font-weight:900; color:#B91C1C;">{pendientes}</div></div>', unsafe_allow_html=True)
             with c2: st.markdown(f'<div style="{estilo_metrica} #F59E0B;"><div style="color:#64748b; font-size:0.85em; font-weight:bold;">🟡 EN REVISIÓN</div><div style="font-size:2.2em; font-weight:900; color:#D97706;">{en_revision}</div></div>', unsafe_allow_html=True)
             with c3: st.markdown(f'<div style="{estilo_metrica} #10B981;"><div style="color:#64748b; font-size:0.85em; font-weight:bold;">🟢 RESUELTOS</div><div style="font-size:2.2em; font-weight:900; color:#047857;">{resueltos}</div></div>', unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)
+            
             t_pendientes, t_revision, t_resueltos = st.tabs(["🔴 Pendientes", "🟡 En Revisión", "🟢 Resueltos"])
+            
             def renderizar_tickets(df_filtrado, color_icon, estados_destino):
                 if df_filtrado.empty:
                     st.info("✨ No hay tickets en esta categoría actualmente.")
                     return
                 for _, row in df_filtrado.iterrows():
                     with st.expander(f"{color_icon} Ticket #{row['id']} | {row['Recurso']} | Fecha: {row['fecha']}"):
-                        
-                        # --- NUEVO: MOSTRAR QUIÉN REPORTÓ ---
                         quien_reporto = row.get('reportado_por', 'No registrado')
-                        if not quien_reporto: # Por si viene vacío de reportes antiguos
-                            quien_reporto = 'No registrado'
+                        if not quien_reporto: quien_reporto = 'No registrado'
                         st.markdown(f"**👤 Reportado por:** {quien_reporto}")
-                        # ------------------------------------
                         
                         st.markdown(f"**📝 Falla:**\n> {row['descripcion']}")
                         if row['notas_tecnico']: st.markdown(f"**🛠️ Notas Previas:**\n> {row['notas_tecnico']}")
@@ -1282,18 +1280,22 @@ elif page == "Técnicos":
                         
                         if st.button("💾 Guardar Cambios", key=f"btn_{row['id']}", type="primary", use_container_width=True):
                             try:
+                                import html as html_sanitizer
                                 supabase.table("mantenimientos").update({
                                     "estado": nuevo_est, 
-                                    "notas_tecnico": nueva_nota.strip()
+                                    "notas_tecnico": html_sanitizer.escape(nueva_nota).strip()
                                 }).eq("id", row['id']).execute()
                                 st.success("Ticket actualizado.")
                                 time.sleep(1); st.rerun()
-                            except Exception as e: 
-                                st.error(f"Error técnico: {e}")
-                           
+                            except Exception as e: st.error(f"Error técnico: {e}")
+
+            with t_pendientes: renderizar_tickets(df_mant[df_mant['estado'] == 'Reportado (Vía QR)'], "🔴", ["En Revisión", "Resuelto", "Reportado (Vía QR)"])
+            with t_revision: renderizar_tickets(df_mant[df_mant['estado'] == 'En Revisión'], "🟡", ["Resuelto", "En Revisión", "Reportado (Vía QR)"])
+            with t_resueltos: renderizar_tickets(df_mant[df_mant['estado'] == 'Resuelto'], "🟢", ["Resuelto", "En Revisión", "Reportado (Vía QR)"])
+        else: st.info("No hay reportes de mantenimiento.")
 
     # ---------------------------------------------------------
-    # MÓDULO 2: BAJA DE EQUIPOS (INDEPENDIENTE, CON FOTOS Y CANTIDAD)
+    # MÓDULO 2: BAJA DE EQUIPOS
     # ---------------------------------------------------------
     elif modulo_tec == "🗑️ Baja de Equipos":
         st.subheader("🗑️ Procesar Baja y Generar Informe")
@@ -1322,7 +1324,6 @@ elif page == "Técnicos":
                 r_tit.font.color.rgb = RGBColor(128, 0, 32) # Tonalidad Burdeo
 
                 document.add_heading('1. IDENTIFICACIÓN DEL EQUIPO', level=1)
-                
                 table = document.add_table(rows=6, cols=2)
                 table.style = 'Table Grid'
                 
@@ -1364,7 +1365,6 @@ elif page == "Técnicos":
 
                 document.add_paragraph().paragraph_format.space_after = Pt(12)
 
-                # Pie de página: Fecha, sin firmas
                 fecha_p = document.add_paragraph()
                 fecha_p.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
                 fecha_p.add_run(f"Vicuña, {dt.date.today().strftime('%d de %B de %Y')}")
@@ -1374,7 +1374,6 @@ elif page == "Técnicos":
                 document.save(docx_buf)
                 docx_buf.seek(0)
                 return docx_buf.read()
-
             except Exception as e:
                 st.error(f"Error técnico generando Word: {e}")
                 return None
@@ -1383,30 +1382,28 @@ elif page == "Técnicos":
         
         with tab_baja:
             st.subheader("🆕 Registrar Baja de Equipo Independiente")
-            
             res_data_raw = supabase.table("recursos").select("*").execute().data
             if res_data_raw:
                 nombres_recursos = sorted(list(set([r.get('nombre', r.get('Nombre', 'Sin nombre')) for r in res_data_raw])))
                 
                 with st.form("form_baja_indep", clear_on_submit=True): 
                     col_sel, col_datos_m = st.columns([1, 2])
-                    
                     with col_sel:
                         st.markdown("**Identificación**")
                         recurso_cat_nom = st.selectbox("Categoría Maestro (Recurso):", nombres_recursos, index=0)
-                        marca_mod = st.text_input("Marca / Modelo específico", placeholder="Ej. Notebook HP ProBook 440 G7")
+                        marca_mod = st.text_input("Marca / Modelo específico", placeholder="Ej. Notebook HP")
                         cantidad_baja = st.number_input("Cantidad de unidades dadas de baja:", min_value=1, value=1, step=1)
-                        num_serie = st.text_input("N° de Serie / Inventario", placeholder="Ej. SN-XYZ123 / INV-001")
+                        num_serie = st.text_input("N° de Serie / Inventario", placeholder="Ej. SN-XYZ123")
                         ubicacion = st.text_input("Ubicación habitual", placeholder="Ej. Biblioteca")
-                        fecha_adq = st.text_input("Fecha Adquisición (Aprox)", placeholder="Ej. 2021")
+                        fecha_adq = st.text_input("Fecha Adquisición", placeholder="Ej. 2021")
                         uploaded_file = st.file_uploader("Subir foto del equipo (Opcional):", type=['png', 'jpg', 'jpeg'])
                     
                     with col_datos_m:
                         st.markdown("**Diagnosis y Justificación**")
-                        diagnosis = st.text_area("Diagnosis Técnico / Daño detectado", height=120, placeholder="Describe el estado técnico actual...")
-                        justificacion = st.text_area("Justificación de la Baja", height=100, placeholder="Obsolescencia, daño irreparable, costo reparación, etc.")
-                        recomendacion = st.text_area("Recomendación Técnica (Mínima)", height=80, placeholder="Reciclaje, desguace, donación de partes...")
-                        tecnico = st.text_input("Técnico Responsable", placeholder="Tu nombre completo")
+                        diagnosis = st.text_area("Diagnosis Técnico / Daño detectado", height=120)
+                        justificacion = st.text_area("Justificación de la Baja", height=100)
+                        recomendacion = st.text_area("Recomendación Técnica (Mínima)", height=80)
+                        tecnico = st.text_input("Técnico Responsable")
 
                     submit_baja = st.form_submit_button("🚫 Registrar Baja e Historial", type="primary", use_container_width=True)
 
@@ -1415,6 +1412,7 @@ elif page == "Técnicos":
                             st.warning("⚠️ Rellena Marca/Modelo, Diagnosis, Justificación y Técnico.")
                         else:
                             with st.spinner("Procesando registro..."):
+                                import html as html_sanitizer
                                 datos_baja_form = {
                                     "tipo": html_sanitizer.escape(recurso_cat_nom).strip(),
                                     "marca_modelo": html_sanitizer.escape(marca_mod).strip(),
@@ -1427,7 +1425,6 @@ elif page == "Técnicos":
                                     "recomendacion": html_sanitizer.escape(recomendacion).strip(),
                                     "tecnico_responsable": html_sanitizer.escape(tecnico).strip()
                                 }
-                                
                                 datos_bd = {
                                     "recurso_nombre": datos_baja_form['tipo'],
                                     "marca": datos_baja_form['marca_modelo'],
@@ -1440,10 +1437,9 @@ elif page == "Técnicos":
                                     "tecnico_responsable": datos_baja_form['tecnico_responsable'],
                                     "fecha_baja": str(dt.date.today())
                                 }
-
                                 try:
                                     supabase.table("equipos").insert(datos_bd).execute()
-                                    st.success(f"✅ ¡Baja de {cantidad_baja} unidad(es) de '{marca_mod}' registrada correctamente!")
+                                    st.success(f"✅ ¡Baja registrada correctamente!")
                                     st.balloons()
                                     
                                     foto_data_bytes = None
@@ -1452,14 +1448,12 @@ elif page == "Técnicos":
                                     
                                     docx_data = generar_docx_baja(datos_baja_form, foto_data_bytes)
                                     if docx_data:
-                                        # ¡MAGIA STREAMLIT! Guardar en memoria temporal
                                         st.session_state['baja_docx_data'] = docx_data
                                         st.session_state['baja_docx_name'] = f"Informe_Baja_{datos_baja_form['marca_modelo'].replace(' ', '_')}.docx"
-                                
                                 except Exception as e:
                                     st.error(f"Error de base de datos: {e}")
                 
-                # --- BOTÓN DE DESCARGA FUERA DEL FORMULARIO ---
+                # BOTÓN FUERA DEL FORMULARIO
                 if 'baja_docx_data' in st.session_state:
                     st.success("¡Informe generado y listo para descargar!")
                     st.download_button(
@@ -1469,24 +1463,18 @@ elif page == "Técnicos":
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         use_container_width=True
                     )
-            else:
-                st.warning("No hay categorías de recursos registradas.")
+            else: st.warning("No hay categorías registradas.")
 
-        # --- 3. HISTORIAL INTERACTIVO ---
         with tab_historial:
             st.subheader("📋 Historial Histórico (Equipos Dados de Baja)")
-            st.write("Visualiza las bajas históricas y re-descarga el informe Word.")
             try:
                 equipos_data = supabase.table("equipos").select("*").order("fecha_baja", desc=True).execute().data
-                
                 if equipos_data:
                     for row in equipos_data:
                         cant = row.get('cantidad_baja', 1) or 1
                         recurso = row.get('recurso_nombre', 'Sin Categoría')
                         marca = row.get('marca', 'Sin Marca/Modelo')
-                        fecha_f = row['fecha_baja']
-                        
-                        with st.expander(f"🚫 Baja ID #{row['id']} | {marca} (Cant: {cant}) | {fecha_f}"):
+                        with st.expander(f"🚫 Baja ID #{row['id']} | {marca} (Cant: {cant}) | {row['fecha_baja']}"):
                             c1, c2 = st.columns([2, 1])
                             with c1:
                                 st.markdown(f"**Categoría Maestro:** {recurso}")
@@ -1494,101 +1482,18 @@ elif page == "Técnicos":
                             with c2:
                                 st.markdown(f"**Serie/Inv:** {row['serie']}")
                                 st.markdown(f"**Técnico:** {row['tecnico_responsable']}")
-                                
                                 datos_historicos = {
-                                    "tipo": recurso,
-                                    "marca_modelo": marca,
-                                    "cantidad_baja": cant,
-                                    "serie_inventario": row['serie'],
-                                    "ubicacion": "N/A (Dato histórico)",
-                                    "fecha_adq": "N/A (Dato histórico)",
-                                    "diagnosis": row['diagnosis'],
-                                    "justificacion": row['justificacion'],
-                                    "recomendacion": row['recomendacion'],
+                                    "tipo": recurso, "marca_modelo": marca, "cantidad_baja": cant,
+                                    "serie_inventario": row['serie'], "ubicacion": "N/A (Dato histórico)",
+                                    "fecha_adq": "N/A (Dato histórico)", "diagnosis": row['diagnosis'],
+                                    "justificacion": row['justificacion'], "recomendacion": row['recomendacion'],
                                     "tecnico_responsable": row['tecnico_responsable']
                                 }
-                                
                                 docx_hist = generar_docx_baja(datos_historicos, foto_data=None)
-                                
                                 if docx_hist:
-                                    st.download_button(
-                                        label="⬇️ Re-descargar Informe WORD",
-                                        data=docx_hist,
-                                        file_name=f"Re_Informe_Baja_{marca.replace(' ', '_')}_{row['id']}.docx",
-                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                        use_container_width=True,
-                                        key=f"btn_h_{row['id']}" 
-                                    )
-                else:
-                    st.info("No hay historial de bajas en la tabla 'equipos'.")
-            except Exception as e:
-                st.warning(f"⚠️ No se pudo cargar el historial. Detalle técnico: {e}")
-
-    # ---------------------------------------------------------
-    # MÓDULO 3: GENERADOR DE CÓDIGOS QR (MODIFICADO NATIVO)
-    # ---------------------------------------------------------
-    elif modulo_tec == "📋 Generador QR":
-        st.subheader("📋 Generación de Códigos QR para Equipos")
-        st.write("Selecciona un recurso para generar su código QR único.")
-        
-        res_data_raw = supabase.table("recursos").select("*").execute().data
-        res_data_activos = []
-        if res_data_raw:
-            if 'estado' in res_data_raw[0]:
-                res_data_activos = [r for r in res_data_raw if r['estado'] == 'Activo']
-            else:
-                res_data_activos = res_data_raw
-        
-        if res_data_activos:
-            col_sel, col_qr = st.columns([1, 2])
-            with col_sel:
-                res_dict_qr = {r.get('nombre', r.get('Nombre', 'Sin nombre')): r['id'] for r in res_data_activos}
-                res_qr_nom = st.selectbox("Recurso para QR", sorted(list(res_dict_qr.keys())), index=0)
-                
-                res_qr_id_list = [r['id'] for r in res_data_raw if r.get('nombre', r.get('Nombre')) == res_qr_nom]
-                if res_qr_id_list:
-                    res_qr_id = res_qr_id_list[0]
-                    
-                    # URL base actualizada a la tuya definitiva
-                    base_url = "https://enlaces.streamlit.app/" 
-                    report_url = f"{base_url}?page=reporte&id={res_qr_id}"
-                    
-                    st.markdown(f"**URL:**\n`{report_url}`")
-
-            with col_qr:
-                st.write("**Vista Previa del QR:**")
-                try:
-                    # Generación Nativa del QR en Python (No requiere internet ni APIs externas)
-                    qr = qrcode.QRCode(
-                        version=1,
-                        error_correction=qrcode.constants.ERROR_CORRECT_L,
-                        box_size=8,
-                        border=2,
-                    )
-                    qr.add_data(report_url)
-                    qr.make(fit=True)
-                    
-                    # Crear imagen y guardarla en memoria (BytesIO)
-                    img_qr = qr.make_image(fill_color="black", back_color="white")
-                    buf = BytesIO()
-                    img_qr.save(buf, format="PNG")
-                    qr_bytes = buf.getvalue()
-                    
-                    # Mostrar la imagen de forma nativa en Streamlit (¡Esto nunca falla!)
-                    st.image(qr_bytes, width=200)
-                    
-                    # Botón de descarga con la imagen que acabamos de generar
-                    st.download_button(
-                        label="⬇️ Descargar Imagen QR",
-                        data=qr_bytes,
-                        file_name=f"QR_{res_qr_nom.replace(' ', '_')}.png",
-                        mime="image/png",
-                        use_container_width=True
-                    )
-                except Exception as e:
-                    st.error(f"Error generando el QR interno: {e}")
-        else:
-            st.warning("No hay recursos activos.")
+                                    st.download_button("⬇️ Re-descargar Informe WORD", data=docx_hist, file_name=f"Re_Informe_Baja_{marca.replace(' ', '_')}_{row['id']}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True, key=f"btn_h_{row['id']}")
+                else: st.info("No hay historial de bajas.")
+            except Exception as
 # ------------------------------------------------------------------
 # SECCIÓN: CONFIGURACIÓN
 # ------------------------------------------------------------------
