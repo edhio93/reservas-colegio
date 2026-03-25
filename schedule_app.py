@@ -28,7 +28,8 @@ model_ia = genai.GenerativeModel('gemini-1.5-flash-latest')
 
 def consultar_gemini(prompt):
     try:
-        response = model.generate_content(prompt)
+        # 2. AQUÍ ESTABA EL ERROR: Debe decir 'model_ia' para que coincida con el de arriba
+        response = model_ia.generate_content(prompt) 
         return response.text
     except Exception as e:
         return f"Error con la IA: {e}"
