@@ -1335,9 +1335,14 @@ elif page == "Técnicos":
                                 st.success("Ticket actualizado.")
                                 time.sleep(1); st.rerun()
                             except Exception as e: 
-                                st.error(f"Error técnico: {e}")
+                                st.error(f"Error técnico: {e}")                            
 
- # BOTÓN DE INTELIGENCIA ARTIFICIAL
+            with t_pendientes: renderizar_tickets(df_mant[df_mant['estado'] == 'Reportado (Vía QR)'], "🔴", ["En Revisión", "Resuelto", "Reportado (Vía QR)"])
+            with t_revision: renderizar_tickets(df_mant[df_mant['estado'] == 'En Revisión'], "🟡", ["Resuelto", "En Revisión", "Reportado (Vía QR)"])
+            with t_resueltos: renderizar_tickets(df_mant[df_mant['estado'] == 'Resuelto'], "🟢", ["Resuelto", "En Revisión", "Reportado (Vía QR)"])
+        else: st.info("No hay reportes de mantenimiento.")
+
+        # BOTÓN DE INTELIGENCIA ARTIFICIAL
 if st.button("🤖 Obtener Diagnóstico Sugerido (IA)", key=f"ai_btn_{row['id']}"):
     with st.spinner("Gemini está analizando la falla..."):
         prompt_tecnico = f"""
@@ -1351,12 +1356,7 @@ if st.button("🤖 Obtener Diagnóstico Sugerido (IA)", key=f"ai_btn_{row['id']}
         3. Pasos de solución rápida.
         """
         sugerencia = consultar_gemini(prompt_tecnico)
-        st.info(f"**💡 Sugerencia de Gemini:**\n\n{sugerencia}")                                
-
-            with t_pendientes: renderizar_tickets(df_mant[df_mant['estado'] == 'Reportado (Vía QR)'], "🔴", ["En Revisión", "Resuelto", "Reportado (Vía QR)"])
-            with t_revision: renderizar_tickets(df_mant[df_mant['estado'] == 'En Revisión'], "🟡", ["Resuelto", "En Revisión", "Reportado (Vía QR)"])
-            with t_resueltos: renderizar_tickets(df_mant[df_mant['estado'] == 'Resuelto'], "🟢", ["Resuelto", "En Revisión", "Reportado (Vía QR)"])
-        else: st.info("No hay reportes de mantenimiento.")
+        st.info(f"**💡 Sugerencia de Gemini:**\n\n{sugerencia}")   
 
     # ---------------------------------------------------------
     # MÓDULO 2: BAJA DE EQUIPOS
