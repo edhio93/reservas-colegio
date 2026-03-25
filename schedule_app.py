@@ -21,12 +21,19 @@ import zipfile
 import google.generativeai as genai
 
 # --- CONFIGURACIÓN DE GEMINI ---
-GEMINI_API_KEY = "AIzaSyCzirgDkhlTxUto1A2vk9P_MClwyUaRXQs" 
-genai.configure(api_key=GEMINI_API_KEY)
+# Extraemos la llave de forma segura desde los secretos de Streamlit
+try:
+    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=GEMINI_API_KEY)
+    
+    # Recuerda poner aquí el modelo que te funcionó en las pruebas anteriores
+    model = genai.GenerativeModel('gemini-1.5-flash-latest') 
+    
+except KeyError:
+    st.error("🚨 Error: No se encontró la API Key en los secretos de Streamlit.")
+    st.stop() # Detiene la app si no hay llave para evitar errores feos
 
-# Cambiamos 'model_ia' por 'model' para que coincida con todo tu código de abajo
-model = genai.GenerativeModel('gemini-pro')
-
+# --- TU FUNCIÓN PARA LLAMAR A LA IA ---
 def consultar_gemini(prompt):
     try:
         response = model.generate_content(prompt) 
