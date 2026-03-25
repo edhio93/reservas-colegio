@@ -174,49 +174,51 @@ def send_email(subject, body, recipient_email):
     except Exception as e:
         pass 
 
-# ------------------------------------------------------------------
-# 0.5) VISTA PÚBLICA DE REPORTE (ACCESO POR CÓDIGO QR MÓVIL)
-# ------------------------------------------------------------------
-if "reportar" in st.query_params:
-    st.markdown("<style>.block-container { padding-top: 2rem !important; }</style>", unsafe_allow_html=True)
-    recurso_qr = st.query_params["reportar"]
+# ==============================================================================
+# --- MODO PÚBLICO: ENRUTAMIENTO VÍA CÓDIGO QR ---
+# ==============================================================================
+if "page" in st.query_params and st.query_params["page"] == "reporte":
+    st.image("https://images.vexels.com/content/135222/preview/university-building-simple-icon-135222.png", width=80)
+    st.header("🚨 Reportar Falla de Equipo")
     
-    with st.container(border=True):
-        st.markdown(f"<h2 style='text-align: center; color: var(--primary-color);'>🚨 Reporte de Falla</h2>", unsafe_allow_html=True)
-        st.markdown(f"<h4 style='text-align: center; color: gray;'>Equipo: {recurso_qr}</h4>", unsafe_allow_html=True)
-        st.markdown("---")
-        
+    recurso_id = st.query_params.get("id")
+    
+    if recurso_id:
         try:
-            rec_data = supabase.table("recursos").select("id").eq("nombre", recurso_qr).execute().data
-            if not rec_data:
-                st.error("❌ El equipo escaneado no existe en la base de datos.")
-                st.stop()
-            recurso_id = rec_data[0]["id"]
-        except:
-            st.error("Error de conexión al verificar el equipo.")
-            st.stop()
-
-        with st.form("qr_report_form"):
-            detalle = st.text_area("Describe el problema detalladamente (Ej. 'El cable HDMI está roto', 'No enciende', etc.)")
-            if st.form_submit_button("📤 Enviar Reporte a Técnicos", type="primary", use_container_width=True):
-                if detalle.strip():
-                    datos_mant = {
-                        "recurso_id": recurso_id,
-                        "fecha": dt.date.today().strftime("%Y-%m-%d"),
-                        "descripcion": detalle.strip(),
-                        "estado": "Reportado (Vía QR)"
-                    }
-                    try:
-                        supabase.table("mantenimientos").insert(datos_mant).execute()
-                        st.success("✅ ¡Gracias! Tu reporte ha sido enviado al equipo técnico.")
-                        st.balloons()
-                    except Exception as e:
-                        st.error("Ocurrió un error al enviar el reporte.")
-                else:
-                    st.error("⚠️ Debes escribir una descripción del problema.")
+            recurso = supabase.table("recursos").select("nombre").eq("id", recurso_id).execute().data
+            if recurso:
+                st.info(f"Estás reportando una falla para el equipo: **{recurso[0]['nombre']}**")
+                
+                with st.form("form_reporte_publico", clear_on_submit=True):
+                    st.write("Por favor, completa los siguientes datos para que Soporte Técnico pueda ayudarte.")
+                    
+                    nombre_reporta = st.text_input("👤 Tu Nombre Completo (Obligatorio):", placeholder="Ej. Juan Pérez")
+                    descripcion = st.text_area("📝 Describe detalladamente el problema (Obligatorio):", height=150, placeholder="Ej. El proyector no enciende y parpadea una luz roja...")
+                    
+                    submit = st.form_submit_button("🚀 Enviar Reporte al Equipo Técnico", type="primary", use_container_width=True)
+                    
+                    if submit:
+                        if not nombre_reporta.strip() or not descripcion.strip():
+                            st.warning("⚠️ Debes ingresar tu nombre y la descripción del problema para enviar el reporte.")
+                        else:
+                            with st.spinner("Enviando reporte..."):
+                                supabase.table("mantenimientos").insert({
+                                    "recurso_id": recurso_id,
+                                    "descripcion": descripcion.strip(),
+                                    "estado": "Reportado (Vía QR)",
+                                    "reportado_por": nombre_reporta.strip()
+                                }).execute()
+                                st.success("✅ ¡Reporte enviado con éxito! El Departamento de Enlaces ha sido notificado.")
+                                st.balloons()
+            else:
+                st.error("❌ El equipo que intentas reportar no existe o fue dado de baja.")
+        except Exception as e:
+            st.error(f"Error de conexión con la base de datos: {e}")
+    else:
+        st.error("❌ Enlace no válido. Falta el identificador del equipo.")
         
-    st.info("💡 Ya puedes cerrar esta pestaña en tu celular.")
-    st.stop()
+    st.stop() # ¡ESTO ES VITAL! Detiene la app aquí para que no pase al Login
+# ==============================================================================
 
 # ------------------------------------------------------------------
 # 1) INICIALIZACIÓN DE DATOS
