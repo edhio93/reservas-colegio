@@ -935,6 +935,21 @@ elif page == "Dashboard":
             recurso_top = df_datos[C_REC].mode()[0] if not df_datos[C_REC].empty else "N/A"
             profesor_top = df_datos[C_PROF].mode()[0] if not df_datos[C_PROF].empty else "N/A"
 
+            # Calcular rango de fechas para el subtítulo
+            fecha_min = df_datos['fecha_obj'].min().strftime('%d/%m/%Y')
+            fecha_max = df_datos['fecha_obj'].max().strftime('%d/%m/%Y')
+
+            # --- TÍTULO Y RANGO DE FECHAS EN EL DOCUMENTO ---
+            pdf.set_font('Arial', 'B', 16)
+            pdf.set_text_color(30, 58, 138) # Azul institucional
+            pdf.cell(0, 10, s('INFORME ESTADISTICO DE USO DE RECURSOS'), 0, 1, 'C')
+            
+            pdf.set_font('Arial', 'I', 11)
+            pdf.set_text_color(100, 100, 100) # Gris oscuro
+            pdf.cell(0, 6, s(f'Periodo analizado: {fecha_min} al {fecha_max}'), 0, 1, 'C')
+            pdf.ln(8)
+            pdf.set_text_color(31, 41, 55) # Resetear a color texto normal
+
             # =========================================================
             # SECCIÓN 1: RESUMEN EJECUTIVO
             # =========================================================
@@ -957,7 +972,7 @@ elif page == "Dashboard":
             pdf.cell(95, 9, s('Profesor con Mas Solicitudes'), 1, 0, 'L')
             pdf.cell(95, 9, s(profesor_top), 1, 1, 'R')
             
-            pdf.ln(15)
+            pdf.ln(12)
 
             # =========================================================
             # SECCIÓN 2: GRÁFICOS CON ARCHIVOS TEMPORALES
@@ -998,9 +1013,10 @@ elif page == "Dashboard":
             current_y = pdf.get_y()
             pdf.image(img_path_a, x=25, y=current_y, w=160)
             os.remove(img_path_a)
-            pdf.set_y(current_y + 85)
-            pdf.ln(10)
-
+            
+            # --- CORRECCIÓN VISUAL: FORZAR PÁGINA 2 PARA EL GRÁFICO DE PASTEL ---
+            pdf.add_page() 
+            
             # --- GRÁFICO B: DISTRIBUCIÓN DE USO ---
             pdf.set_font('Arial', 'I', 10)
             pdf.cell(0, 8, s('Grafico B: Distribucion de Uso por Tipo de Recurso (Total)'), 0, 1, 'C')
@@ -1027,11 +1043,10 @@ elif page == "Dashboard":
                 img_path_b = tmp_b.name
             plt.close()
             
-            # Insertar en PDF y eliminar archivo
+            # Insertar en PDF (ahora en la parte superior de la página 2)
             current_y_b = pdf.get_y()
             pdf.image(img_path_b, x=55, y=current_y_b, w=100)
             os.remove(img_path_b)
-            pdf.set_y(current_y_b + 110)
 
         return pdf.output(dest='S').encode('latin-1')
 
