@@ -1164,6 +1164,7 @@ elif page == "Técnicos":
     # Importar librerías necesarias
     import io
     from io import BytesIO
+    import qrcode
     try:
         import docx
         from docx import Document
@@ -1175,14 +1176,14 @@ elif page == "Técnicos":
 
     st.header("🛠️ Panel de Soporte Técnico")
     
-    # Submenú con Radio Buttons actualizado
+    # Submenú con Radio Buttons
     modulo_tec = st.radio("Selecciona el módulo de trabajo:", 
                           ["🎫 Tickets", "🗑️ Baja de Equipos", "📋 Generador QR"], 
                           horizontal=True)
     st.markdown("---")
 
     # ---------------------------------------------------------
-    # MÓDULO 1: TICKETS (GESTIÓN DE FALLAS) - Intacto
+    # MÓDULO 1: TICKETS (GESTIÓN DE FALLAS)
     # ---------------------------------------------------------
     if modulo_tec == "🎫 Tickets":
         st.subheader("Gestión de Tickets ingresados vía QR")
@@ -1235,7 +1236,6 @@ elif page == "Técnicos":
         st.subheader("🗑️ Procesar Baja y Generar Informe")
         st.write("Registra la baja de equipos físicos. **Esto NO afectará la disponibilidad ni cantidad de la tabla general 'recursos'.**")
 
-        # --- 1. FUNCIÓN MAESTRA CORREGIDA: GENERAR DOCX CON FOTOS Y CANTIDAD ---
         def generar_docx_baja(datos, foto_data=None):
             try:
                 document = Document()
@@ -1247,9 +1247,9 @@ elif page == "Técnicos":
 
                 # --- CABECERA ---
                 hdr = document.add_paragraph()
-                # CORRECCIÓN ERROR RUN: Alineación va en el párrafo, no en el run.
                 hdr.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-                r_hdr = hdr.add_run('DEPARTAMENTO DE ENLACES/INFORMÁTICA\nESCUELA BÁSICA SAN RAFAEL')
+                # Nombre del colegio actualizado
+                r_hdr = hdr.add_run('DEPARTAMENTO DE ENLACES/INFORMÁTICA\nLICEO BICENTENARIO DE EXCELENCIA COLEGIO ANTONIO VARAS')
                 r_hdr.font.size = Pt(10)
                 r_hdr.font.color.rgb = RGBColor(100, 100, 100) # Gris
 
@@ -1260,41 +1260,36 @@ elif page == "Técnicos":
                 r_tit = titulo.add_run('INFORME TÉCNICO DE BAJA DE EQUIPO INFORMÁTICO')
                 r_tit.bold = True
                 r_tit.font.size = Pt(16)
-                r_tit.font.color.rgb = RGBColor(30, 58, 138) # Azul institucional
+                # Tonalidad burdeo (RGB: 128, 0, 32)
+                r_tit.font.color.rgb = RGBColor(128, 0, 32) 
 
                 # --- 1. IDENTIFICACIÓN DEL EQUIPO (Tabla) ---
                 document.add_heading('1. IDENTIFICACIÓN DEL EQUIPO', level=1)
                 
-                # Crear tabla de 6 filas (agregamos Cantidad) y 2 columnas
                 table = document.add_table(rows=6, cols=2)
                 table.style = 'Table Grid'
                 
-                # Función para llenar celdas de tabla fácilmente
                 def fill_cell(row, col, key, value):
                     cell = table.cell(row, col)
                     cell.vertical_alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
                     p = cell.paragraphs[0]
                     run_k = p.add_run(f"{key}: ")
                     run_k.bold = True
-                    p.add_run(str(value)) # Asegurar string
+                    p.add_run(str(value)) 
 
-                # Datos de identificación
                 fill_cell(0, 0, 'Categoría Base (Recurso)', datos['tipo'])
                 fill_cell(1, 0, 'Marca / Modelo', datos['marca_modelo'])
-                fill_cell(2, 0, 'Cantidad', datos['cantidad_baja']) # NUEVO DATO
+                fill_cell(2, 0, 'Cantidad', datos['cantidad_baja']) 
                 fill_cell(3, 0, 'N° de Serie / Inventario', datos['serie_inventario'])
                 fill_cell(4, 0, 'Ubicación Habitual', datos['ubicacion'])
                 fill_cell(5, 0, 'Fecha de Adquisición', datos['fecha_adq'])
                 
-                # Combinar celdas de la segunda columna para la foto
                 cell_foto = table.cell(0, 1)
-                cell_foto.merge(table.cell(5, 1)) # Combinar todas las filas
+                cell_foto.merge(table.cell(5, 1)) 
                 p_foto = cell_foto.paragraphs[0]
                 p_foto.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
 
-                # --- INSERTAR FOTO SI EXISTE ---
                 if foto_data:
-                    # 'add_picture' acepta un objeto BytesIO directamente
                     p_foto.add_run().add_picture(foto_data, width=Inches(2.5))
                 else:
                     p_foto.add_run('\n\n\n[FOTO NO ADJUNTADA]').font.color.rgb = RGBColor(150, 150, 150)
@@ -1313,24 +1308,12 @@ elif page == "Técnicos":
 
                 document.add_paragraph().paragraph_format.space_after = Pt(12)
 
-                # --- PIE DE PÁGINA (Firmas y Fecha) ---
+                # --- PIE DE PÁGINA (Solo Fecha, sin firmas) ---
                 fecha_p = document.add_paragraph()
                 fecha_p.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
-                fecha_p.add_run(f"San Rafael, {dt.date.today().strftime('%d de %B de %Y')}")
-                fecha_p.paragraph_format.space_after = Pt(48)
-
-                table_f = document.add_table(rows=1, cols=2)
-                table_f.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-                
-                cell_f1 = table_f.cell(0, 0).paragraphs[0]
-                cell_f1.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-                cell_f1.add_run('__________________________\nFirma Técnico Responsable\n')
-                cell_f1.add_run(f"Nombre: {datos['tecnico_responsable']}").font.size = Pt(9)
-                
-                cell_f2 = table_f.cell(0, 1).paragraphs[0]
-                cell_f2.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-                cell_f2.add_run('__________________________\nFirma Dirección / Administración\n')
-                cell_f2.add_run('Nombre y Timbre').font.size = Pt(9)
+                # Ajustado a Vicuña y eliminada la tabla de firmas
+                fecha_p.add_run(f"Vicuña, {dt.date.today().strftime('%d de %B de %Y')}")
+                fecha_p.paragraph_format.space_after = Pt(24)
 
                 docx_buf = BytesIO()
                 document.save(docx_buf)
@@ -1349,25 +1332,19 @@ elif page == "Técnicos":
             
             res_data_raw = supabase.table("recursos").select("*").execute().data
             if res_data_raw:
-                # Usar .get para compatibilidad de mayúsculas/minúsculas en columnas
                 nombres_recursos = sorted(list(set([r.get('nombre', r.get('Nombre', 'Sin nombre')) for r in res_data_raw])))
                 
-                with st.form("form_baja_indep", clear_on_submit=False): # No limpiar para que puedan descargar luego
+                with st.form("form_baja_indep", clear_on_submit=False): 
                     col_sel, col_datos_m = st.columns([1, 2])
                     
                     with col_sel:
                         st.markdown("**Identificación**")
                         recurso_cat_nom = st.selectbox("Categoría Maestro (Recurso):", nombres_recursos, index=0)
                         marca_mod = st.text_input("Marca / Modelo específico", placeholder="Ej. Notebook HP ProBook 440 G7")
-                        
-                        # NUEVO CAMPO: CANTIDAD
                         cantidad_baja = st.number_input("Cantidad de unidades dadas de baja:", min_value=1, value=1, step=1)
-                        
                         num_serie = st.text_input("N° de Serie / Inventario", placeholder="Ej. SN-XYZ123 / INV-001")
                         ubicacion = st.text_input("Ubicación habitual", placeholder="Ej. Biblioteca")
                         fecha_adq = st.text_input("Fecha Adquisición (Aprox)", placeholder="Ej. 2021")
-                        
-                        # NUEVO CAMPO: SUBIR FOTOS
                         uploaded_file = st.file_uploader("Subir foto del equipo (Opcional):", type=['png', 'jpg', 'jpeg'])
                     
                     with col_datos_m:
@@ -1384,7 +1361,6 @@ elif page == "Técnicos":
                             st.warning("⚠️ Rellena Marca/Modelo, Diagnosis, Justificación y Técnico.")
                         else:
                             with st.spinner("Procesando registro..."):
-                                # Sanitizar y preparar datos
                                 datos_baja_form = {
                                     "tipo": html_sanitizer.escape(recurso_cat_nom).strip(),
                                     "marca_modelo": html_sanitizer.escape(marca_mod).strip(),
@@ -1398,12 +1374,11 @@ elif page == "Técnicos":
                                     "tecnico_responsable": html_sanitizer.escape(tecnico).strip()
                                 }
                                 
-                                # Preparar payload exacto para la base de datos 'equipos'
                                 datos_bd = {
                                     "recurso_nombre": datos_baja_form['tipo'],
                                     "marca": datos_baja_form['marca_modelo'],
-                                    "modelo": datos_baja_form['marca_modelo'], # Usamos mismo input
-                                    "cantidad_baja": datos_baja_form['cantidad_baja'], # NUEVO DATO EN BD
+                                    "modelo": datos_baja_form['marca_modelo'],
+                                    "cantidad_baja": datos_baja_form['cantidad_baja'],
                                     "serie": datos_baja_form['serie_inventario'],
                                     "diagnosis": datos_baja_form['diagnosis'],
                                     "justificacion": datos_baja_form['justificacion'],
@@ -1413,23 +1388,18 @@ elif page == "Técnicos":
                                 }
 
                                 try:
-                                    # 1. GUARDAR EN LA TABLA HISTÓRICA 'equipos'
                                     supabase.table("equipos").insert(datos_bd).execute()
-                                    
-                                    # LA TABLA RECURSOS NO SE TOCA.
                                     st.success(f"✅ ¡Baja de {cantidad_baja} unidad(es) de '{marca_mod}' registrada correctamente!")
                                     st.balloons()
                                     
-                                    # 2. PROCESAR FOTO SI SE SUBIÓ
                                     foto_data_bytes = None
                                     if uploaded_file is not None:
                                         foto_data_bytes = BytesIO(uploaded_file.read())
                                     
-                                    # 3. GENERAR EL WORD
                                     docx_data = generar_docx_baja(datos_baja_form, foto_data_bytes)
                                     if docx_data:
                                         st.download_button(
-                                            label="⬇️ Descargar Informe de Baja WORD (Generado ahora)",
+                                            label="⬇️ Descargar Informe de Baja WORD",
                                             data=docx_data,
                                             file_name=f"Informe_Baja_{datos_baja_form['marca_modelo'].replace(' ', '_')}.docx",
                                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -1438,32 +1408,24 @@ elif page == "Técnicos":
                                         )
                                 
                                 except Exception as e:
-                                    if "cantidad_baja" in str(e).lower():
-                                        st.error("⚠️ Error: Necesitas ir al SQL Editor de Supabase y ejecutar: `ALTER TABLE public.equipos ADD COLUMN cantidad_baja integer DEFAULT 1;`")
-                                    else:
-                                        st.error(f"Error de base de datos: {e}")
+                                    st.error(f"Error de base de datos: {e}")
             else:
                 st.warning("No hay categorías de recursos registradas.")
 
-        # --- 3. HISTORIAL INTERACTIVO Y RE-DESCARGA DE REPORTES ---
+        # --- 3. HISTORIAL INTERACTIVO ---
         with tab_historial:
             st.subheader("📋 Historial Histórico (Equipos Dados de Baja)")
             st.write("Visualiza las bajas históricas. Puedes re-generar y descargar el informe Word de cualquier baja (solo texto, las fotos no se guardan en BD).")
-            
-            # Cargar datos históricos
             try:
                 equipos_data = supabase.table("equipos").select("*").order("fecha_baja", desc=True).execute().data
                 
                 if equipos_data:
-                    # En lugar de tabla estática, usar tarjetas expandibles
                     for row in equipos_data:
-                        # Prevenir error si cantidad_baja es nula en BD antigua
                         cant = row.get('cantidad_baja', 1) or 1
                         recurso = row.get('recurso_nombre', 'Sin Categoría')
                         marca = row.get('marca', 'Sin Marca/Modelo')
                         fecha_f = row['fecha_baja']
                         
-                        # Tarjeta expandible
                         with st.expander(f"🚫 Baja ID #{row['id']} | {marca} (Cant: {cant}) | {fecha_f}"):
                             c1, c2 = st.columns([2, 1])
                             with c1:
@@ -1473,8 +1435,6 @@ elif page == "Técnicos":
                                 st.markdown(f"**Serie/Inv:** {row['serie']}")
                                 st.markdown(f"**Técnico:** {row['tecnico_responsable']}")
                                 
-                                # BOTÓN DE RE-DESCARGA DEL REPORTE (SOLO TEXTO)
-                                # Preparamos datos históricos compatibles con la función
                                 datos_historicos = {
                                     "tipo": recurso,
                                     "marca_modelo": marca,
@@ -1488,7 +1448,6 @@ elif page == "Técnicos":
                                     "tecnico_responsable": row['tecnico_responsable']
                                 }
                                 
-                                # Generar Word histórico (sin foto porque no se guarda en BD)
                                 docx_hist = generar_docx_baja(datos_historicos, foto_data=None)
                                 
                                 if docx_hist:
@@ -1498,42 +1457,78 @@ elif page == "Técnicos":
                                         file_name=f"Re_Informe_Baja_{marca.replace(' ', '_')}_{row['id']}.docx",
                                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                         use_container_width=True,
-                                        key=f"btn_h_{row['id']}" # Key única
+                                        key=f"btn_h_{row['id']}" 
                                     )
                 else:
                     st.info("No hay historial de bajas en la tabla 'equipos'.")
             except Exception as e:
                 st.warning(f"⚠️ No se pudo cargar el historial. Detalle técnico: {e}")
-                st.info("💡 Asegúrate de haber creado la tabla 'equipos' en Supabase y ejecutado la query GRANT y DISABLE RLS.")
 
     # ---------------------------------------------------------
-    # MÓDULO 3: GENERADOR DE CÓDIGOS QR - Intacto
+    # MÓDULO 3: GENERADOR DE CÓDIGOS QR (MODIFICADO NATIVO)
     # ---------------------------------------------------------
     elif modulo_tec == "📋 Generador QR":
         st.subheader("📋 Generación de Códigos QR para Equipos")
         st.write("Selecciona un recurso para generar su código QR único.")
+        
         res_data_raw = supabase.table("recursos").select("*").execute().data
+        res_data_activos = []
         if res_data_raw:
-            nombres_recursos_qr = sorted(list(set([r.get('nombre', r.get('Nombre', 'Sin nombre')) for r in res_data_raw])))
-            res_qr_nom = st.selectbox("Recurso para QR", nombres_recursos_qr, index=0)
-            
-            # Obtener ID real
-            res_qr_id_list = [r['id'] for r in res_data_raw if r.get('nombre', r.get('Nombre')) == res_qr_nom]
-            if res_qr_id_list:
-                res_qr_id = res_qr_id_list[0]
-                base_url = "https://escuela-san-rafael.streamlit.app/" 
-                report_url = f"{base_url}?page=reporte&id={res_qr_id}"
-                st.markdown(f"**URL:**\n`{report_url}`")
-                st.write("**Vista Previa:**")
-                qr_api_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={report_url}"
+            if 'estado' in res_data_raw[0]:
+                res_data_activos = [r for r in res_data_raw if r['estado'] == 'Activo']
+            else:
+                res_data_activos = res_data_raw
+        
+        if res_data_activos:
+            col_sel, col_qr = st.columns([1, 2])
+            with col_sel:
+                res_dict_qr = {r.get('nombre', r.get('Nombre', 'Sin nombre')): r['id'] for r in res_data_activos}
+                res_qr_nom = st.selectbox("Recurso para QR", sorted(list(res_dict_qr.keys())), index=0)
+                
+                res_qr_id_list = [r['id'] for r in res_data_raw if r.get('nombre', r.get('Nombre')) == res_qr_nom]
+                if res_qr_id_list:
+                    res_qr_id = res_qr_id_list[0]
+                    
+                    # URL base actualizada a la tuya definitiva
+                    base_url = "https://enlaces.streamlit.app/" 
+                    report_url = f"{base_url}?page=reporte&id={res_qr_id}"
+                    
+                    st.markdown(f"**URL:**\n`{report_url}`")
+
+            with col_qr:
+                st.write("**Vista Previa del QR:**")
                 try:
-                    import requests
-                    st.markdown(f"<div style='text-align:center'><img src='{qr_api_url}' width='200'></div>", unsafe_allow_html=True)
-                    response_img = requests.get(qr_api_url)
-                    if response_img.status_code == 200:
-                        st.download_button(label="⬇️ Descargar Imagen QR", data=response_img.content, file_name=f"QR_{res_qr_nom.replace(' ', '_')}.png", mime="image/png", use_container_width=True)
-                except Exception as e: st.error(f"Error cargando el QR: {e}")
-        else: st.warning("No hay recursos activos.")
+                    # Generación Nativa del QR en Python (No requiere internet ni APIs externas)
+                    qr = qrcode.QRCode(
+                        version=1,
+                        error_correction=qrcode.constants.ERROR_CORRECT_L,
+                        box_size=8,
+                        border=2,
+                    )
+                    qr.add_data(report_url)
+                    qr.make(fit=True)
+                    
+                    # Crear imagen y guardarla en memoria (BytesIO)
+                    img_qr = qr.make_image(fill_color="black", back_color="white")
+                    buf = BytesIO()
+                    img_qr.save(buf, format="PNG")
+                    qr_bytes = buf.getvalue()
+                    
+                    # Mostrar la imagen de forma nativa en Streamlit (¡Esto nunca falla!)
+                    st.image(qr_bytes, width=200)
+                    
+                    # Botón de descarga con la imagen que acabamos de generar
+                    st.download_button(
+                        label="⬇️ Descargar Imagen QR",
+                        data=qr_bytes,
+                        file_name=f"QR_{res_qr_nom.replace(' ', '_')}.png",
+                        mime="image/png",
+                        use_container_width=True
+                    )
+                except Exception as e:
+                    st.error(f"Error generando el QR interno: {e}")
+        else:
+            st.warning("No hay recursos activos.")
 # ------------------------------------------------------------------
 # SECCIÓN: CONFIGURACIÓN
 # ------------------------------------------------------------------
