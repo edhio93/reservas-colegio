@@ -1158,159 +1158,99 @@ elif page == "Dashboard":
     else:
         st.info("No hay reservas registradas en el sistema todavía.")
 # ------------------------------------------------------------------
-# SECCIÓN: TÉCNICOS
-# ------------------------------------------------------------------
-if page == "Técnicos":
-    st.title("🔧 Área de Técnicos y Mantenimiento")
+# --- SECCIÓN TÉCNICOS ---
+elif page == "Técnicos":
+    st.header("🛠️ Panel de Soporte Técnico (HelpDesk)")
+    st.write("Gestiona los reportes de fallas ingresados vía QR. Atiende los tickets y lleva un historial de reparaciones.")
+
+    mant_data = supabase.table("mantenimientos").select("*, recursos(nombre)").order("fecha", desc=True).execute().data
     
-    tab_mant, tab_qr = st.tabs(["🛠️ Gestión de Reportes", "📲 Generador de Códigos QR"])
-    
-    with tab_mant:
-        c1, c2 = st.columns([1, 2])
+    if mant_data:
+        df_mant = pd.DataFrame(mant_data)
+        # Extraer el nombre del recurso de la relación
+        df_mant['Recurso'] = df_mant['recursos'].apply(lambda x: x['nombre'] if isinstance(x, dict) and 'nombre' in x else "Desconocido")
+        
+        # Prevenir errores si la columna notas_tecnico recién fue creada o está vacía
+        if 'notas_tecnico' not in df_mant.columns:
+            df_mant['notas_tecnico'] = ""
+        else:
+            df_mant['notas_tecnico'] = df_mant['notas_tecnico'].fillna("")
+        
+        # --- 1. MÉTRICAS RÁPIDAS (MINI-DASHBOARD) ---
+        pendientes = len(df_mant[df_mant['estado'] == 'Reportado (Vía QR)'])
+        en_revision = len(df_mant[df_mant['estado'] == 'En Revisión'])
+        resueltos = len(df_mant[df_mant['estado'] == 'Resuelto'])
+        
+        c1, c2, c3 = st.columns(3)
+        estilo_metrica = "background:white; border-radius:12px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 5px solid"
+        
         with c1:
-            st.write("#### Actualizar / Nuevo Reporte")
-            with st.form("form_mant_config"):
-                rec_mant = st.selectbox("Selecciona el Recurso", list(map_rec.keys()) if map_rec else ["No hay recursos"])
-                fecha_mant = st.date_input("Fecha del reporte", dt.date.today())
-                estado = st.selectbox("Estado", ["Reportado (Vía QR)", "En Reparación", "Dado de Baja", "Reparado"])
-                detalle = st.text_area("Descripción de la falla")
-                
-                if st.form_submit_button("Guardar/Actualizar Reporte", use_container_width=True, type="primary"):
-                    if rec_mant == "No hay recursos" or not detalle.strip():
-                        st.error("Por favor completa la descripción.")
-                    else:
-                        datos_mant = {
-                            "recurso_id": map_rec[rec_mant],
-                            "fecha": fecha_mant.strftime("%Y-%m-%d"),
-                            "descripcion": detalle,
-                            "estado": estado
-                        }
-                        try:
-                            supabase.table("mantenimientos").insert(datos_mant).execute()
-                            st.success(f"Reporte guardado para {rec_mant}.")
-                            st.cache_data.clear(); time.sleep(1); st.rerun()
-                        except Exception as e:
-                            st.error(f"Error al guardar: {e}")
-
+            st.markdown(f'<div style="{estilo_metrica} #EF4444;"><div style="color:#64748b; font-size:0.85em; font-weight:bold; letter-spacing:1px;">🔴 PENDIENTES (NUEVOS)</div><div style="font-size:2.2em; font-weight:900; color:#B91C1C; line-height:1.2;">{pendientes}</div></div>', unsafe_allow_html=True)
         with c2:
-            st.write("#### 📋 Historial de Equipos (Editable)")
-            st.caption("✏️ Doble clic en una celda para editar. Para eliminar, selecciona la fila (casilla izquierda) y presiona **Suprimir/Delete**. Luego haz clic en Guardar.")
+            st.markdown(f'<div style="{estilo_metrica} #F59E0B;"><div style="color:#64748b; font-size:0.85em; font-weight:bold; letter-spacing:1px;">🟡 EN REVISIÓN</div><div style="font-size:2.2em; font-weight:900; color:#D97706; line-height:1.2;">{en_revision}</div></div>', unsafe_allow_html=True)
+        with c3:
+            st.markdown(f'<div style="{estilo_metrica} #10B981;"><div style="color:#64748b; font-size:0.85em; font-weight:bold; letter-spacing:1px;">🟢 RESUELTOS</div><div style="font-size:2.2em; font-weight:900; color:#047857; line-height:1.2;">{resueltos}</div></div>', unsafe_allow_html=True)
             
-            try:
-                mants = supabase.table("mantenimientos").select("*, recursos(nombre)").order("fecha", desc=True).execute().data
-                
-                if mants:
-                    df_mants = pd.DataFrame(mants)
-                    df_mants['Recurso'] = df_mants['recursos'].apply(lambda x: x['nombre'] if isinstance(x, dict) else 'Desconocido')
-                    
-                    df_mostrar = df_mants[['id', 'fecha', 'Recurso', 'descripcion', 'estado']].copy()
-                    df_mostrar = df_mostrar.rename(columns={'fecha': 'Fecha', 'descripcion': 'Detalle', 'estado': 'Estado'})
+        st.markdown("<br>", unsafe_allow_html=True)
 
-                    # 🔥 SOLUCIÓN AQUÍ: Convertimos los textos a Objetos de Fecha Reales
-                    df_mostrar['Fecha'] = df_mostrar['Fecha'].apply(parse_date)
-
-                    editado = st.data_editor(
-                        df_mostrar,
-                        column_config={
-                            "id": None, 
-                            "Recurso": st.column_config.TextColumn("Recurso", disabled=True), 
-                            "Fecha": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"),
-                            "Estado": st.column_config.SelectboxColumn(
-                                "Estado",
-                                help="Selecciona el estado actual",
-                                options=["Reportado (Vía QR)", "En Revisión", "Reparado", "Dado de Baja"],
-                                required=True,
-                            )
-                        },
-                        use_container_width=True,
-                        hide_index=False,
-                        num_rows="dynamic",
-                        key="editor_mantenimientos"
-                    )
-
-                    if st.button("💾 Guardar Cambios en la Base de Datos", type="primary", use_container_width=True):
-                        cambios = st.session_state["editor_mantenimientos"]
-                        
-                        if cambios.get("deleted_rows"):
-                            for row_index in cambios["deleted_rows"]:
-                                registro_id = int(df_mostrar.iloc[row_index]['id'])
-                                supabase.table("mantenimientos").delete().eq("id", registro_id).execute()
-                        
-                        if cambios.get("edited_rows"):
-                            for row_index, modificaciones in cambios["edited_rows"].items():
-                                registro_id = int(df_mostrar.iloc[row_index]['id'])
-                                datos_actualizar = {}
-                                
-                                # 🔥 SOLUCIÓN AL GUARDAR: Convertimos la fecha de vuelta a texto para Supabase
-                                if "Fecha" in modificaciones: 
-                                    datos_actualizar["fecha"] = str(modificaciones["Fecha"])[:10] 
-                                if "Detalle" in modificaciones: 
-                                    datos_actualizar["descripcion"] = modificaciones["Detalle"]
-                                if "Estado" in modificaciones: 
-                                    datos_actualizar["estado"] = modificaciones["Estado"]
-                                
-                                if datos_actualizar:
-                                    supabase.table("mantenimientos").update(datos_actualizar).eq("id", registro_id).execute()
-
-                        st.success("✅ ¡Base de datos actualizada correctamente!")
-                        time.sleep(1)
-                        st.rerun()
-
-                else:
-                    st.info("No hay registros de mantenimiento activos.")
-            except Exception as e:
-                st.warning(f"Error al cargar o modificar el historial: {e}")
-    with tab_qr:
-        st.subheader("🖨️ Generador de Códigos QR para Equipos")
-        st.write("Escribe el enlace de la aplicación. Al generarse los códigos, podrás descargar un archivo `.zip` con todos los QR listos para imprimir.")
+        # --- 2. TABLERO DE TAREAS (PESTAÑAS) ---
+        t_pendientes, t_revision, t_resueltos = st.tabs(["🔴 Tickets Pendientes", "🟡 Tickets en Revisión", "🟢 Historial Resueltos"])
         
-        url_base = st.text_input("Enlace Público de la Aplicación (Ej: https://tu-colegio.streamlit.app):")
-        
-        # Muestra automáticamente los QR si se ha escrito un enlace
-        if url_base:
-            url_base = url_base.strip()
-            if not url_base.endswith("/"):
-                url_base += "/"
-                
-            # Creamos el archivo ZIP en memoria
-            zip_buffer = io.BytesIO()
+        # Función para dibujar las tarjetas de los tickets para no repetir código
+        def renderizar_tickets(df_filtrado, color_icon, estados_destino):
+            if df_filtrado.empty:
+                st.info("✨ No hay tickets en esta categoría actualmente.")
+                return
             
-            st.markdown("---")
-            cols = st.columns(4)
+            for _, row in df_filtrado.iterrows():
+                # El expander es la tarjeta que se abre y cierra
+                with st.expander(f"{color_icon} Ticket #{row['id']} | {row['Recurso']} | Fecha: {row['fecha']}"):
+                    st.markdown(f"**📝 Descripción de la Falla:**\n> {row['descripcion']}")
+                    
+                    if row['notas_tecnico']:
+                        st.markdown(f"**🛠️ Historial/Notas Previas:**\n> {row['notas_tecnico']}")
+                    
+                    st.markdown("---")
+                    col_a, col_b = st.columns([1, 2])
+                    
+                    with col_a:
+                        nuevo_est = st.selectbox("Cambiar estado a:", estados_destino, key=f"est_{row['id']}")
+                    with col_b:
+                        nueva_nota = st.text_area("Agregar/Actualizar Notas de Reparación:", value=row['notas_tecnico'], key=f"not_{row['id']}", height=68)
+                        
+                    if st.button("💾 Guardar Cambios del Ticket", key=f"btn_{row['id']}", type="primary", use_container_width=True):
+                        try:
+                            # Actualizar el estado y las notas en Supabase
+                            supabase.table("mantenimientos").update({
+                                "estado": nuevo_est,
+                                "notas_tecnico": nueva_nota
+                            }).eq("id", row['id']).execute()
+                            
+                            st.success(f"¡Ticket del {row['Recurso']} actualizado correctamente!")
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e:
+                            if "notas_tecnico" in str(e).lower():
+                                st.error("⚠️ Error: Necesitas ir a Supabase y añadir una columna llamada 'notas_tecnico' (tipo text) a la tabla 'mantenimientos'.")
+                            else:
+                                st.error(f"Error técnico al actualizar: {e}")
+
+        # Llenar cada pestaña con su respectiva información y opciones de estado
+        with t_pendientes:
+            df_pendientes = df_mant[df_mant['estado'] == 'Reportado (Vía QR)']
+            renderizar_tickets(df_pendientes, "🔴", ["En Revisión", "Resuelto", "Reportado (Vía QR)"])
             
-            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-                for i, recurso in enumerate(RECURSOS):
-                    qr_url = f"{url_base}?reportar={urllib.parse.quote(recurso)}"
-                    qr = qrcode.QRCode(version=1, box_size=10, border=2)
-                    qr.add_data(qr_url)
-                    qr.make(fit=True)
-                    img = qr.make_image(fill_color="black", back_color="white")
-                    
-                    buf = io.BytesIO()
-                    img.save(buf, format="PNG")
-                    
-                    # Añadir al ZIP limpiando caracteres raros para el nombre del archivo
-                    safe_name = str(recurso).replace("/", "-").replace("\\", "-").replace(":", "-")
-                    zip_file.writestr(f"QR_{safe_name}.png", buf.getvalue())
-                    
-                    # Mostrar en pantalla
-                    with cols[i % 4]:
-                        with st.container(border=True):
-                            st.image(buf.getvalue(), use_container_width=True)
-                            st.markdown(f"<p style='text-align:center; font-weight:bold; font-size:14px; margin-top:-10px;'>{recurso}</p>", unsafe_allow_html=True)
+        with t_revision:
+            df_revision = df_mant[df_mant['estado'] == 'En Revisión']
+            renderizar_tickets(df_revision, "🟡", ["Resuelto", "En Revisión", "Reportado (Vía QR)"])
             
-            st.markdown("---")
-            c1, c2, c3 = st.columns([1, 2, 1])
-            with c2:
-                # BOTÓN DE DESCARGA ZIP
-                st.download_button(
-                    label="📦 Descargar Todos los QRs (.zip)",
-                    data=zip_buffer.getvalue(),
-                    file_name="Codigos_QR_CAV.zip",
-                    mime="application/zip",
-                    use_container_width=True,
-                    type="primary"
-                )
+        with t_resueltos:
+            df_resueltos = df_mant[df_mant['estado'] == 'Resuelto']
+            # Para los resueltos, a veces hay que reabrirlos si vuelven a fallar de lo mismo
+            renderizar_tickets(df_resueltos, "🟢", ["Resuelto", "En Revisión", "Reportado (Vía QR)"])
+
+    else:
+        st.info("No hay reportes de mantenimiento registrados en el sistema.")
 
 # ------------------------------------------------------------------
 # SECCIÓN: CONFIGURACIÓN
