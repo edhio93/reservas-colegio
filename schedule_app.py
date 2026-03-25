@@ -178,7 +178,7 @@ def send_email(subject, body, recipient_email):
 # --- MODO PÚBLICO: ENRUTAMIENTO VÍA CÓDIGO QR ---
 # ==============================================================================
 # Captura segura de parámetros (evita errores con versiones de Streamlit)
-params = st.query_params
+
 page_param = params.get("page", [""])[0] if isinstance(params.get("page"), list) else params.get("page", "")
 
 if page_param == "reporte":
