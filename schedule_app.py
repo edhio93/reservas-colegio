@@ -1287,7 +1287,8 @@ elif page == "Técnicos":
                                 }).eq("id", row['id']).execute()
                                 st.success("Ticket actualizado.")
                                 time.sleep(1); st.rerun()
-                            except Exception as e: st.error(f"Error técnico: {e}")
+                            except Exception as e: 
+                                st.error(f"Error técnico: {e}")
 
             with t_pendientes: renderizar_tickets(df_mant[df_mant['estado'] == 'Reportado (Vía QR)'], "🔴", ["En Revisión", "Resuelto", "Reportado (Vía QR)"])
             with t_revision: renderizar_tickets(df_mant[df_mant['estado'] == 'En Revisión'], "🟡", ["Resuelto", "En Revisión", "Reportado (Vía QR)"])
@@ -1493,7 +1494,40 @@ elif page == "Técnicos":
                                 if docx_hist:
                                     st.download_button("⬇️ Re-descargar Informe WORD", data=docx_hist, file_name=f"Re_Informe_Baja_{marca.replace(' ', '_')}_{row['id']}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True, key=f"btn_h_{row['id']}")
                 else: st.info("No hay historial de bajas.")
-            except Exception as
+            except Exception as e: st.warning(f"⚠️ No se pudo cargar el historial: {e}")
+
+    # ---------------------------------------------------------
+    # MÓDULO 3: GENERADOR DE CÓDIGOS QR
+    # ---------------------------------------------------------
+    elif modulo_tec == "📋 Generador QR":
+        st.subheader("📋 Generación de Códigos QR para Equipos")
+        res_data_raw = supabase.table("recursos").select("*").execute().data
+        if res_data_raw:
+            res_data_activos = [r for r in res_data_raw if r.get('estado', 'Activo') == 'Activo']
+            if res_data_activos:
+                col_sel, col_qr = st.columns([1, 2])
+                with col_sel:
+                    res_dict_qr = {r.get('nombre', r.get('Nombre', 'Sin nombre')): r['id'] for r in res_data_activos}
+                    res_qr_nom = st.selectbox("Recurso para QR", sorted(list(res_dict_qr.keys())), index=0)
+                    res_qr_id = res_dict_qr[res_qr_nom]
+                    base_url = "https://enlaces.streamlit.app/" 
+                    report_url = f"{base_url}?page=reporte&id={res_qr_id}"
+                    st.markdown(f"**URL:**\n`{report_url}`")
+                with col_qr:
+                    st.write("**Vista Previa del QR:**")
+                    try:
+                        qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=8, border=2)
+                        qr.add_data(report_url)
+                        qr.make(fit=True)
+                        img_qr = qr.make_image(fill_color="black", back_color="white")
+                        buf = BytesIO()
+                        img_qr.save(buf, format="PNG")
+                        qr_bytes = buf.getvalue()
+                        st.image(qr_bytes, width=200)
+                        st.download_button("⬇️ Descargar Imagen QR", data=qr_bytes, file_name=f"QR_{res_qr_nom.replace(' ', '_')}.png", mime="image/png", use_container_width=True)
+                    except Exception as e: 
+                        st.error(f"Error generando QR: {e}")
+            else: st.warning("No hay recursos activos.")
 # ------------------------------------------------------------------
 # SECCIÓN: CONFIGURACIÓN
 # ------------------------------------------------------------------
