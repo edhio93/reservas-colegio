@@ -18,7 +18,20 @@ import qrcode
 import io
 import urllib.parse
 import zipfile
+import google.generativeai as genai
 
+# --- CONFIGURACIÓN DE GEMINI ---
+# Reemplaza 'TU_API_KEY_AQUI' con la que copiaste de AI Studio
+GEMINI_API_KEY = "TU_API_KEY_AQUI" 
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
+
+def consultar_gemini(prompt):
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"Error con la IA: {e}"
 # ------------------------------------------------------------------
 # CONFIGURACIÓN SUPABASE (NUEVO MOTOR DE BASE DE DATOS)
 # ------------------------------------------------------------------
@@ -1309,6 +1322,22 @@ elif page == "Técnicos":
                         col_a, col_b = st.columns([1, 2])
                         with col_a: nuevo_est = st.selectbox("Cambiar estado a:", estados_destino, key=f"est_{row['id']}")
                         with col_b: nueva_nota = st.text_area("Notas de Reparación:", value=row['notas_tecnico'], key=f"not_{row['id']}", height=68)
+
+                        # BOTÓN DE INTELIGENCIA ARTIFICIAL
+if st.button("🤖 Obtener Diagnóstico Sugerido (IA)", key=f"ai_btn_{row['id']}"):
+    with st.spinner("Gemini está analizando la falla..."):
+        prompt_tecnico = f"""
+        Actúa como un experto en soporte técnico informático de un colegio.
+        Un usuario reportó el siguiente problema con el equipo '{row['Recurso']}':
+        "{row['descripcion']}"
+        
+        Dame una respuesta breve (máximo 4 puntos) con:
+        1. Posible causa.
+        2. Qué herramientas llevar.
+        3. Pasos de solución rápida.
+        """
+        sugerencia = consultar_gemini(prompt_tecnico)
+        st.info(f"**💡 Sugerencia de Gemini:**\n\n{sugerencia}")
                         
                         if st.button("💾 Guardar Cambios", key=f"btn_{row['id']}", type="primary", use_container_width=True):
                             try:
@@ -1437,6 +1466,16 @@ elif page == "Técnicos":
                         justificacion = st.text_area("Justificación de la Baja", height=100)
                         recomendacion = st.text_area("Recomendación Técnica (Mínima)", height=80)
                         tecnico = st.text_input("Técnico Responsable")
+                        # Botón para ayudar a redactar el informe de baja
+if st.button("✨ Mejorar Redacción con IA"):
+    if diagnosis:
+        with st.spinner("Redactando de forma profesional..."):
+            prompt_baja = f"Convierte esta nota técnica simple en un párrafo profesional para un informe de baja de inventario: '{diagnosis}'"
+            texto_pro = consultar_gemini(prompt_baja)
+            st.success("Copia y pega esto en la justificación:")
+            st.write(texto_pro)
+    else:
+        st.warning("Escribe algo breve en el diagnóstico primero.")
 
                     submit_baja = st.form_submit_button("🚫 Registrar Baja e Historial", type="primary", use_container_width=True)
 
