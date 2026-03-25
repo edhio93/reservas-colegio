@@ -24,7 +24,7 @@ import google.generativeai as genai
 # Reemplaza 'TU_API_KEY_AQUI' con la que copiaste de AI Studio
 GEMINI_API_KEY = "AIzaSyCzirgDkhlTxUto1A2vk9P_MClwyUaRXQs" 
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+model_ia = genai.GenerativeModel('gemini-1.5-flash-latest')
 
 def consultar_gemini(prompt):
     try:
