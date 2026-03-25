@@ -1277,13 +1277,7 @@ elif page == "Técnicos":
                           ["🎫 Tickets", "🗑️ Baja de Equipos", "📋 Generador QR"], 
                           horizontal=True)
     st.markdown("---")
-st.info("🔍 Buscando modelos de IA compatibles...")
-    try:
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                st.write(f"- {m.name}")
-    except Exception as e:
-        st.write(f"Error buscando: {e}")
+
     # ---------------------------------------------------------
     # MÓDULO 1: TICKETS (GESTIÓN DE FALLAS)
     # ---------------------------------------------------------
