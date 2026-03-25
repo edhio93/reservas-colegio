@@ -40,6 +40,47 @@ def consultar_gemini(prompt):
         return response.text
     except Exception as e:
         return f"Error con la IA: {e}"
+        st.header("💬 Asistente Técnico IA")
+
+# --- 2. INICIALIZAR LA MEMORIA DEL CHAT ---
+# Si es la primera vez que entra, creamos una lista vacía de mensajes
+if "mensajes_chat" not in st.session_state:
+    st.session_state.mensajes_chat = []
+    # (Opcional) Un mensaje de bienvenida por defecto
+    st.session_state.mensajes_chat.append({
+        "role": "assistant", 
+        "content": "¡Hola! Soy tu asistente de soporte técnico. ¿En qué te puedo ayudar hoy?"
+    })
+
+# --- 3. DIBUJAR EL HISTORIAL EN PANTALLA ---
+# Esto vuelve a pintar los mensajes viejos cada vez que la página se recarga
+for mensaje in st.session_state.mensajes_chat:
+    with st.chat_message(mensaje["role"]):
+        st.markdown(mensaje["content"])
+
+# --- 4. LA CAJA DE TEXTO PARA EL USUARIO ---
+# st.chat_input crea la barra en la parte inferior para escribir
+if pregunta_usuario := st.chat_input("Pregúntame sobre equipos, fallas o códigos de error..."):
+    
+    # a) Mostrar y guardar el mensaje del usuario
+    with st.chat_message("user"):
+        st.markdown(pregunta_usuario)
+    st.session_state.mensajes_chat.append({"role": "user", "content": pregunta_usuario})
+
+    # b) Consultar a Gemini
+    with st.chat_message("assistant"):
+        with st.spinner("Buscando solución..."):
+            try:
+                # Le mandamos la pregunta al modelo
+                respuesta_ia = model.generate_content(pregunta_usuario)
+                texto_respuesta = respuesta_ia.text
+                
+                # Mostrar y guardar la respuesta de la IA
+                st.markdown(texto_respuesta)
+                st.session_state.mensajes_chat.append({"role": "assistant", "content": texto_respuesta})
+            
+            except Exception as e:
+                st.error(f"Ups, hubo un problema de conexión: {e}")
 # ------------------------------------------------------------------
 # CONFIGURACIÓN SUPABASE (NUEVO MOTOR DE BASE DE DATOS)
 # ------------------------------------------------------------------
