@@ -559,55 +559,6 @@ PAGES_CONFIG = {
 available_pages = [p for p, conf in PAGES_CONFIG.items() if st.session_state.role in conf["roles"]]
 default_page = "Mis Reservas" if st.session_state.role == 'profesor' else "Registrar"
 page = st.sidebar.radio("Navegación", available_pages, index=available_pages.index(default_page), format_func=lambda p: f"{PAGES_CONFIG[p]['icon']} {p}", label_visibility="collapsed")
-# ... (tu código del menú st.sidebar.radio) ...
-
-    # ---------------------------------------------------------
-    # WIDGET DE CHATBOT EN EL PANEL IZQUIERDO
-    # ---------------------------------------------------------
-    st.sidebar.markdown("---") # Una línea para separar el menú del chat
-    
-    # Creamos un botón desplegable en la barra lateral que simula el "widget" de chat
-    with st.sidebar.expander("💬 Asistente IA (Abrir Chat)", expanded=False):
-        st.info("💡 Pregúntame sobre reparaciones o fallas.")
-        
-        # 1. INICIALIZAR LA MEMORIA
-        if "chat_session" not in st.session_state:
-            st.session_state.chat_session = model.start_chat(
-                history=[
-                    {"role": "user", "parts": ["Actúa como un ingeniero informático senior dando soporte a otros técnicos. Sé breve y directo."]},
-                    {"role": "model", "parts": ["Entendido. Estoy aquí para ayudarte."]}
-                ]
-            )
-            
-        # 2. MOSTRAR EL HISTORIAL DE MENSAJES (Se ajusta al ancho de la barra lateral)
-        # Creamos un contenedor con altura fija para que no estire toda la página
-        contenedor_chat = st.container(height=400) 
-        
-        with contenedor_chat:
-            for mensaje in st.session_state.chat_session.history:
-                if "Actúa como un ingeniero" not in mensaje.parts[0].text and "Entendido" not in mensaje.parts[0].text:
-                    rol = "assistant" if mensaje.role == "model" else "user"
-                    with st.chat_message(rol):
-                        st.markdown(mensaje.parts[0].text)
-        
-        # 3. CAJA DE TEXTO PARA ESCRIBIR
-        # st.chat_input funciona perfecto dentro de la barra lateral en las versiones nuevas
-        if pregunta := st.chat_input("Escribe tu duda..."):
-            
-            # Mostramos la pregunta inmediatamente en el contenedor
-            with contenedor_chat:
-                with st.chat_message("user"):
-                    st.markdown(pregunta)
-                
-                # Pensando y respondiendo...
-                with st.chat_message("assistant"):
-                    with st.spinner("Pensando..."):
-                        try:
-                            respuesta = st.session_state.chat_session.send_message(pregunta)
-                            st.markdown(respuesta.text)
-                        except Exception as e:
-                            st.error(f"Error de red: {e}")
-
 
 st.sidebar.markdown("---")
 
