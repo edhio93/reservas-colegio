@@ -42,45 +42,6 @@ def consultar_gemini(prompt):
         return f"Error con la IA: {e}"
         st.header("💬 Asistente Técnico IA")
 
-# --- 2. INICIALIZAR LA MEMORIA DEL CHAT ---
-# Si es la primera vez que entra, creamos una lista vacía de mensajes
-if "mensajes_chat" not in st.session_state:
-    st.session_state.mensajes_chat = []
-    # (Opcional) Un mensaje de bienvenida por defecto
-    st.session_state.mensajes_chat.append({
-        "role": "assistant", 
-        "content": "¡Hola! Soy tu asistente de soporte técnico. ¿En qué te puedo ayudar hoy?"
-    })
-
-# --- 3. DIBUJAR EL HISTORIAL EN PANTALLA ---
-# Esto vuelve a pintar los mensajes viejos cada vez que la página se recarga
-for mensaje in st.session_state.mensajes_chat:
-    with st.chat_message(mensaje["role"]):
-        st.markdown(mensaje["content"])
-
-# --- 4. LA CAJA DE TEXTO PARA EL USUARIO ---
-# st.chat_input crea la barra en la parte inferior para escribir
-if pregunta_usuario := st.chat_input("Pregúntame sobre equipos, fallas o códigos de error..."):
-    
-    # a) Mostrar y guardar el mensaje del usuario
-    with st.chat_message("user"):
-        st.markdown(pregunta_usuario)
-    st.session_state.mensajes_chat.append({"role": "user", "content": pregunta_usuario})
-
-    # b) Consultar a Gemini
-    with st.chat_message("assistant"):
-        with st.spinner("Buscando solución..."):
-            try:
-                # Le mandamos la pregunta al modelo
-                respuesta_ia = model.generate_content(pregunta_usuario)
-                texto_respuesta = respuesta_ia.text
-                
-                # Mostrar y guardar la respuesta de la IA
-                st.markdown(texto_respuesta)
-                st.session_state.mensajes_chat.append({"role": "assistant", "content": texto_respuesta})
-            
-            except Exception as e:
-                st.error(f"Ups, hubo un problema de conexión: {e}")
 # ------------------------------------------------------------------
 # CONFIGURACIÓN SUPABASE (NUEVO MOTOR DE BASE DE DATOS)
 # ------------------------------------------------------------------
@@ -408,7 +369,48 @@ if not st.session_state.logged:
                             elif not u_profe: st.warning("Por favor selecciona tu nombre")
                             else: st.error("Contraseña incorrecta")
     st.stop() 
-
+    
+# --- 3. EL SISTEMA PRINCIPAL (AQUÍ ENTRA EL CHATBOT) ---
+if st.session_state.login_exitoso:
+    st.success("✅ Bienvenido al Panel de Control")
+    
+    # Creamos pestañas para separar tus Tickets del Chatbot
+    tab1, tab2 = st.tabs(["📋 Gestión de Tickets", "🤖 Asistente IA"])
+    
+    with tab1:
+        st.write("Aquí va todo tu código de la tabla de Supabase y los botones de los técnicos...")
+        
+    with tab2:
+        st.header("💬 Chatbot de Soporte Técnico")
+        
+        # INICIALIZAR EL CHAT CON MEMORIA
+        if "chat_session" not in st.session_state:
+            # model.start_chat() crea un chat que recuerda el contexto
+            st.session_state.chat_session = model.start_chat(history=[])
+            
+        # DIBUJAR EL HISTORIAL EN PANTALLA
+        for mensaje in st.session_state.chat_session.history:
+            # Google usa 'model' y 'user', Streamlit usa 'assistant' y 'user'
+            rol = "assistant" if mensaje.role == "model" else "user"
+            with st.chat_message(rol):
+                st.markdown(mensaje.parts[0].text)
+                
+        # CAJA DE TEXTO PARA EL USUARIO
+        if pregunta := st.chat_input("Escribe tu duda técnica aquí..."):
+            
+            # Mostrar la pregunta del usuario
+            with st.chat_message("user"):
+                st.markdown(pregunta)
+                
+            # Generar y mostrar la respuesta de Gemini
+            with st.chat_message("assistant"):
+                with st.spinner("Analizando manuales..."):
+                    try:
+                        # send_message manda la pregunta y guarda la respuesta en la memoria
+                        respuesta = st.session_state.chat_session.send_message(pregunta)
+                        st.markdown(respuesta.text)
+                    except Exception as e:
+                        st.error(f"Error de conexión: {e}")
 # ------------------------------------------------------------------
 # 3) CARGA DE LA BASE DE DATOS PRINCIPAL 
 # ------------------------------------------------------------------
