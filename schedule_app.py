@@ -231,11 +231,12 @@ if page_param == "reporte":
                         else:
                             with st.spinner("Enviando reporte a Enlaces..."):
                                 supabase.table("mantenimientos").insert({
-                                    "recurso_id": recurso_id,
-                                    "descripcion": descripcion.strip(),
-                                    "estado": "Reportado (Vía QR)",
-                                    "reportado_por": nombre_reporta.strip()
-                                }).execute()
+    "recurso_id": recurso_id,
+    "descripcion": descripcion.strip(),
+    "estado": "Reportado (Vía QR)",
+    "reportado_por": nombre_reporta.strip(),
+    "fecha": str(dt.date.today())  # <-- ¡Esta línea soluciona el error!
+}).execute()
                                 
                                 st.success("✅ ¡Reporte enviado con éxito! Gracias por avisarnos.")
                                 st.balloons() # 🎈 ¡AQUÍ ESTÁN LOS GLOBOS! 🎈
