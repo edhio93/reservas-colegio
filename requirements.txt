@@ -8,3 +8,4 @@ pillow
 fpdf
 matplotlib
 python-docx
+google-generativeai
