@@ -1158,14 +1158,16 @@ elif page == "Dashboard":
     else:
         st.info("No hay reservas registradas en el sistema todavía.")
 # ==============================================================================
-# --- SECCIÓN TÉCNICOS (TICKETS, BAJAS Y CÓDIGOS QR) ---
+# --- SECCIÓN TÉCNICOS (TICKETS, BAJAS INDEPENDIENTES Y CÓDIGOS QR) ---
 # ==============================================================================
 elif page == "Técnicos":
-    # Importar librerías de Word aquí para evitar errores si no están arriba
+    # Importar librerías necesarias
+    import io
+    from io import BytesIO
     try:
         import docx
         from docx import Document
-        from docx.shared import Pt, Inches
+        from docx.shared import Pt, Inches, RGBColor
         from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
     except ImportError:
         st.error("🚨 Falta la librería 'python-docx'. Instálala con: pip install python-docx")
@@ -1173,45 +1175,37 @@ elif page == "Técnicos":
 
     st.header("🛠️ Panel de Soporte Técnico")
     
+    # Submenú con Radio Buttons actualizado
     modulo_tec = st.radio("Selecciona el módulo de trabajo:", 
                           ["🎫 Tickets", "🗑️ Baja de Equipos", "📋 Generador QR"], 
                           horizontal=True)
     st.markdown("---")
 
     # ---------------------------------------------------------
-    # MÓDULO 1: TICKETS (GESTIÓN DE FALLAS)
+    # MÓDULO 1: TICKETS (GESTIÓN DE FALLAS) - Intacto
     # ---------------------------------------------------------
     if modulo_tec == "🎫 Tickets":
         st.subheader("Gestión de Tickets ingresados vía QR")
-        
         try:
             mant_data = supabase.table("mantenimientos").select("*, recursos(nombre)").order("fecha", desc=True).execute().data
         except Exception as e:
             st.error(f"Error consultando mantenimientos: {e}")
             mant_data = []
-        
         if mant_data:
             df_mant = pd.DataFrame(mant_data)
             df_mant['Recurso'] = df_mant['recursos'].apply(lambda x: x.get('nombre', 'Desconocido') if isinstance(x, dict) else "Desconocido")
-            
-            if 'notas_tecnico' not in df_mant.columns:
-                df_mant['notas_tecnico'] = ""
-            else:
-                df_mant['notas_tecnico'] = df_mant['notas_tecnico'].fillna("")
-            
+            if 'notas_tecnico' not in df_mant.columns: df_mant['notas_tecnico'] = ""
+            else: df_mant['notas_tecnico'] = df_mant['notas_tecnico'].fillna("")
             pendientes = len(df_mant[df_mant['estado'] == 'Reportado (Vía QR)'])
             en_revision = len(df_mant[df_mant['estado'] == 'En Revisión'])
             resueltos = len(df_mant[df_mant['estado'] == 'Resuelto'])
-            
             c1, c2, c3 = st.columns(3)
             estilo_metrica = "background:white; border-radius:12px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 5px solid"
             with c1: st.markdown(f'<div style="{estilo_metrica} #EF4444;"><div style="color:#64748b; font-size:0.85em; font-weight:bold;">🔴 PENDIENTES</div><div style="font-size:2.2em; font-weight:900; color:#B91C1C;">{pendientes}</div></div>', unsafe_allow_html=True)
             with c2: st.markdown(f'<div style="{estilo_metrica} #F59E0B;"><div style="color:#64748b; font-size:0.85em; font-weight:bold;">🟡 EN REVISIÓN</div><div style="font-size:2.2em; font-weight:900; color:#D97706;">{en_revision}</div></div>', unsafe_allow_html=True)
             with c3: st.markdown(f'<div style="{estilo_metrica} #10B981;"><div style="color:#64748b; font-size:0.85em; font-weight:bold;">🟢 RESUELTOS</div><div style="font-size:2.2em; font-weight:900; color:#047857;">{resueltos}</div></div>', unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)
-
             t_pendientes, t_revision, t_resueltos = st.tabs(["🔴 Pendientes", "🟡 En Revisión", "🟢 Resueltos"])
-            
             def renderizar_tickets(df_filtrado, color_icon, estados_destino):
                 if df_filtrado.empty:
                     st.info("✨ No hay tickets en esta categoría actualmente.")
@@ -1224,41 +1218,40 @@ elif page == "Técnicos":
                         col_a, col_b = st.columns([1, 2])
                         with col_a: nuevo_est = st.selectbox("Cambiar estado a:", estados_destino, key=f"est_{row['id']}")
                         with col_b: nueva_nota = st.text_area("Notas de Reparación:", value=row['notas_tecnico'], key=f"not_{row['id']}", height=68)
-                            
                         if st.button("💾 Guardar Cambios", key=f"btn_{row['id']}", type="primary", use_container_width=True):
                             try:
-                                supabase.table("mantenimientos").update({
-                                    "estado": nuevo_est, "notas_tecnico": html_sanitizer.escape(nueva_nota).strip()
-                                }).eq("id", row['id']).execute()
-                                st.success("Ticket actualizado.")
-                                time.sleep(1); st.rerun()
+                                supabase.table("mantenimientos").update({"estado": nuevo_est, "notas_tecnico": html_sanitizer.escape(nueva_nota).strip()}).eq("id", row['id']).execute()
+                                st.success("Ticket actualizado."); time.sleep(1); st.rerun()
                             except Exception as e: st.error(f"Error técnico: {e}")
-
             with t_pendientes: renderizar_tickets(df_mant[df_mant['estado'] == 'Reportado (Vía QR)'], "🔴", ["En Revisión", "Resuelto", "Reportado (Vía QR)"])
             with t_revision: renderizar_tickets(df_mant[df_mant['estado'] == 'En Revisión'], "🟡", ["Resuelto", "En Revisión", "Reportado (Vía QR)"])
             with t_resueltos: renderizar_tickets(df_mant[df_mant['estado'] == 'Resuelto'], "🟢", ["Resuelto", "En Revisión", "Reportado (Vía QR)"])
-        else:
-            st.info("No hay reportes de mantenimiento.")
+        else: st.info("No hay reportes de mantenimiento.")
 
     # ---------------------------------------------------------
-    # MÓDULO 2: BAJA DE EQUIPOS E INFORMES WORD
+    # MÓDULO 2: BAJA DE EQUIPOS (INDEPENDIENTE, CON FOTOS Y CANTIDAD)
     # ---------------------------------------------------------
     elif modulo_tec == "🗑️ Baja de Equipos":
         st.subheader("🗑️ Procesar Baja y Generar Informe")
-        st.write("Registra la baja de un equipo específico. **Esto NO afectará la disponibilidad del recurso general en la tabla de reservas.**")
+        st.write("Registra la baja de equipos físicos. **Esto NO afectará la disponibilidad ni cantidad de la tabla general 'recursos'.**")
 
-        def generar_docx_baja(datos):
+        # --- 1. FUNCIÓN MAESTRA CORREGIDA: GENERAR DOCX CON FOTOS Y CANTIDAD ---
+        def generar_docx_baja(datos, foto_data=None):
             try:
                 document = Document()
-                style = document.styles['Normal']
-                style.font.name = 'Arial'
-                style.font.size = Pt(11)
+                
+                # Definir estilos de fuente por defecto
+                style_n = document.styles['Normal']
+                style_n.font.name = 'Arial'
+                style_n.font.size = Pt(11)
 
+                # --- CABECERA ---
                 hdr = document.add_paragraph()
+                # CORRECCIÓN ERROR RUN: Alineación va en el párrafo, no en el run.
                 hdr.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-                r_hdr = hdr.add_run('[INSERTAR LOGO COLEGIO]\nDEPARTAMENTO DE ENLACES/INFORMÁTICA')
+                r_hdr = hdr.add_run('DEPARTAMENTO DE ENLACES/INFORMÁTICA\nESCUELA BÁSICA SAN RAFAEL')
                 r_hdr.font.size = Pt(10)
-                r_hdr.font.color.rgb = docx.shared.RGBColor(100, 100, 100)
+                r_hdr.font.color.rgb = RGBColor(100, 100, 100) # Gris
 
                 titulo = document.add_paragraph()
                 titulo.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
@@ -1267,207 +1260,280 @@ elif page == "Técnicos":
                 r_tit = titulo.add_run('INFORME TÉCNICO DE BAJA DE EQUIPO INFORMÁTICO')
                 r_tit.bold = True
                 r_tit.font.size = Pt(16)
-                r_tit.font.color.rgb = docx.shared.RGBColor(30, 58, 138)
+                r_tit.font.color.rgb = RGBColor(30, 58, 138) # Azul institucional
 
+                # --- 1. IDENTIFICACIÓN DEL EQUIPO (Tabla) ---
                 document.add_heading('1. IDENTIFICACIÓN DEL EQUIPO', level=1)
-                table = document.add_table(rows=5, cols=2)
+                
+                # Crear tabla de 6 filas (agregamos Cantidad) y 2 columnas
+                table = document.add_table(rows=6, cols=2)
                 table.style = 'Table Grid'
                 
+                # Función para llenar celdas de tabla fácilmente
                 def fill_cell(row, col, key, value):
                     cell = table.cell(row, col)
                     cell.vertical_alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
                     p = cell.paragraphs[0]
                     run_k = p.add_run(f"{key}: ")
                     run_k.bold = True
-                    p.add_run(value)
+                    p.add_run(str(value)) # Asegurar string
 
-                fill_cell(0, 0, 'Categoría / Recurso Base', datos['tipo'])
+                # Datos de identificación
+                fill_cell(0, 0, 'Categoría Base (Recurso)', datos['tipo'])
                 fill_cell(1, 0, 'Marca / Modelo', datos['marca_modelo'])
-                fill_cell(2, 0, 'N° de Serie / Inventario', datos['serie_inventario'])
-                fill_cell(3, 0, 'Ubicación Habitual', datos['ubicacion'])
-                fill_cell(4, 0, 'Fecha de Adquisición', datos['fecha_adq'])
+                fill_cell(2, 0, 'Cantidad', datos['cantidad_baja']) # NUEVO DATO
+                fill_cell(3, 0, 'N° de Serie / Inventario', datos['serie_inventario'])
+                fill_cell(4, 0, 'Ubicación Habitual', datos['ubicacion'])
+                fill_cell(5, 0, 'Fecha de Adquisición', datos['fecha_adq'])
                 
+                # Combinar celdas de la segunda columna para la foto
                 cell_foto = table.cell(0, 1)
-                cell_foto.merge(table.cell(4, 1))
+                cell_foto.merge(table.cell(5, 1)) # Combinar todas las filas
                 p_foto = cell_foto.paragraphs[0]
                 p_foto.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-                p_foto.add_run('\n\n\n[ESPACIO PARA FOTO DEL EQUIPO]\n(Opcional)')
+
+                # --- INSERTAR FOTO SI EXISTE ---
+                if foto_data:
+                    # 'add_picture' acepta un objeto BytesIO directamente
+                    p_foto.add_run().add_picture(foto_data, width=Inches(2.5))
+                else:
+                    p_foto.add_run('\n\n\n[FOTO NO ADJUNTADA]').font.color.rgb = RGBColor(150, 150, 150)
                 
                 document.add_paragraph().paragraph_format.space_after = Pt(12)
-                document.add_heading('2. ESTADO TÉCNICO / DIAGNÓSTICO', level=1)
-                document.add_paragraph(datos['diagnosis']).paragraph_format.space_after = Pt(12)
-                document.add_heading('3. JUSTIFICACIÓN DE LA BAJA', level=1)
-                document.add_paragraph(datos['justificacion']).paragraph_format.space_after = Pt(12)
-                document.add_heading('4. RECOMENDACIÓN TÉCNICA', level=1)
-                document.add_paragraph(datos['recomendacion']).paragraph_format.space_after = Pt(24)
 
+                # --- SECCIONES DE TEXTO ---
+                def add_text_section(title, level, text):
+                    document.add_heading(title, level=level)
+                    p = document.add_paragraph(text)
+                    p.paragraph_format.space_after = Pt(12)
+
+                add_text_section('2. ESTADO TÉCNICO / DIAGNÓSTICO', 1, datos['diagnosis'])
+                add_text_section('3. JUSTIFICACIÓN DE LA BAJA', 1, datos['justificacion'])
+                add_text_section('4. RECOMENDACIÓN TÉCNICA', 1, datos['recomendacion'])
+
+                document.add_paragraph().paragraph_format.space_after = Pt(12)
+
+                # --- PIE DE PÁGINA (Firmas y Fecha) ---
                 fecha_p = document.add_paragraph()
                 fecha_p.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
-                fecha_p.add_run(f"San Rafael, {dt.date.today().strftime('%d de %B de %Y')}").paragraph_format.space_after = Pt(48)
+                fecha_p.add_run(f"San Rafael, {dt.date.today().strftime('%d de %B de %Y')}")
+                fecha_p.paragraph_format.space_after = Pt(48)
 
                 table_f = document.add_table(rows=1, cols=2)
                 table_f.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-                p_f1 = table_f.cell(0, 0).paragraphs[0]
-                p_f1.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-                p_f1.add_run('__________________________\nFirma Técnico Responsable\n')
-                p_f1.add_run(f"Nombre: {datos['tecnico_responsable']}").font.size = Pt(9)
                 
-                p_f2 = table_f.cell(0, 1).paragraphs[0]
-                p_f2.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-                p_f2.add_run('__________________________\nFirma Dirección / Administración\n')
-                p_f2.add_run('Nombre y Timbre').font.size = Pt(9)
+                cell_f1 = table_f.cell(0, 0).paragraphs[0]
+                cell_f1.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                cell_f1.add_run('__________________________\nFirma Técnico Responsable\n')
+                cell_f1.add_run(f"Nombre: {datos['tecnico_responsable']}").font.size = Pt(9)
+                
+                cell_f2 = table_f.cell(0, 1).paragraphs[0]
+                cell_f2.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                cell_f2.add_run('__________________________\nFirma Dirección / Administración\n')
+                cell_f2.add_run('Nombre y Timbre').font.size = Pt(9)
 
                 docx_buf = BytesIO()
                 document.save(docx_buf)
                 docx_buf.seek(0)
                 return docx_buf.read()
+
             except Exception as e:
-                st.error(f"Error generando Word: {e}")
+                st.error(f"Error técnico generando Word: {e}")
                 return None
 
-        # Consultar recursos activos para usar como "Categoría" del equipo dado de baja
-        res_data_raw = supabase.table("recursos").select("*").execute().data
-        res_data_activos = []
-        if res_data_raw:
-            if 'estado' in res_data_raw[0]:
-                res_data_activos = [r for r in res_data_raw if r['estado'] == 'Activo']
-            else:
-                res_data_activos = res_data_raw
-
-        if res_data_activos:
-            # Solo obtenemos los nombres para categorizar
-            nombres_recursos = [r.get('nombre', r.get('Nombre', 'Sin nombre')) for r in res_data_activos]
+        # --- 2. FORMULARIO EN PANTALLA ---
+        tab_baja, tab_historial = st.tabs(["🆕 Procesar Nueva Baja", "📋 Ver Historial y Descargar Reports"])
+        
+        with tab_baja:
+            st.subheader("🆕 Registrar Baja de Equipo Independiente")
             
-            with st.container(border=True):
-                col_sel, col_datos_m = st.columns([1, 2])
+            res_data_raw = supabase.table("recursos").select("*").execute().data
+            if res_data_raw:
+                # Usar .get para compatibilidad de mayúsculas/minúsculas en columnas
+                nombres_recursos = sorted(list(set([r.get('nombre', r.get('Nombre', 'Sin nombre')) for r in res_data_raw])))
                 
-                with col_sel:
-                    recurso_baja_nom = st.selectbox("Pertenece al Recurso/Categoría:", nombres_recursos, key="sel_baja")
-                    marca_mod = st.text_input("Marca / Modelo", placeholder="Ej. HP ProBook")
-                    num_serie = st.text_input("N° de Serie / Inventario", placeholder="Ej. SN123456")
-                    ubicacion = st.text_input("Ubicación", placeholder="Ej. Sala Computación")
-                    fecha_adq = st.text_input("Fecha Adquisición", placeholder="Ej. 2020")
-                
-                with col_datos_m:
-                    diagnosis = st.text_area("Diagnosis Técnico", height=80, placeholder="Estado de la falla...")
-                    justificacion = st.text_area("Justificación", height=80, placeholder="Razón de la baja...")
-                    recomendacion = st.text_area("Recomendación", height=80, placeholder="Ej. Reciclaje, desguace...")
-                    tecnico = st.text_input("Técnico Responsable", placeholder="Tu nombre")
+                with st.form("form_baja_indep", clear_on_submit=False): # No limpiar para que puedan descargar luego
+                    col_sel, col_datos_m = st.columns([1, 2])
+                    
+                    with col_sel:
+                        st.markdown("**Identificación**")
+                        recurso_cat_nom = st.selectbox("Categoría Maestro (Recurso):", nombres_recursos, index=0)
+                        marca_mod = st.text_input("Marca / Modelo específico", placeholder="Ej. Notebook HP ProBook 440 G7")
+                        
+                        # NUEVO CAMPO: CANTIDAD
+                        cantidad_baja = st.number_input("Cantidad de unidades dadas de baja:", min_value=1, value=1, step=1)
+                        
+                        num_serie = st.text_input("N° de Serie / Inventario", placeholder="Ej. SN-XYZ123 / INV-001")
+                        ubicacion = st.text_input("Ubicación habitual", placeholder="Ej. Biblioteca")
+                        fecha_adq = st.text_input("Fecha Adquisición (Aprox)", placeholder="Ej. 2021")
+                        
+                        # NUEVO CAMPO: SUBIR FOTOS
+                        uploaded_file = st.file_uploader("Subir foto del equipo (Opcional):", type=['png', 'jpg', 'jpeg'])
+                    
+                    with col_datos_m:
+                        st.markdown("**Diagnosis y Justificación**")
+                        diagnosis = st.text_area("Diagnosis Técnico / Daño detectado", height=120, placeholder="Describe el estado técnico actual...")
+                        justificacion = st.text_area("Justificación de la Baja", height=100, placeholder="Obsolescencia, daño irreparable, costo reparación, etc.")
+                        recomendacion = st.text_area("Recomendación Técnica (Mínima)", height=80, placeholder="Reciclaje, desguace, donación de partes...")
+                        tecnico = st.text_input("Técnico Responsable", placeholder="Tu nombre completo")
 
-                # EL BOTÓN AHORA SOLO REGISTRA, NO ELIMINA
-                if st.button("🚫 Registrar Baja de Equipo", type="primary", use_container_width=True):
-                    if not diagnosis or not justificacion or not tecnico or not marca_mod:
-                        st.warning("⚠️ Rellena Marca, Diagnosis, Justificación y Técnico.")
-                    else:
-                        with st.spinner("Registrando en el historial..."):
-                            datos_baja = {
-                                "tipo": html_sanitizer.escape(recurso_baja_nom).strip(),
-                                "marca_modelo": html_sanitizer.escape(marca_mod).strip(),
-                                "serie_inventario": html_sanitizer.escape(num_serie).strip(),
-                                "ubicacion": html_sanitizer.escape(ubicacion).strip(),
-                                "fecha_adq": html_sanitizer.escape(fecha_adq).strip(),
-                                "diagnosis": html_sanitizer.escape(diagnosis).strip(),
-                                "justificacion": html_sanitizer.escape(justificacion).strip(),
-                                "recomendacion": html_sanitizer.escape(recomendacion).strip(),
-                                "tecnico_responsable": html_sanitizer.escape(tecnico).strip()
-                            }
-                            
-                            datos_bd = {
-                                "recurso_nombre": datos_baja['tipo'],
-                                "marca": datos_baja['marca_modelo'],
-                                "modelo": datos_baja['marca_modelo'],
-                                "serie": datos_baja['serie_inventario'],
-                                "diagnosis": datos_baja['diagnosis'],
-                                "justificacion": datos_baja['justificacion'],
-                                "recomendacion": datos_baja['recomendacion'],
-                                "tecnico_responsable": datos_baja['tecnico_responsable'],
-                                "fecha_baja": str(dt.date.today())
-                            }
+                    submit_baja = st.form_submit_button("🚫 Registrar Baja e Historial", type="primary", use_container_width=True)
 
-                            try:
-                                # 1. GUARDAR EN LA TABLA 'equipos'
-                                supabase.table("equipos").insert(datos_bd).execute()
+                    if submit_baja:
+                        if not diagnosis or not justificacion or not tecnico or not marca_mod:
+                            st.warning("⚠️ Rellena Marca/Modelo, Diagnosis, Justificación y Técnico.")
+                        else:
+                            with st.spinner("Procesando registro..."):
+                                # Sanitizar y preparar datos
+                                datos_baja_form = {
+                                    "tipo": html_sanitizer.escape(recurso_cat_nom).strip(),
+                                    "marca_modelo": html_sanitizer.escape(marca_mod).strip(),
+                                    "cantidad_baja": int(cantidad_baja),
+                                    "serie_inventario": html_sanitizer.escape(num_serie).strip(),
+                                    "ubicacion": html_sanitizer.escape(ubicacion).strip(),
+                                    "fecha_adq": html_sanitizer.escape(fecha_adq).strip(),
+                                    "diagnosis": html_sanitizer.escape(diagnosis).strip(),
+                                    "justificacion": html_sanitizer.escape(justificacion).strip(),
+                                    "recomendacion": html_sanitizer.escape(recomendacion).strip(),
+                                    "tecnico_responsable": html_sanitizer.escape(tecnico).strip()
+                                }
                                 
-                                # ELIMINAMOS LA LÍNEA QUE BORRABA DE RECURSOS.
-                                st.success(f"✅ ¡La baja del equipo '{marca_mod}' ha sido registrada correctamente en el historial!")
-                                
-                                # 2. GENERAR EL WORD
-                                docx_data = generar_docx_baja(datos_baja)
-                                if docx_data:
-                                    st.download_button(
-                                        label="⬇️ Descargar Informe de Baja (Word)",
-                                        data=docx_data,
-                                        file_name=f"Informe_Baja_{datos_baja['marca_modelo'].replace(' ', '_')}.docx",
-                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                        use_container_width=True
-                                    )
-                            
-                            except Exception as e:
-                                st.error(f"Error de base de datos: {e}")
-        else:
-            st.warning("No hay categorías de recursos activas.")
+                                # Preparar payload exacto para la base de datos 'equipos'
+                                datos_bd = {
+                                    "recurso_nombre": datos_baja_form['tipo'],
+                                    "marca": datos_baja_form['marca_modelo'],
+                                    "modelo": datos_baja_form['marca_modelo'], # Usamos mismo input
+                                    "cantidad_baja": datos_baja_form['cantidad_baja'], # NUEVO DATO EN BD
+                                    "serie": datos_baja_form['serie_inventario'],
+                                    "diagnosis": datos_baja_form['diagnosis'],
+                                    "justificacion": datos_baja_form['justificacion'],
+                                    "recomendacion": datos_baja_form['recomendacion'],
+                                    "tecnico_responsable": datos_baja_form['tecnico_responsable'],
+                                    "fecha_baja": str(dt.date.today())
+                                }
 
-        st.markdown("---")
-        st.subheader("📋 Historial de Equipos (Dados de Baja)")
-        try:
-            equipos_data = supabase.table("equipos").select("*").execute().data
-            if equipos_data:
-                df_eq = pd.DataFrame(equipos_data)
-                df_eq = df_eq[['id', 'recurso_nombre', 'marca', 'serie', 'fecha_baja', 'tecnico_responsable']]
-                df_eq.columns = ['ID Baja', 'Categoría', 'Marca/Modelo', 'Serie', 'Fecha Baja', 'Técnico']
-                st.dataframe(df_eq, use_container_width=True, hide_index=True)
+                                try:
+                                    # 1. GUARDAR EN LA TABLA HISTÓRICA 'equipos'
+                                    supabase.table("equipos").insert(datos_bd).execute()
+                                    
+                                    # LA TABLA RECURSOS NO SE TOCA.
+                                    st.success(f"✅ ¡Baja de {cantidad_baja} unidad(es) de '{marca_mod}' registrada correctamente!")
+                                    st.balloons()
+                                    
+                                    # 2. PROCESAR FOTO SI SE SUBIÓ
+                                    foto_data_bytes = None
+                                    if uploaded_file is not None:
+                                        foto_data_bytes = BytesIO(uploaded_file.read())
+                                    
+                                    # 3. GENERAR EL WORD
+                                    docx_data = generar_docx_baja(datos_baja_form, foto_data_bytes)
+                                    if docx_data:
+                                        st.download_button(
+                                            label="⬇️ Descargar Informe de Baja WORD (Generado ahora)",
+                                            data=docx_data,
+                                            file_name=f"Informe_Baja_{datos_baja_form['marca_modelo'].replace(' ', '_')}.docx",
+                                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                            use_container_width=True,
+                                            key="btn_descarga_reciente"
+                                        )
+                                
+                                except Exception as e:
+                                    if "cantidad_baja" in str(e).lower():
+                                        st.error("⚠️ Error: Necesitas ir al SQL Editor de Supabase y ejecutar: `ALTER TABLE public.equipos ADD COLUMN cantidad_baja integer DEFAULT 1;`")
+                                    else:
+                                        st.error(f"Error de base de datos: {e}")
             else:
-                st.info("No hay equipos dados de baja en la tabla 'equipos'.")
-        except Exception as e:
-            st.warning(f"⚠️ No se pudo cargar el historial. Detalle técnico: {e}")
+                st.warning("No hay categorías de recursos registradas.")
+
+        # --- 3. HISTORIAL INTERACTIVO Y RE-DESCARGA DE REPORTES ---
+        with tab_historial:
+            st.subheader("📋 Historial Histórico (Equipos Dados de Baja)")
+            st.write("Visualiza las bajas históricas. Puedes re-generar y descargar el informe Word de cualquier baja (solo texto, las fotos no se guardan en BD).")
+            
+            # Cargar datos históricos
+            try:
+                equipos_data = supabase.table("equipos").select("*").order("fecha_baja", desc=True).execute().data
+                
+                if equipos_data:
+                    # En lugar de tabla estática, usar tarjetas expandibles
+                    for row in equipos_data:
+                        # Prevenir error si cantidad_baja es nula en BD antigua
+                        cant = row.get('cantidad_baja', 1) or 1
+                        recurso = row.get('recurso_nombre', 'Sin Categoría')
+                        marca = row.get('marca', 'Sin Marca/Modelo')
+                        fecha_f = row['fecha_baja']
+                        
+                        # Tarjeta expandible
+                        with st.expander(f"🚫 Baja ID #{row['id']} | {marca} (Cant: {cant}) | {fecha_f}"):
+                            c1, c2 = st.columns([2, 1])
+                            with c1:
+                                st.markdown(f"**Categoría Maestro:** {recurso}")
+                                st.markdown(f"**Diagnosis:**\n> {row['diagnosis']}")
+                            with c2:
+                                st.markdown(f"**Serie/Inv:** {row['serie']}")
+                                st.markdown(f"**Técnico:** {row['tecnico_responsable']}")
+                                
+                                # BOTÓN DE RE-DESCARGA DEL REPORTE (SOLO TEXTO)
+                                # Preparamos datos históricos compatibles con la función
+                                datos_historicos = {
+                                    "tipo": recurso,
+                                    "marca_modelo": marca,
+                                    "cantidad_baja": cant,
+                                    "serie_inventario": row['serie'],
+                                    "ubicacion": "N/A (Dato histórico)",
+                                    "fecha_adq": "N/A (Dato histórico)",
+                                    "diagnosis": row['diagnosis'],
+                                    "justificacion": row['justificacion'],
+                                    "recomendacion": row['recomendacion'],
+                                    "tecnico_responsable": row['tecnico_responsable']
+                                }
+                                
+                                # Generar Word histórico (sin foto porque no se guarda en BD)
+                                docx_hist = generar_docx_baja(datos_historicos, foto_data=None)
+                                
+                                if docx_hist:
+                                    st.download_button(
+                                        label="⬇️ Re-descargar Informe WORD",
+                                        data=docx_hist,
+                                        file_name=f"Re_Informe_Baja_{marca.replace(' ', '_')}_{row['id']}.docx",
+                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                        use_container_width=True,
+                                        key=f"btn_h_{row['id']}" # Key única
+                                    )
+                else:
+                    st.info("No hay historial de bajas en la tabla 'equipos'.")
+            except Exception as e:
+                st.warning(f"⚠️ No se pudo cargar el historial. Detalle técnico: {e}")
+                st.info("💡 Asegúrate de haber creado la tabla 'equipos' en Supabase y ejecutado la query GRANT y DISABLE RLS.")
 
     # ---------------------------------------------------------
-    # MÓDULO 3: GENERADOR DE CÓDIGOS QR
+    # MÓDULO 3: GENERADOR DE CÓDIGOS QR - Intacto
     # ---------------------------------------------------------
     elif modulo_tec == "📋 Generador QR":
         st.subheader("📋 Generación de Códigos QR para Equipos")
-        st.write("Selecciona un recurso para generar su código QR único. Pégalo en el equipo físico para que los usuarios puedan reportar fallas.")
-        
+        st.write("Selecciona un recurso para generar su código QR único.")
         res_data_raw = supabase.table("recursos").select("*").execute().data
-        res_data_activos = []
         if res_data_raw:
-            if 'estado' in res_data_raw[0]:
-                res_data_activos = [r for r in res_data_raw if r['estado'] == 'Activo']
-            else:
-                res_data_activos = res_data_raw
-        
-        if res_data_activos:
-            col_sel, col_qr = st.columns([1, 2])
-            with col_sel:
-                res_dict_qr = {r.get('nombre', r.get('Nombre', 'Sin nombre')): r['id'] for r in res_data_activos}
-                res_qr_nom = st.selectbox("Recurso para QR", list(res_dict_qr.keys()), index=0)
-                res_qr_id = res_dict_qr[res_qr_nom]
-                
+            nombres_recursos_qr = sorted(list(set([r.get('nombre', r.get('Nombre', 'Sin nombre')) for r in res_data_raw])))
+            res_qr_nom = st.selectbox("Recurso para QR", nombres_recursos_qr, index=0)
+            
+            # Obtener ID real
+            res_qr_id_list = [r['id'] for r in res_data_raw if r.get('nombre', r.get('Nombre')) == res_qr_nom]
+            if res_qr_id_list:
+                res_qr_id = res_qr_id_list[0]
                 base_url = "https://escuela-san-rafael.streamlit.app/" 
                 report_url = f"{base_url}?page=reporte&id={res_qr_id}"
-                
-                st.markdown(f"**URL del Reporte:**\n`{report_url}`")
-
-            with col_qr:
-                st.write("**Vista Previa del QR:**")
+                st.markdown(f"**URL:**\n`{report_url}`")
+                st.write("**Vista Previa:**")
                 qr_api_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={report_url}"
                 try:
                     import requests
                     st.markdown(f"<div style='text-align:center'><img src='{qr_api_url}' width='200'></div>", unsafe_allow_html=True)
-                    
                     response_img = requests.get(qr_api_url)
                     if response_img.status_code == 200:
-                        st.download_button(
-                            label="⬇️ Descargar Imagen QR",
-                            data=response_img.content,
-                            file_name=f"QR_{res_qr_nom.replace(' ', '_')}.png",
-                            mime="image/png",
-                            use_container_width=True
-                        )
-                except Exception as e:
-                    st.error(f"Error cargando o descargando el QR: {e}")
-        else:
-            st.warning("No hay recursos activos para generar QR.")
+                        st.download_button(label="⬇️ Descargar Imagen QR", data=response_img.content, file_name=f"QR_{res_qr_nom.replace(' ', '_')}.png", mime="image/png", use_container_width=True)
+                except Exception as e: st.error(f"Error cargando el QR: {e}")
+        else: st.warning("No hay recursos activos.")
 # ------------------------------------------------------------------
 # SECCIÓN: CONFIGURACIÓN
 # ------------------------------------------------------------------
