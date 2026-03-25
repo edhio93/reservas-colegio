@@ -178,38 +178,74 @@ def send_email(subject, body, recipient_email):
 # --- MODO PÚBLICO: ENRUTAMIENTO VÍA CÓDIGO QR ---
 # ==============================================================================
 if "page" in st.query_params and st.query_params["page"] == "reporte":
-    st.image("https://images.vexels.com/content/135222/preview/university-building-simple-icon-135222.png", width=80)
-    st.header("🚨 Reportar Falla de Equipo")
+    # 1. ESTILOS AESTHETIC (Ocultar menús y decorar)
+    st.markdown("""
+        <style>
+            /* Ocultar el header, el menú de Streamlit y el footer */
+            [data-testid="stHeader"] {display: none;}
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            
+            /* Fondo suave para toda la app en celular */
+            .stApp {
+                background-color: #F8FAFC;
+            }
+            
+            /* Estilo tipo 'tarjeta' para el formulario */
+            [data-testid="stForm"] {
+                background-color: #FFFFFF;
+                border-radius: 16px;
+                padding: 25px;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+                border: 1px solid #E2E8F0;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # 2. ENCABEZADO CENTRADO
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.image("https://images.vexels.com/content/135222/preview/university-building-simple-icon-135222.png", use_container_width=True)
     
+    st.markdown("<h2 style='text-align: center; color: #1E3A8A; font-weight: 800; margin-bottom: 0px;'>🚨 Reportar Falla</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #64748b; font-size: 14px; margin-top: 5px;'>Colegio Antonio Varas - Depto. Enlaces</p>", unsafe_allow_html=True)
+    st.write("") # Espacio
+    
+    # 3. LÓGICA DEL REPORTE
     recurso_id = st.query_params.get("id")
     
     if recurso_id:
         try:
             recurso = supabase.table("recursos").select("nombre").eq("id", recurso_id).execute().data
             if recurso:
-                st.info(f"Estás reportando una falla para el equipo: **{recurso[0]['nombre']}**")
+                st.success(f"🛠️ **Equipo Identificado:** {recurso[0]['nombre']}")
                 
                 with st.form("form_reporte_publico", clear_on_submit=True):
-                    st.write("Por favor, completa los siguientes datos para que Soporte Técnico pueda ayudarte.")
+                    st.markdown("#### 📝 Detalles del Problema")
+                    st.markdown("<span style='color: #64748b; font-size: 14px;'>Ayúdanos con estos datos para que Soporte Técnico lo resuelva rápido.</span>", unsafe_allow_html=True)
+                    st.write("")
                     
-                    nombre_reporta = st.text_input("👤 Tu Nombre Completo (Obligatorio):", placeholder="Ej. Juan Pérez")
-                    descripcion = st.text_area("📝 Describe detalladamente el problema (Obligatorio):", height=150, placeholder="Ej. El proyector no enciende y parpadea una luz roja...")
+                    nombre_reporta = st.text_input("👤 Tu Nombre Completo:", placeholder="Ej. Juan Pérez")
+                    descripcion = st.text_area("🔧 Describe el problema detalladamente:", height=120, placeholder="Ej. El proyector no enciende y parpadea una luz roja...")
                     
-                    submit = st.form_submit_button("🚀 Enviar Reporte al Equipo Técnico", type="primary", use_container_width=True)
+                    st.write("")
+                    submit = st.form_submit_button("🚀 Enviar Reporte Técnico", type="primary", use_container_width=True)
                     
                     if submit:
                         if not nombre_reporta.strip() or not descripcion.strip():
-                            st.warning("⚠️ Debes ingresar tu nombre y la descripción del problema para enviar el reporte.")
+                            st.error("⚠️ Faltan datos: Por favor ingresa tu nombre y la descripción.")
                         else:
-                            with st.spinner("Enviando reporte..."):
+                            with st.spinner("Enviando reporte a Enlaces..."):
                                 supabase.table("mantenimientos").insert({
                                     "recurso_id": recurso_id,
                                     "descripcion": descripcion.strip(),
                                     "estado": "Reportado (Vía QR)",
                                     "reportado_por": nombre_reporta.strip()
                                 }).execute()
-                                st.success("✅ ¡Reporte enviado con éxito! El Departamento de Enlaces ha sido notificado.")
-                                st.balloons()
+                                
+                                st.success("✅ ¡Reporte enviado con éxito! Gracias por avisarnos.")
+                                st.balloons() # 🎈 ¡AQUÍ ESTÁN LOS GLOBOS! 🎈
+                                time.sleep(4) # Darle unos segundos al usuario para que vea los globos antes de cualquier recarga
             else:
                 st.error("❌ El equipo que intentas reportar no existe o fue dado de baja.")
         except Exception as e:
@@ -217,7 +253,7 @@ if "page" in st.query_params and st.query_params["page"] == "reporte":
     else:
         st.error("❌ Enlace no válido. Falta el identificador del equipo.")
         
-    st.stop() # ¡ESTO ES VITAL! Detiene la app aquí para que no pase al Login
+    st.stop() # Detiene la app aquí para que no cargue el Login de los profes
 # ==============================================================================
 
 # ------------------------------------------------------------------
