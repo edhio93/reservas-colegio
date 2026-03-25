@@ -5,3 +5,4 @@ plotly
 streamlit-autorefresh
 qrcode
 pillow
+fpdf
