@@ -1158,7 +1158,7 @@ elif page == "Dashboard":
     else:
         st.info("No hay reservas registradas en el sistema todavía.")
 # ==============================================================================
-# --- SECCIÓN TÉCNICOS (HELPDESK Y BAJA DE EQUIPOS) ---
+# --- SECCIÓN TÉCNICOS (TICKETS, BAJAS Y CÓDIGOS QR) ---
 # ==============================================================================
 elif page == "Técnicos":
     # Importar librerías de Word aquí para evitar errores si no están arriba
@@ -1173,19 +1173,18 @@ elif page == "Técnicos":
 
     st.header("🛠️ Panel de Soporte Técnico")
     
-    # Submenú con Radio Buttons (evita el error de Streamlit de pestañas anidadas)
+    # Submenú con Radio Buttons actualizado
     modulo_tec = st.radio("Selecciona el módulo de trabajo:", 
-                          ["🎫 HelpDesk (Gestión de Fallas)", "🗑️ Baja de Equipos"], 
+                          ["🎫 Tickets", "🗑️ Baja de Equipos", "📋 Generador QR"], 
                           horizontal=True)
     st.markdown("---")
 
     # ---------------------------------------------------------
-    # MÓDULO 1: HELPDESK (TICKETS DE MANTENIMIENTO)
+    # MÓDULO 1: TICKETS (GESTIÓN DE FALLAS)
     # ---------------------------------------------------------
-    if modulo_tec == "🎫 HelpDesk (Gestión de Fallas)":
+    if modulo_tec == "🎫 Tickets":
         st.subheader("Gestión de Tickets ingresados vía QR")
         
-        # CORRECCIÓN 1: 'nombre' en minúscula para evitar el APIError
         try:
             mant_data = supabase.table("mantenimientos").select("*, recursos(nombre)").order("fecha", desc=True).execute().data
         except Exception as e:
@@ -1194,7 +1193,6 @@ elif page == "Técnicos":
         
         if mant_data:
             df_mant = pd.DataFrame(mant_data)
-            # CORRECCIÓN 1b: Leer 'nombre' en minúscula
             df_mant['Recurso'] = df_mant['recursos'].apply(lambda x: x.get('nombre', 'Desconocido') if isinstance(x, dict) else "Desconocido")
             
             if 'notas_tecnico' not in df_mant.columns:
@@ -1329,7 +1327,7 @@ elif page == "Técnicos":
                 st.error(f"Error generando Word: {e}")
                 return None
 
-        # CORRECCIÓN 2: Consultar recursos directamente aquí para evitar NameError
+        # Consultar recursos activos directamente para este formulario
         res_data_raw = supabase.table("recursos").select("*").execute().data
         res_data_activos = []
         if res_data_raw:
@@ -1339,7 +1337,6 @@ elif page == "Técnicos":
                 res_data_activos = res_data_raw
 
         if res_data_activos:
-            # Usar .get para evitar errores si la columna tiene mayúsculas/minúsculas cruzadas
             res_dict_baja = {r.get('nombre', r.get('Nombre', 'Sin nombre')): r['id'] for r in res_data_activos}
             
             with st.container(border=True):
@@ -1376,7 +1373,6 @@ elif page == "Técnicos":
                                 "tecnico_responsable": html_sanitizer.escape(tecnico).strip()
                             }
                             
-                            # Datos exactos para la tabla "equipos"
                             datos_bd = {
                                 "recurso_nombre": datos_baja['tipo'],
                                 "marca": datos_baja['marca_modelo'],
@@ -1390,15 +1386,11 @@ elif page == "Técnicos":
                             }
 
                             try:
-                                # 1. GUARDAR EN LA TABLA 'equipos'
                                 supabase.table("equipos").insert(datos_bd).execute()
-                                
-                                # 2. ELIMINAR DEFINITIVAMENTE DE LA TABLA 'recursos'
                                 supabase.table("recursos").delete().eq("id", recurso_baja_id).execute()
                                 
                                 st.success(f"✅ ¡'{recurso_baja_nom}' ha sido eliminado de los recursos activos y archivado en 'equipos'!")
                                 
-                                # 3. GENERAR EL WORD
                                 docx_data = generar_docx_baja(datos_baja)
                                 if docx_data:
                                     st.download_button(
@@ -1415,8 +1407,6 @@ elif page == "Técnicos":
                                     st.error("⚠️ No se puede eliminar de 'recursos' porque el equipo tiene reservas o reportes técnicos asociados en el historial. Debes borrar sus reservas primero.")
                                 else:
                                     st.error(f"Error de base de datos: {e}")
-                                    if "equipos" in str(e).lower():
-                                        st.info("💡 Asegúrate de haber ejecutado el código SQL para crear la tabla 'equipos' en Supabase.")
         else:
             st.warning("No hay recursos activos para dar de baja.")
 
@@ -1432,8 +1422,59 @@ elif page == "Técnicos":
             else:
                 st.info("No hay equipos dados de baja en la tabla 'equipos'.")
         except Exception as e:
-            st.warning("⚠️ No se pudo cargar el historial. ¿Ya creaste la tabla 'equipos' en Supabase?")
+            # Aquí te mostrará el error real (RLS, tabla inexistente, etc.)
+            st.warning(f"⚠️ No se pudo cargar el historial. Detalle técnico: {e}")
+            st.info("💡 Asegúrate de haber creado la tabla 'equipos' y revisado las políticas de seguridad (RLS) en Supabase.")
 
+    # ---------------------------------------------------------
+    # MÓDULO 3: GENERADOR DE CÓDIGOS QR
+    # ---------------------------------------------------------
+    elif modulo_tec == "📋 Generador QR":
+        st.subheader("📋 Generación de Códigos QR para Equipos")
+        st.write("Selecciona un recurso para generar su código QR único. Pégalo en el equipo físico para que los usuarios puedan reportar fallas.")
+        
+        # Consultar recursos activos directamente
+        res_data_raw = supabase.table("recursos").select("*").execute().data
+        res_data_activos = []
+        if res_data_raw:
+            if 'estado' in res_data_raw[0]:
+                res_data_activos = [r for r in res_data_raw if r['estado'] == 'Activo']
+            else:
+                res_data_activos = res_data_raw
+        
+        if res_data_activos:
+            col_sel, col_qr = st.columns([1, 2])
+            with col_sel:
+                res_dict_qr = {r.get('nombre', r.get('Nombre', 'Sin nombre')): r['id'] for r in res_data_activos}
+                res_qr_nom = st.selectbox("Recurso para QR", list(res_dict_qr.keys()), index=0)
+                res_qr_id = res_dict_qr[res_qr_nom]
+                
+                # ¡Cambia esta URL por la definitiva de tu aplicación publicada!
+                base_url = "https://escuela-san-rafael.streamlit.app/" 
+                report_url = f"{base_url}?page=reporte&id={res_qr_id}"
+                
+                st.markdown(f"**URL del Reporte:**\n`{report_url}`")
+
+            with col_qr:
+                st.write("**Vista Previa del QR:**")
+                qr_api_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={report_url}"
+                try:
+                    import requests
+                    st.markdown(f"<div style='text-align:center'><img src='{qr_api_url}' width='200'></div>", unsafe_allow_html=True)
+                    
+                    response_img = requests.get(qr_api_url)
+                    if response_img.status_code == 200:
+                        st.download_button(
+                            label="⬇️ Descargar Imagen QR",
+                            data=response_img.content,
+                            file_name=f"QR_Enlaces_{res_qr_nom.replace(' ', '_')}.png",
+                            mime="image/png",
+                            use_container_width=True
+                        )
+                except Exception as e:
+                    st.error(f"Error cargando o descargando el QR: {e}")
+        else:
+            st.warning("No hay recursos activos para generar QR.")
 # ------------------------------------------------------------------
 # SECCIÓN: CONFIGURACIÓN
 # ------------------------------------------------------------------
