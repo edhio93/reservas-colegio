@@ -1323,7 +1323,21 @@ elif page == "Técnicos":
                         with col_a: nuevo_est = st.selectbox("Cambiar estado a:", estados_destino, key=f"est_{row['id']}")
                         with col_b: nueva_nota = st.text_area("Notas de Reparación:", value=row['notas_tecnico'], key=f"not_{row['id']}", height=68)
 
-                        # BOTÓN DE INTELIGENCIA ARTIFICIAL
+                       
+                        
+                        if st.button("💾 Guardar Cambios", key=f"btn_{row['id']}", type="primary", use_container_width=True):
+                            try:
+                                import html as html_sanitizer
+                                supabase.table("mantenimientos").update({
+                                    "estado": nuevo_est, 
+                                    "notas_tecnico": html_sanitizer.escape(nueva_nota).strip()
+                                }).eq("id", row['id']).execute()
+                                st.success("Ticket actualizado.")
+                                time.sleep(1); st.rerun()
+                            except Exception as e: 
+                                st.error(f"Error técnico: {e}")
+
+ # BOTÓN DE INTELIGENCIA ARTIFICIAL
 if st.button("🤖 Obtener Diagnóstico Sugerido (IA)", key=f"ai_btn_{row['id']}"):
     with st.spinner("Gemini está analizando la falla..."):
         prompt_tecnico = f"""
@@ -1337,19 +1351,7 @@ if st.button("🤖 Obtener Diagnóstico Sugerido (IA)", key=f"ai_btn_{row['id']}
         3. Pasos de solución rápida.
         """
         sugerencia = consultar_gemini(prompt_tecnico)
-        st.info(f"**💡 Sugerencia de Gemini:**\n\n{sugerencia}")
-                        
-                        if st.button("💾 Guardar Cambios", key=f"btn_{row['id']}", type="primary", use_container_width=True):
-                            try:
-                                import html as html_sanitizer
-                                supabase.table("mantenimientos").update({
-                                    "estado": nuevo_est, 
-                                    "notas_tecnico": html_sanitizer.escape(nueva_nota).strip()
-                                }).eq("id", row['id']).execute()
-                                st.success("Ticket actualizado.")
-                                time.sleep(1); st.rerun()
-                            except Exception as e: 
-                                st.error(f"Error técnico: {e}")
+        st.info(f"**💡 Sugerencia de Gemini:**\n\n{sugerencia}")                                
 
             with t_pendientes: renderizar_tickets(df_mant[df_mant['estado'] == 'Reportado (Vía QR)'], "🔴", ["En Revisión", "Resuelto", "Reportado (Vía QR)"])
             with t_revision: renderizar_tickets(df_mant[df_mant['estado'] == 'En Revisión'], "🟡", ["Resuelto", "En Revisión", "Reportado (Vía QR)"])
