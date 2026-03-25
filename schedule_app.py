@@ -1157,7 +1157,6 @@ elif page == "Dashboard":
         
     else:
         st.info("No hay reservas registradas en el sistema todavía.")
-# ------------------------------------------------------------------
 # ==============================================================================
 # --- SECCIÓN TÉCNICOS (HELPDESK Y BAJA DE EQUIPOS) ---
 # ==============================================================================
@@ -1186,11 +1185,17 @@ elif page == "Técnicos":
     if modulo_tec == "🎫 HelpDesk (Gestión de Fallas)":
         st.subheader("Gestión de Tickets ingresados vía QR")
         
-        mant_data = supabase.table("mantenimientos").select("*, recursos(Nombre)").order("fecha", desc=True).execute().data
+        # CORRECCIÓN 1: 'nombre' en minúscula para evitar el APIError
+        try:
+            mant_data = supabase.table("mantenimientos").select("*, recursos(nombre)").order("fecha", desc=True).execute().data
+        except Exception as e:
+            st.error(f"Error consultando mantenimientos: {e}")
+            mant_data = []
         
         if mant_data:
             df_mant = pd.DataFrame(mant_data)
-            df_mant['Recurso'] = df_mant['recursos'].apply(lambda x: x['Nombre'] if isinstance(x, dict) and 'Nombre' in x else "Desconocido")
+            # CORRECCIÓN 1b: Leer 'nombre' en minúscula
+            df_mant['Recurso'] = df_mant['recursos'].apply(lambda x: x.get('nombre', 'Desconocido') if isinstance(x, dict) else "Desconocido")
             
             if 'notas_tecnico' not in df_mant.columns:
                 df_mant['notas_tecnico'] = ""
@@ -1324,8 +1329,18 @@ elif page == "Técnicos":
                 st.error(f"Error generando Word: {e}")
                 return None
 
+        # CORRECCIÓN 2: Consultar recursos directamente aquí para evitar NameError
+        res_data_raw = supabase.table("recursos").select("*").execute().data
+        res_data_activos = []
+        if res_data_raw:
+            if 'estado' in res_data_raw[0]:
+                res_data_activos = [r for r in res_data_raw if r['estado'] == 'Activo']
+            else:
+                res_data_activos = res_data_raw
+
         if res_data_activos:
-            res_dict_baja = {r['Nombre']: r['id'] for r in res_data_activos}
+            # Usar .get para evitar errores si la columna tiene mayúsculas/minúsculas cruzadas
+            res_dict_baja = {r.get('nombre', r.get('Nombre', 'Sin nombre')): r['id'] for r in res_data_activos}
             
             with st.container(border=True):
                 col_sel, col_datos_m = st.columns([1, 2])
@@ -1397,7 +1412,7 @@ elif page == "Técnicos":
                             
                             except Exception as e:
                                 if "foreign key" in str(e).lower() or "violates" in str(e).lower():
-                                    st.error("⚠️ No se puede eliminar de 'recursos' porque el equipo tiene reservas o reportes técnicos asociados en el historial. Debes borrar sus reservas primero o configurar tu BD para borrado en cascada.")
+                                    st.error("⚠️ No se puede eliminar de 'recursos' porque el equipo tiene reservas o reportes técnicos asociados en el historial. Debes borrar sus reservas primero.")
                                 else:
                                     st.error(f"Error de base de datos: {e}")
                                     if "equipos" in str(e).lower():
