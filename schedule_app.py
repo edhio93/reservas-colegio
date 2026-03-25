@@ -435,6 +435,58 @@ html_reloj = """
 </body>
 </html>
 """
+# ==============================================================================
+# --- MODO PÚBLICO: ENRUTAMIENTO VÍA CÓDIGO QR ---
+# ==============================================================================
+# Si la URL contiene "?page=reporte", mostramos la interfaz pública y bloqueamos el panel admin
+if "page" in st.query_params and st.query_params["page"] == "reporte":
+    st.image("https://images.vexels.com/content/135222/preview/university-building-simple-icon-135222.png", width=80)
+    st.header("🚨 Reportar Falla de Equipo")
+    
+    recurso_id = st.query_params.get("id")
+    
+    if recurso_id:
+        try:
+            # Buscar el nombre del equipo en la base de datos
+            recurso = supabase.table("recursos").select("nombre").eq("id", recurso_id).execute().data
+            
+            if recurso:
+                st.info(f"Estás reportando una falla para el equipo: **{recurso[0]['nombre']}**")
+                
+                with st.form("form_reporte_publico", clear_on_submit=True):
+                    st.write("Por favor, completa los siguientes datos para que Soporte Técnico pueda ayudarte.")
+                    
+                    # NUEVO CAMPO OBLIGATORIO
+                    nombre_reporta = st.text_input("👤 Tu Nombre Completo (Obligatorio):", placeholder="Ej. Juan Pérez")
+                    descripcion = st.text_area("📝 Describe detalladamente el problema (Obligatorio):", height=150, placeholder="Ej. El proyector no enciende y parpadea una luz roja...")
+                    
+                    submit = st.form_submit_button("🚀 Enviar Reporte al Equipo Técnico", type="primary", use_container_width=True)
+                    
+                    if submit:
+                        if not nombre_reporta.strip() or not descripcion.strip():
+                            st.warning("⚠️ Debes ingresar tu nombre y la descripción del problema para enviar el reporte.")
+                        else:
+                            with st.spinner("Enviando reporte..."):
+                                # Guardar en la tabla mantenimientos
+                                supabase.table("mantenimientos").insert({
+                                    "recurso_id": recurso_id,
+                                    "descripcion": descripcion.strip(),
+                                    "estado": "Reportado (Vía QR)",
+                                    "reportado_por": nombre_reporta.strip() # Guardamos el nombre aquí
+                                }).execute()
+                                
+                                st.success("✅ ¡Reporte enviado con éxito! El Departamento de Enlaces ha sido notificado.")
+                                st.balloons() # ¡GLOBITOS ACTIVADOS! 🎈
+            else:
+                st.error("❌ El equipo que intentas reportar no existe o fue dado de baja.")
+        except Exception as e:
+            st.error(f"Error de conexión con la base de datos: {e}")
+    else:
+        st.error("❌ Enlace no válido. Falta el identificador del equipo.")
+        
+    # DETENEMOS LA APP AQUÍ: Esto evita que el usuario público vea el menú lateral de administrador
+    st.stop()
+# ==============================================================================
 with st.sidebar:
     components.html(html_reloj, height=85)
     st.markdown("<hr style='margin: 0px 0px 10px 0px; padding: 0;'>", unsafe_allow_html=True)
@@ -1213,21 +1265,32 @@ elif page == "Técnicos":
                     return
                 for _, row in df_filtrado.iterrows():
                     with st.expander(f"{color_icon} Ticket #{row['id']} | {row['Recurso']} | Fecha: {row['fecha']}"):
+                        
+                        # --- NUEVO: MOSTRAR QUIÉN REPORTÓ ---
+                        quien_reporto = row.get('reportado_por', 'No registrado')
+                        if not quien_reporto: # Por si viene vacío de reportes antiguos
+                            quien_reporto = 'No registrado'
+                        st.markdown(f"**👤 Reportado por:** {quien_reporto}")
+                        # ------------------------------------
+                        
                         st.markdown(f"**📝 Falla:**\n> {row['descripcion']}")
                         if row['notas_tecnico']: st.markdown(f"**🛠️ Notas Previas:**\n> {row['notas_tecnico']}")
                         st.markdown("---")
                         col_a, col_b = st.columns([1, 2])
                         with col_a: nuevo_est = st.selectbox("Cambiar estado a:", estados_destino, key=f"est_{row['id']}")
                         with col_b: nueva_nota = st.text_area("Notas de Reparación:", value=row['notas_tecnico'], key=f"not_{row['id']}", height=68)
+                        
                         if st.button("💾 Guardar Cambios", key=f"btn_{row['id']}", type="primary", use_container_width=True):
                             try:
-                                supabase.table("mantenimientos").update({"estado": nuevo_est, "notas_tecnico": html_sanitizer.escape(nueva_nota).strip()}).eq("id", row['id']).execute()
-                                st.success("Ticket actualizado."); time.sleep(1); st.rerun()
-                            except Exception as e: st.error(f"Error técnico: {e}")
-            with t_pendientes: renderizar_tickets(df_mant[df_mant['estado'] == 'Reportado (Vía QR)'], "🔴", ["En Revisión", "Resuelto", "Reportado (Vía QR)"])
-            with t_revision: renderizar_tickets(df_mant[df_mant['estado'] == 'En Revisión'], "🟡", ["Resuelto", "En Revisión", "Reportado (Vía QR)"])
-            with t_resueltos: renderizar_tickets(df_mant[df_mant['estado'] == 'Resuelto'], "🟢", ["Resuelto", "En Revisión", "Reportado (Vía QR)"])
-        else: st.info("No hay reportes de mantenimiento.")
+                                supabase.table("mantenimientos").update({
+                                    "estado": nuevo_est, 
+                                    "notas_tecnico": nueva_nota.strip()
+                                }).eq("id", row['id']).execute()
+                                st.success("Ticket actualizado.")
+                                time.sleep(1); st.rerun()
+                            except Exception as e: 
+                                st.error(f"Error técnico: {e}")
+                           
 
     # ---------------------------------------------------------
     # MÓDULO 2: BAJA DE EQUIPOS (INDEPENDIENTE, CON FOTOS Y CANTIDAD)
