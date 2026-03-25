@@ -863,71 +863,153 @@ elif page == "Semana":
         
         st.markdown(schedule.to_html(escape=False), unsafe_allow_html=True)
         
-if page == "Dashboard":
-    st.title("📈 Dashboard Analítico")
-    with st.container(border=True):
-        st.subheader("Filtrar por Rango de Fechas")
-        today = dt.date.today()
-        c1, c2 = st.columns(2)
-        start_date = c1.date_input("Fecha de Inicio", today - dt.timedelta(days=30), format="DD/MM/YYYY")
-        end_date = c2.date_input("Fecha de Fin", today, format="DD/MM/YYYY")
-        
-        if start_date > end_date:
-            st.error("Error: La fecha de inicio no puede ser posterior a la fecha de fin.")
-        else:
-            if not df.empty: df_filtered = df[(df['Fecha'] >= start_date) & (df['Fecha'] <= end_date)]
-            else: df_filtered = pd.DataFrame()
-                
-            st.markdown("---")
-            st.subheader("Métricas Generales del Periodo")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Total de Reservas en Periodo", len(df_filtered))
-            if not df_filtered.empty:
-                try:
-                    recurso_mas_usado = df_filtered['Recurso'].mode()[0]
-                    c2.metric("Recurso Más Usado", recurso_mas_usado)
-                    profesor_mas_activo = df_filtered['Profesor'].mode()[0]
-                    c3.metric("Profesor Más Activo", profesor_mas_activo)
-                except IndexError:
-                    c2.info("No hay datos para mostrar métricas.")
-            else:
-                c2.info("No hay reservas en el periodo seleccionado.")
-                
-    if not df_filtered.empty:
-        st.markdown("---")
-        st.subheader("Mapa de Calor de Ocupación")
-        with st.container(border=True):
-            df_heatmap = df_filtered.copy()
-            dias_semana_es_cat = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-            df_heatmap['DiaSemana'] = pd.Categorical(df_heatmap['Fecha'].apply(lambda x: dias_semana_es_cat[x.weekday()]), categories=dias_semana_es_cat, ordered=True)
-            df_heatmap['BloqueHorario'] = df_heatmap.apply(lambda row: f"{row['Hora inicio'].strftime('%H:%M')} a {row['Hora fin'].strftime('%H:%M')}", axis=1)
-            heatmap_data = df_heatmap.groupby(['DiaSemana', 'BloqueHorario']).size().reset_index(name='count')
-            heatmap_pivot = heatmap_data.pivot_table(index='BloqueHorario', columns='DiaSemana', values='count', fill_value=0)
-            heatmap_pivot = heatmap_pivot.loc[sorted(heatmap_pivot.index, key=sort_time_key)]
-            heatmap_pivot = heatmap_pivot.reindex(columns=dias_semana_es_cat[:5], fill_value=0)
-            fig = px.imshow(heatmap_pivot, labels=dict(x="Día de la Semana", y="Bloque Horario", color="N° de Reservas"), color_continuous_scale=px.colors.sequential.Reds)
-            fig.update_layout(xaxis_title="", yaxis_title="")
-            st.plotly_chart(fig, use_container_width=True)
-            
-        st.markdown("---")
-        c_cursos, c_recursos = st.columns(2)
-        with c_cursos:
-            with st.container(border=True):
-                st.subheader("Top 5 Cursos con más Reservas")
-                cursos_count = df_filtered['Curso'].value_counts().nlargest(5)
-                if not cursos_count.empty:
-                    fig_cursos = px.bar(cursos_count, x=cursos_count.index, y=cursos_count.values, labels={'x': 'Curso', 'y': 'Cantidad de Reservas'})
-                    st.plotly_chart(fig_cursos, use_container_width=True)
-                else: st.info("No hay datos de cursos en este periodo.")
-        with c_recursos:
-            with st.container(border=True):
-                st.subheader("Top 5 Recursos más Solicitados")
-                recursos_count = df_filtered['Recurso'].value_counts().nlargest(5)
-                if not recursos_count.empty:
-                    fig_recursos = px.bar(recursos_count, x=recursos_count.index, y=recursos_count.values, labels={'x': 'Recurso', 'y': 'Cantidad de Reservas'})
-                    st.plotly_chart(fig_recursos, use_container_width=True)
-                else: st.info("No hay datos de recursos en este periodo.")
+# --- PANEL PRINCIPAL (DASHBOARD) ---
+elif page == "Dashboard": # Asegúrate de usar el nombre correcto de tu pestaña (ej. "Panel Principal")
+    import tempfile
+    import unicodedata
+    
+    st.header("📊 Panel de Control")
 
+    # --- 1. FUNCIÓN PARA CREAR EL PDF EN SEGUNDOS ---
+    def generar_pdf_dashboard(df_datos):
+        from fpdf import FPDF
+        
+        # Plantilla del Documento
+        class PDF(FPDF):
+            def header(self):
+                self.set_font('Arial', 'B', 16)
+                self.cell(0, 10, 'Reporte de Dashboard - Sistema de Enlaces', 0, 1, 'C')
+                self.ln(5)
+
+            def footer(self):
+                self.set_y(-15)
+                self.set_font('Arial', 'I', 8)
+                self.cell(0, 10, f'Pagina {self.page_no()}', 0, 0, 'C')
+
+        # Función para limpiar acentos (evita errores de caracteres raros en el PDF)
+        def limpiar_texto(texto):
+            texto_str = str(texto)
+            nfkd = unicodedata.normalize('NFKD', texto_str)
+            return u"".join([c for c in nfkd if not unicodedata.combining(c)])
+
+        pdf = PDF()
+        pdf.add_page()
+        pdf.set_font('Arial', '', 12)
+
+        if df_datos.empty:
+            pdf.cell(0, 10, 'No hay datos registrados en el sistema.', 0, 1)
+        else:
+            # Detección segura de tus columnas (mayúsculas o minúsculas)
+            col_fecha = 'Fecha' if 'Fecha' in df_datos.columns else 'fecha'
+            col_rec = 'Recurso' if 'Recurso' in df_datos.columns else 'recurso'
+            col_prof = 'Profesor' if 'Profesor' in df_datos.columns else 'profesor'
+
+            # Cálculos de Métricas
+            total_res = len(df_datos)
+            df_datos['fecha_obj'] = pd.to_datetime(df_datos[col_fecha]).dt.date
+            hoy_res = len(df_datos[df_datos['fecha_obj'] == dt.date.today()])
+            recurso_top = df_datos[col_rec].mode()[0] if not df_datos[col_rec].empty else "N/A"
+            profesor_top = df_datos[col_prof].mode()[0] if not df_datos[col_prof].empty else "N/A"
+
+            # Escribir Resumen en el PDF
+            pdf.set_font('Arial', 'B', 14)
+            pdf.cell(0, 10, '1. Resumen General', 0, 1)
+            pdf.set_font('Arial', '', 12)
+            pdf.cell(0, 10, f'Total de Reservas Historicas: {total_res}', 0, 1)
+            pdf.cell(0, 10, f'Reservas Activas para Hoy: {hoy_res}', 0, 1)
+            pdf.cell(0, 10, f'Recurso mas solicitado: {limpiar_texto(recurso_top)}', 0, 1)
+            pdf.cell(0, 10, f'Profesor mas frecuente: {limpiar_texto(profesor_top)}', 0, 1)
+            
+            pdf.ln(8)
+            
+            # Escribir Desglose en el PDF
+            pdf.set_font('Arial', 'B', 14)
+            pdf.cell(0, 10, '2. Desglose de Uso por Recurso', 0, 1)
+            pdf.set_font('Arial', '', 12)
+            uso_recursos = df_datos[col_rec].value_counts()
+            for rec, count in uso_recursos.items():
+                pdf.cell(0, 8, f'- {limpiar_texto(rec)}: {count} reservas', 0, 1)
+
+        # Guardar archivo seguro en memoria para descarga
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            pdf.output(tmp.name)
+            with open(tmp.name, "rb") as f:
+                pdf_bytes = f.read()
+        return pdf_bytes
+
+    # --- 2. DIBUJAR EL BOTÓN Y LAS MÉTRICAS EN PANTALLA ---
+    col_titulo, col_boton = st.columns([2, 1])
+    
+    with col_boton:
+        if not df.empty:
+            try:
+                # Generamos el PDF en el fondo y lo ponemos en el botón
+                pdf_data = generar_pdf_dashboard(df)
+                st.download_button(
+                    label="📄 Descargar Reporte PDF",
+                    data=pdf_data,
+                    file_name=f"Reporte_Dashboard_{dt.date.today().strftime('%d_%m_%Y')}.pdf",
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True
+                )
+            except ModuleNotFoundError:
+                st.warning("⚠️ Instala la librería 'fpdf' (pip install fpdf) para activar los PDFs.")
+
+    # Las métricas visuales originales de tu Dashboard
+    if not df.empty:
+        col_fecha = 'Fecha' if 'Fecha' in df.columns else 'fecha'
+        col_rec = 'Recurso' if 'Recurso' in df.columns else 'recurso'
+        col_prof = 'Profesor' if 'Profesor' in df.columns else 'profesor'
+        
+        df['fecha_obj'] = pd.to_datetime(df[col_fecha]).dt.date
+        hoy = dt.date.today()
+        reservas_hoy = df[df['fecha_obj'] == hoy]
+        
+        c1, c2, c3, c4 = st.columns(4)
+        
+        with c1:
+            st.markdown(f"""
+                <div style="background:white; border-radius:10px; border-left: 5px solid #2ecc71; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                    <div style="font-size:0.9em; color:#7f8c8d; text-transform:uppercase; font-weight:bold;">Total Reservas</div>
+                    <div style="font-size:2em; font-weight:bold; color:#2c3e50;">{len(df)}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        with c2:
+            st.markdown(f"""
+                <div style="background:white; border-radius:10px; border-left: 5px solid #e74c3c; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                    <div style="font-size:0.9em; color:#7f8c8d; text-transform:uppercase; font-weight:bold;">Reservas Hoy</div>
+                    <div style="font-size:2em; font-weight:bold; color:#2c3e50;">{len(reservas_hoy)}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        with c3:
+            recurso_top = df[col_rec].mode()[0] if not df[col_rec].empty else "N/A"
+            st.markdown(f"""
+                <div style="background:white; border-radius:10px; border-left: 5px solid #f39c12; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                    <div style="font-size:0.9em; color:#7f8c8d; text-transform:uppercase; font-weight:bold;">Recurso Estrella</div>
+                    <div style="font-size:1.5em; font-weight:bold; color:#2c3e50;">{recurso_top}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        with c4:
+            profesor_top = df[col_prof].mode()[0] if not df[col_prof].empty else "N/A"
+            st.markdown(f"""
+                <div style="background:white; border-radius:10px; border-left: 5px solid #9b59b6; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                    <div style="font-size:0.9em; color:#7f8c8d; text-transform:uppercase; font-weight:bold;">Prof. Frecuente</div>
+                    <div style="font-size:1.2em; font-weight:bold; color:#2c3e50;">{str(profesor_top)[:15]}</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("<br><h3>📊 Gráfico de Uso de Recursos</h3>", unsafe_allow_html=True)
+        uso_recursos = df[col_rec].value_counts().reset_index()
+        uso_recursos.columns = ['Recurso', 'Cantidad']
+        
+        import plotly.express as px
+        fig = px.bar(uso_recursos, x='Recurso', y='Cantidad', color='Recurso', 
+                     template='plotly_white', text_auto=True)
+        fig.update_layout(showlegend=False, margin=dict(t=20, b=20, l=20, r=20))
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No hay reservas registradas en el sistema todavía.")
 # ------------------------------------------------------------------
 # SECCIÓN: TÉCNICOS
 # ------------------------------------------------------------------
