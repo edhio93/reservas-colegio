@@ -864,20 +864,18 @@ elif page == "Semana":
         st.markdown(schedule.to_html(escape=False), unsafe_allow_html=True)
         
 # --- PANEL PRINCIPAL (DASHBOARD) ---
-elif page == "Dashboard": # Ajusta si el nombre en tu menú es "Panel Principal" o similar
+elif page == "Dashboard":
     import tempfile
     import unicodedata
-    import io
-    # Importamos librerías gráficas para el PDF
+    import os
     import matplotlib.pyplot as plt
-    import matplotlib.ticker as mticker
+    import plotly.express as px
     
     st.header("📊 Panel de Supervisión General")
 
-    # Definir colores institucionales para usar en pantalla y PDF
-    COLOR_PRIMARIO = '#1E3A8A' # Azul oscuro formal
-    COLOR_SECUNDARIO = '#10B981' # Verde éxito
-    COLOR_TEXTO = '#1F2937'
+    # Definir colores institucionales
+    COLOR_PRIMARIO = '#1E3A8A' 
+    COLOR_SECUNDARIO = '#10B981' 
 
     # --- 1. FUNCIÓN MAESTRA: GENERAR PDF PROFESIONAL CON GRÁFICOS ---
     def generar_pdf_profesional_con_graficos(df_datos):
@@ -886,14 +884,13 @@ elif page == "Dashboard": # Ajusta si el nombre en tu menú es "Panel Principal"
         # Plantilla del Documento Estilizada
         class PDF(FPDF):
             def header(self):
-                # Franja superior de color
-                self.set_fill_color(30, 58, 138) # COLOR_PRIMARIO en RGB
+                self.set_fill_color(30, 58, 138)
                 self.rect(0, 0, 210, 15, 'F')
                 self.set_y(15)
                 self.set_font('Arial', 'B', 20)
-                self.set_text_color(255, 255, 255) # Texto blanco en cabecera
+                self.set_text_color(255, 255, 255)
                 self.cell(0, 15, 'REPORTE EJECUTIVO DE GESTION', 0, 1, 'C')
-                self.set_text_color(31, 41, 55) # Reset texto a COLOR_TEXTO
+                self.set_text_color(31, 41, 55)
                 self.ln(10)
 
             def footer(self):
@@ -906,13 +903,13 @@ elif page == "Dashboard": # Ajusta si el nombre en tu menú es "Panel Principal"
 
             def section_title(self, label):
                 self.set_font('Arial', 'B', 14)
-                self.set_fill_color(243, 244, 246) # Fondo gris sutil
-                self.set_text_color(30, 58, 138) # COLOR_PRIMARIO
+                self.set_fill_color(243, 244, 246)
+                self.set_text_color(30, 58, 138)
                 self.cell(0, 10, f"  {label}", 0, 1, 'L', 1)
-                self.set_text_color(31, 41, 55) # Reset
+                self.set_text_color(31, 41, 55)
                 self.ln(4)
 
-        # Función para limpiar acentos (fpdf nativo no soporta unicode bien)
+        # Limpiar acentos para evitar errores en PDF
         def s(texto):
             if not texto: return "N/A"
             texto_str = str(texto)
@@ -927,13 +924,11 @@ elif page == "Dashboard": # Ajusta si el nombre en tu menú es "Panel Principal"
         if df_datos.empty:
             pdf.cell(0, 10, s('No hay datos registrados para analizar.'), 0, 1)
         else:
-            # --- DETECCIÓN DE COLUMNAS (Mayúsculas originales) ---
             C_FECHA = 'Fecha'
             C_REC = 'Recurso'
             C_PROF = 'Profesor'
-            C_HORA_I = 'Hora inicio'
 
-            # --- CÁLCULOS DE DATOS ---
+            # Cálculos rápidos
             total_res = len(df_datos)
             df_datos['fecha_obj'] = pd.to_datetime(df_datos[C_FECHA]).dt.date
             hoy_res = len(df_datos[df_datos['fecha_obj'] == dt.date.today()])
@@ -941,11 +936,10 @@ elif page == "Dashboard": # Ajusta si el nombre en tu menú es "Panel Principal"
             profesor_top = df_datos[C_PROF].mode()[0] if not df_datos[C_PROF].empty else "N/A"
 
             # =========================================================
-            # SECCIÓN 1: RESUMEN EJECUTIVO (MÉTRICAS CLAVE)
+            # SECCIÓN 1: RESUMEN EJECUTIVO
             # =========================================================
             pdf.section_title('1. Resumen de Metricas Clave')
             
-            # Tabla estilizada de KPIs
             pdf.set_fill_color(255, 255, 255)
             pdf.set_font('Arial', 'B', 12)
             pdf.cell(95, 10, s('Concepto'), 1, 0, 'C', 1)
@@ -966,101 +960,90 @@ elif page == "Dashboard": # Ajusta si el nombre en tu menú es "Panel Principal"
             pdf.ln(15)
 
             # =========================================================
-            # SECCIÓN 2: GRÁFICOS PROFESIONALES (usando Matplotlib)
+            # SECCIÓN 2: GRÁFICOS CON ARCHIVOS TEMPORALES
             # =========================================================
             pdf.section_title('2. Analisis Visual de Ocupacion')
             pdf.set_font('Arial', '', 11)
             pdf.multi_cell(0, 7, s('A continuacion se presentan los graficos detallados de uso de recursos y distribucion temporal de las reservas.'), 0, 'L')
             pdf.ln(5)
 
-            # --- GRÁFICO A: TOP 5 RECURSOS (Barras Horizontales Bonitas) ---
+            # --- GRÁFICO A: TOP 5 RECURSOS ---
             pdf.set_font('Arial', 'I', 10)
             pdf.cell(0, 8, s('Grafico A: Top 5 Recursos Mas Utilizados'), 0, 1, 'C')
             
-            plt.figure(figsize=(8, 4)) # Tamaño ideal para el PDF
+            plt.figure(figsize=(8, 4))
             top5_data = df_datos[C_REC].value_counts().nlargest(5).sort_values(ascending=True)
-            
-            # Limpiar nombres de recursos para el gráfico Matplotlib
             names_clean = [s(name) for name in top5_data.index]
             
             bars = plt.barh(names_clean, top5_data.values, color='#3B82F6', edgecolor='#1E3A8A', height=0.7)
-            
-            # Estilo del gráfico
             plt.xlabel('Cantidad de Reservas', fontsize=10, fontweight='bold', color='#4B5563')
             plt.title('Top 5 Recursos', fontsize=12, fontweight='bold', color='#1E3A8A')
             plt.gca().spines['top'].set_visible(False)
             plt.gca().spines['right'].set_visible(False)
             plt.grid(axis='x', linestyle='--', alpha=0.5)
             
-            # Añadir etiquetas de valor al final de las barras
             for bar in bars:
                 width = bar.get_width()
                 plt.text(width + (max(top5_data.values)*0.01), bar.get_y() + bar.get_height()/2, 
                          f'{int(width)}', va='center', fontsize=9, fontweight='bold', color='#1E3A8A')
-
             plt.tight_layout()
             
-            # Guardar gráfico en buffer de memoria (¡La magia para no usar archivos temporales!)
-            img_buf_a = io.BytesIO()
-            plt.savefig(img_buf_a, format='png', dpi=150, bbox_inches='tight')
-            plt.close() # Importante cerrar para no saturar memoria
-            img_buf_a.seek(0)
+            # Guardar en archivo temporal físico
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_a:
+                plt.savefig(tmp_a.name, format='png', dpi=150, bbox_inches='tight')
+                img_path_a = tmp_a.name
+            plt.close()
             
-            # Insertar imagen en PDF (ajustando x, y, ancho)
+            # Insertar en PDF y eliminar archivo
             current_y = pdf.get_y()
-            pdf.image(img_buf_a, x=25, y=current_y, w=160)
-            pdf.set_y(current_y + 85) # Mover cursor hacia abajo después de la imagen
-
+            pdf.image(img_path_a, x=25, y=current_y, w=160)
+            os.remove(img_path_a)
+            pdf.set_y(current_y + 85)
             pdf.ln(10)
 
-            # --- GRÁFICO B: DISTRIBUCIÓN DE USO GLOBAL (Gráfico de Pastel Profesional) ---
+            # --- GRÁFICO B: DISTRIBUCIÓN DE USO ---
             pdf.set_font('Arial', 'I', 10)
             pdf.cell(0, 8, s('Grafico B: Distribucion de Uso por Tipo de Recurso (Total)'), 0, 1, 'C')
             
             plt.figure(figsize=(6, 6))
             uso_total = df_datos[C_REC].value_counts()
-            
-            # Definir colores bonitos para el pastel
             colores_pie = ['#1E3A8A', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6B7280']
-            
-            # Limpiar nombres
             labels_clean = [s(name) for name in uso_total.index]
             
-            # Crear pastel con porcentajes y diseño limpio
             patches, texts, autotexts = plt.pie(uso_total.values, labels=labels_clean, autopct='%1.1f%%', 
                                               startangle=140, colors=colores_pie, shadow=False,
                                               wedgeprops={'edgecolor': 'white', 'linewidth': 2})
             
-            # Estilo de textos del pastel
             plt.title('Uso General de Recursos', fontsize=12, fontweight='bold', color='#1E3A8A')
             for text in texts: text.set_color('#4B5563'); text.set_fontsize(9)
             for autotext in autotexts: autotext.set_color('white'); autotext.set_fontweight('bold'); autotext.set_fontsize(9)
             
-            plt.axis('equal') # Asegurar que sea un círculo
+            plt.axis('equal')
             plt.tight_layout()
             
-            img_buf_b = io.BytesIO()
-            plt.savefig(img_buf_b, format='png', dpi=150, bbox_inches='tight')
+            # Guardar en archivo temporal físico
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_b:
+                plt.savefig(tmp_b.name, format='png', dpi=150, bbox_inches='tight')
+                img_path_b = tmp_b.name
             plt.close()
-            img_buf_b.seek(0)
             
+            # Insertar en PDF y eliminar archivo
             current_y_b = pdf.get_y()
-            pdf.image(img_buf_b, x=55, y=current_y_b, w=100) # Más pequeño por ser cuadrado
+            pdf.image(img_path_b, x=55, y=current_y_b, w=100)
+            os.remove(img_path_b)
             pdf.set_y(current_y_b + 110)
 
-        # Generar los bytes del PDF de forma segura
-        pdf_bytes = pdf.output(dest='S').encode('latin-1') # 'S' devuelve el string de bytes
-        return pdf_bytes
+        return pdf.output(dest='S').encode('latin-1')
 
-    # --- 2. DIBUJAR PANTALLA (Gráficos Interactivos de Plotly) ---
+    # --- 2. BOTÓN DE DESCARGA PDF ---
     col_titulo, col_boton = st.columns([2, 1])
     with col_boton:
         if not df.empty:
-            with st.spinner("Preparando reporte PDF profesional..."):
+            with st.spinner("Preparando reporte PDF..."):
                 try:
                     pdf_data = generar_pdf_profesional_con_graficos(df)
                     st.download_button(
-                        label="📄 Descargar Reporte PDF Profesional",
+                        label="📄 Descargar Reporte PDF",
                         data=pdf_data,
                         file_name=f"Reporte_Gestión_Enlaces_{dt.date.today().strftime('%d_%m_%Y')}.pdf",
                         mime="application/pdf",
@@ -1069,15 +1052,12 @@ elif page == "Dashboard": # Ajusta si el nombre en tu menú es "Panel Principal"
                     )
                 except Exception as e:
                     st.error(f"⚠️ Error generando PDF: {e}")
-                    st.info("Asegúrate de tener instaladas las librerías 'fpdf' y 'matplotlib'.")
 
-    # Las métricas visuales originales de tu Dashboard
+    # --- 3. MÉTRICAS Y GRÁFICOS EN PANTALLA ---
     if not df.empty:
-        # Detección de columnas exacta (usando mayúsculas originales)
         C_FECHA = 'Fecha'
         C_REC = 'Recurso'
         C_PROF = 'Profesor'
-        C_CURSO = 'Curso'
         C_HORA_I = 'Hora inicio'
         C_HORA_F = 'Hora fin'
         
@@ -1086,127 +1066,78 @@ elif page == "Dashboard": # Ajusta si el nombre en tu menú es "Panel Principal"
         reservas_hoy = df[df['fecha_obj'] == hoy]
         
         c1, c2, c3, c4 = st.columns(4)
-        
-        # Estilo de Tarjetas KPI
-        style_kpi = "background:white; border-radius:12px; padding: 25px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); border-top: 5px solid;"
+        style_kpi = "background:white; border-radius:12px; padding: 25px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); border-top: 5px solid;"
 
         with c1:
             st.markdown(f"""
                 <div style="{style_kpi} border-top-color: #3B82F6;">
-                    <div style="font-size:1em; color:#64748b; text-transform:uppercase; font-weight:bold; letter-spacing:1px; margin-bottom:8px;">Total Reservas</div>
-                    <div style="font-size:3em; font-weight:900; color:#1E3A8A; line-height:1;">{len(df)}</div>
-                    <div style="font-size:0.9em; color:#94a3b8; margin-top:5px;">Histórico</div>
+                    <div style="font-size:1em; color:#64748b; font-weight:bold;">TOTAL RESERVAS</div>
+                    <div style="font-size:3em; font-weight:900; color:#1E3A8A;">{len(df)}</div>
                 </div>
             """, unsafe_allow_html=True)
         with c2:
             st.markdown(f"""
                 <div style="{style_kpi} border-top-color: #EF4444;">
-                    <div style="font-size:1em; color:#64748b; text-transform:uppercase; font-weight:bold; letter-spacing:1px; margin-bottom:8px;">Reservas Hoy</div>
-                    <div style="font-size:3em; font-weight:900; color:#B91C1C; line-height:1;">{len(reservas_hoy)}</div>
-                    <div style="font-size:0.9em; color:#94a3b8; margin-top:5px;">{hoy.strftime('%d/%m/%Y')}</div>
+                    <div style="font-size:1em; color:#64748b; font-weight:bold;">RESERVAS HOY</div>
+                    <div style="font-size:3em; font-weight:900; color:#B91C1C;">{len(reservas_hoy)}</div>
                 </div>
             """, unsafe_allow_html=True)
         with c3:
             recurso_top = df[C_REC].mode()[0] if not df[C_REC].empty else "N/A"
             st.markdown(f"""
                 <div style="{style_kpi} border-top-color: #F59E0B;">
-                    <div style="font-size:1em; color:#64748b; text-transform:uppercase; font-weight:bold; letter-spacing:1px; margin-bottom:8px;">Recurso Estrella</div>
-                    <div style="font-size:1.8em; font-weight:800; color:#B45309; line-height:1.2; word-wrap: break-word;">{recurso_top}</div>
-                    <div style="font-size:0.9em; color:#94a3b8; margin-top:5px;">Más solicitado</div>
+                    <div style="font-size:1em; color:#64748b; font-weight:bold;">RECURSO ESTRELLA</div>
+                    <div style="font-size:1.8em; font-weight:800; color:#B45309;">{recurso_top}</div>
                 </div>
             """, unsafe_allow_html=True)
         with c4:
             profesor_top = df[C_PROF].mode()[0] if not df[C_PROF].empty else "N/A"
-            # Limitar largo del nombre
-            prof_display = str(profesor_top)
-            if len(prof_display) > 18: prof_display = prof_display[:16] + ".."
+            prof_display = str(profesor_top)[:16] + ".." if len(str(profesor_top)) > 18 else str(profesor_top)
             st.markdown(f"""
                 <div style="{style_kpi} border-top-color: #8B5CF6;">
-                    <div style="font-size:1em; color:#64748b; text-transform:uppercase; font-weight:bold; letter-spacing:1px; margin-bottom:8px;">Prof. Frecuente</div>
-                    <div style="font-size:1.8em; font-weight:800; color:#5B21B6; line-height:1.2; word-wrap: break-word;">{prof_display}</div>
-                    <div style="font-size:0.9em; color:#94a3b8; margin-top:5px;">Más activo</div>
+                    <div style="font-size:1em; color:#64748b; font-weight:bold;">PROF. FRECUENTE</div>
+                    <div style="font-size:1.8em; font-weight:800; color:#5B21B6;">{prof_display}</div>
                 </div>
             """, unsafe_allow_html=True)
 
-        import plotly.express as px
         st.markdown("<br>", unsafe_allow_html=True)
-        
         col_graf_1, col_graf_2 = st.columns([2, 1])
         
         with col_graf_1:
-            # ======= GRÁFICO 1: MAPA DE CALOR (HEATMAP) DE OCUPACIÓN =======
-            st.markdown("### 🗓️ Mapa de Calor: Ocupación Semanal (Día vs Hora)")
-            
-            # Preparar datos para el Heatmap
+            st.markdown("### 🗓️ Mapa de Calor: Ocupación Semanal")
             df['fecha_dt'] = pd.to_datetime(df[C_FECHA])
-            
-            # Crear columna de Día de la Semana (en español y ordenada)
             dias_map = {0: '1-Lunes', 1: '2-Martes', 2: '3-Miércoles', 3: '4-Jueves', 4: '5-Viernes', 5: '6-Sábado', 6: '7-Domingo'}
             df['Dia_Semana'] = df['fecha_dt'].dt.dayofweek.map(dias_map)
-            
-            # Crear columna de Bloque Horario Ordenado (usando la hora de inicio completa HH:MM:SS)
             df['Bloque_Ordenado'] = df[C_HORA_I].astype(str).str[:5] + " - " + df[C_HORA_F].astype(str).str[:5]
             
-            # Filtrar solo Lunes a Viernes y ordenar bloques cronológicamente
-            df_heatmap_filter = df[df['fecha_dt'].dt.dayofweek < 5] # Solo Lun-Vie
-            
-            # Pivotar datos: Contar reservas por Bloque y Día
+            df_heatmap_filter = df[df['fecha_dt'].dt.dayofweek < 5]
             heatmap_data = df_heatmap_filter.groupby(['Bloque_Ordenado', 'Dia_Semana']).size().reset_index(name='Cantidad')
             
-            if heatmap_data.empty:
-                st.info("No hay suficientes datos para generar el mapa de calor.")
-            else:
-                # Crear el mapa de calor con Plotly Express
-                fig_heat = px.density_heatmap(heatmap_data, 
-                                             x='Dia_Semana', 
-                                             y='Bloque_Ordenado', 
-                                             z='Cantidad',
-                                             text_auto=True, # Mostrar números dentro
-                                             color_continuous_scale='Viridis', # Escala de color bonita
-                                             labels={'Dia_Semana': 'Día de la Semana', 'Bloque_Ordenado': 'Bloque Horario', 'Cantidad': 'N° Reservas'})
-                
-                # Ajustar ejes para que se vean bien
-                fig_heat.update_layout(xaxis_nticks=5, yaxis={'categoryorder':'category ascending'}) # Ordenar horas cronológicamente
-                fig_heat.update_xaxes(tickformat="%A", labelalias={d: d.split('-')[1] for d in dias_map.values()}) # Quitar el número del día en el eje
-                fig_heat.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=450)
-                
+            if not heatmap_data.empty:
+                fig_heat = px.density_heatmap(heatmap_data, x='Dia_Semana', y='Bloque_Ordenado', z='Cantidad',
+                                             text_auto=True, color_continuous_scale='Viridis')
+                fig_heat.update_layout(xaxis_nticks=5, yaxis={'categoryorder':'category ascending'}, height=450)
+                fig_heat.update_xaxes(tickformat="%A", labelalias={d: d.split('-')[1] for d in dias_map.values()})
                 st.plotly_chart(fig_heat, use_container_width=True, config={'displayModeBar': False})
+            else:
+                st.info("Datos insuficientes para el mapa de calor.")
 
         with col_graf_2:
-            # ======= GRÁFICO 2: TOP 5 RECURSOS (Barras Horizontales) =======
-            st.markdown("### 🏆 Top 5 Recursos más Ocupados")
+            st.markdown("### 🏆 Top 5 Recursos")
             uso_recursos = df[C_REC].value_counts().reset_index()
             uso_recursos.columns = ['Recurso', 'Cantidad']
             top5_recursos = uso_recursos.nlargest(5, 'Cantidad').sort_values(by='Cantidad', ascending=True)
             
-            if top5_recursos.empty:
-                st.info("No hay datos.")
-            else:
-                fig_top5 = px.bar(top5_recursos, 
-                                 x='Cantidad', 
-                                 y='Recurso', 
-                                 orientation='h', # Barras horizontales
-                                 text='Cantidad',
-                                 color='Cantidad', 
-                                 color_continuous_scale='Blues',
-                                 template='plotly_white')
-                
-                # Diseño limpio
-                fig_top5.update_layout(showlegend=False, coloraxis_showscale=False)
-                fig_top5.update_yaxes(ticksuffix=" ") # Espacio entre texto y barra
-                fig_top5.update_traces(textposition='outside', textfont_size=12, textfont_color='#1E3A8A', marker_line_color='#1E3A8A', marker_line_width=1)
-                fig_top5.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=450, xaxis_title=None, yaxis_title=None)
-                
+            if not top5_recursos.empty:
+                fig_top5 = px.bar(top5_recursos, x='Cantidad', y='Recurso', orientation='h', text='Cantidad',
+                                 color='Cantidad', color_continuous_scale='Blues')
+                fig_top5.update_layout(showlegend=False, coloraxis_showscale=False, height=450)
+                fig_top5.update_traces(textposition='outside')
                 st.plotly_chart(fig_top5, use_container_width=True, config={'displayModeBar': False})
 
-        # ======= GRÁFICO 3: GRÁFICO GENERAL DE BARRAS (El que tenías) =======
-        st.markdown("<br>### 📊 Distribución Global de Uso de Recursos", unsafe_allow_html=True)
-        uso_recursos_full = df[C_REC].value_counts().reset_index()
-        uso_recursos_full.columns = ['Recurso', 'Cantidad']
-        
-        fig_full = px.bar(uso_recursos_full, x='Recurso', y='Cantidad', color='Recurso', 
-                         template='plotly_white', text_auto=True, color_discrete_sequence=px.colors.qualitative.Pastel)
-        fig_full.update_layout(showlegend=False, margin=dict(t=20, b=20, l=20, r=20), height=350, xaxis_tickangle=-45)
+        st.markdown("<br>### 📊 Distribución Global de Recursos", unsafe_allow_html=True)
+        fig_full = px.bar(uso_recursos, x='Recurso', y='Cantidad', color='Recurso', text_auto=True)
+        fig_full.update_layout(showlegend=False, height=350, xaxis_tickangle=-45)
         st.plotly_chart(fig_full, use_container_width=True)
         
     else:
