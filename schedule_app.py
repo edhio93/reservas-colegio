@@ -177,7 +177,11 @@ def send_email(subject, body, recipient_email):
 # ==============================================================================
 # --- MODO PÚBLICO: ENRUTAMIENTO VÍA CÓDIGO QR ---
 # ==============================================================================
-if "page" in st.query_params and st.query_params["page"] == "reporte":
+# Captura segura de parámetros (evita errores con versiones de Streamlit)
+params = st.query_params
+page_param = params.get("page", [""])[0] if isinstance(params.get("page"), list) else params.get("page", "")
+
+if page_param == "reporte":
     # 1. ESTILOS AESTHETIC (Ocultar menús y decorar)
     st.markdown("""
         <style>
@@ -212,7 +216,7 @@ if "page" in st.query_params and st.query_params["page"] == "reporte":
     st.write("") # Espacio
     
     # 3. LÓGICA DEL REPORTE
-    recurso_id = st.query_params.get("id")
+    recurso_id = params.get("id", [""])[0] if isinstance(params.get("id"), list) else params.get("id", "")
     
     if recurso_id:
         try:
@@ -245,7 +249,7 @@ if "page" in st.query_params and st.query_params["page"] == "reporte":
                                 
                                 st.success("✅ ¡Reporte enviado con éxito! Gracias por avisarnos.")
                                 st.balloons() # 🎈 ¡AQUÍ ESTÁN LOS GLOBOS! 🎈
-                                time.sleep(4) # Darle unos segundos al usuario para que vea los globos antes de cualquier recarga
+                                time.sleep(4) 
             else:
                 st.error("❌ El equipo que intentas reportar no existe o fue dado de baja.")
         except Exception as e:
@@ -255,7 +259,6 @@ if "page" in st.query_params and st.query_params["page"] == "reporte":
         
     st.stop() # Detiene la app aquí para que no cargue el Login de los profes
 # ==============================================================================
-
 # ------------------------------------------------------------------
 # 1) INICIALIZACIÓN DE DATOS
 # ------------------------------------------------------------------
