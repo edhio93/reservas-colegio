@@ -1706,3 +1706,130 @@ if page == "Configuración":
                             st.success(f"Recurso {rec_borrar} eliminado.")
                             st.cache_data.clear(); time.sleep(0.5); st.rerun()
                         except Exception as e: st.error("No se puede eliminar porque tiene reservas o reportes de mantenimiento asociados.")
+
+elif page == "Modo TV":
+    # --- PESTAÑAS DEL MODO TV ---
+    tab_tv, tab_gestion = st.tabs(["📺 Pantalla de Visualización", "📝 Gestión de Eventos y Anuncios"])
+
+    # ==========================================
+    # PESTAÑA 1: PANTALLA TV (VISUALIZACIÓN)
+    # ==========================================
+    with tab_tv:
+        # Auto-refresco cada 60 segundos (60000 ms) solo en esta pestaña
+        count = st_autorefresh(interval=60000, key="tv_autorefresh")
+        
+        # Ocultar menú superior y padding para aprovechar toda la pantalla (Modo Kiosco simulado)
+        st.markdown("""
+            <style>
+                .block-container { padding-top: 1rem; padding-bottom: 0rem; }
+                header { visibility: hidden; }
+                .evento-card { background-color: #f8f9fa; border-left: 5px solid #0056b3; padding: 15px; margin-bottom: 10px; border-radius: 5px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); }
+                .anuncio-alto { background-color: #ffeaea; border-left: 5px solid #dc3545; padding: 15px; margin-bottom: 10px; border-radius: 5px; }
+                .anuncio-medio { background-color: #fff8ea; border-left: 5px solid #ffc107; padding: 15px; margin-bottom: 10px; border-radius: 5px; }
+            </style>
+        """, unsafe_allow_html=True)
+
+        st.markdown("<h1 style='text-align: center; color: #1f2937;'>Panel Informativo CAV</h1>", unsafe_allow_html=True)
+        st.markdown("---")
+
+        col_horario, col_eventos = st.columns([2, 1], gap="large")
+
+        with col_horario:
+            st.subheader("📅 Horario de Hoy")
+            # Aquí filtramos las reservas para mostrar solo las del día de hoy
+            hoy_str = dt.date.today().strftime("%Y-%m-%d")
+            reservas_hoy = df[df['Fecha'].astype(str) == hoy_str] if not df.empty else pd.DataFrame()
+            
+            if not reservas_hoy.empty:
+                # Mostrar tabla limpia sin ID y ordenada por hora
+                st.dataframe(
+                    reservas_hoy[['Hora inicio', 'Hora fin', 'Curso', 'Profesor', 'Recurso']].sort_values('Hora inicio'),
+                    hide_index=True, use_container_width=True, height=500
+                )
+            else:
+                st.info("No hay reservas programadas para el día de hoy.")
+
+        with col_eventos:
+            st.subheader("📢 Anuncios y Eventos")
+            
+            # Consultar Anuncios Activos
+            anuncios_data = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).gte("expiracion", dt_datetime.now().isoformat()).execute().data
+            if anuncios_data:
+                for a in anuncios_data:
+                    clase_css = "anuncio-alto" if a['prioridad'] == 1 else "anuncio-medio"
+                    icono = "🚨" if a['prioridad'] == 1 else "⚠️"
+                    st.markdown(f"""
+                        <div class="{clase_css}">
+                            <h4 style="margin:0;">{icono} {a['titulo']}</h4>
+                            <p style="margin:5px 0 0 0;">{a['descripcion']}</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+
+            # Consultar Eventos Activos (Hoy y Futuros)
+            eventos_data = supabase.table("eventos_tv").select("*").eq("is_active", True).gte("fecha_evento", hoy_str).order("fecha_evento").execute().data
+            if eventos_data:
+                for e in eventos_data:
+                    iconos_cat = {"Reunión": "🤝", "Examen": "📝", "Efeméride": "📅", "Taller": "🛠️", "Otro": "📌"}
+                    st.markdown(f"""
+                        <div class="evento-card">
+                            <h5 style="margin:0; color: #0056b3;">{iconos_cat.get(e['categoria'], '📌')} {e['titulo']}</h5>
+                            <p style="margin:5px 0; font-size: 0.9em;"><b>Fecha:</b> {e['fecha_evento']}</p>
+                            <p style="margin:0;">{e['descripcion']}</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+            
+            if not anuncios_data and not eventos_data:
+                st.write("No hay eventos ni anuncios activos.")
+
+    # ==========================================
+    # PESTAÑA 2: GESTIÓN DE EVENTOS (FORMULARIOS)
+    # ==========================================
+    with tab_gestion:
+        st.header("Gestión de Pantalla TV")
+        
+        col_form1, col_form2 = st.columns(2)
+        
+        with col_form1:
+            with st.container(border=True):
+                st.subheader("🗓️ Registrar Nuevo Evento")
+                with st.form("form_evento_tv"):
+                    titulo_ev = st.text_input("Título del Evento", max_chars=50)
+                    desc_ev = st.text_area("Descripción corta", max_chars=200)
+                    cat_ev = st.selectbox("Categoría", ["Reunión", "Examen", "Efeméride", "Taller", "Otro"])
+                    fecha_ev = st.date_input("Fecha del Evento", min_value=dt.date.today())
+                    
+                    if st.form_submit_button("Guardar Evento", use_container_width=True):
+                        if titulo_ev.strip():
+                            supabase.table("eventos_tv").insert({
+                                "titulo": titulo_ev, "descripcion": desc_ev, 
+                                "fecha_evento": str(fecha_ev), "categoria": cat_ev, "is_active": True
+                            }).execute()
+                            st.success("Evento guardado. Aparecerá en la TV en el próximo refresco.")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("El título es obligatorio.")
+
+        with col_form2:
+            with st.container(border=True):
+                st.subheader("🚨 Registrar Anuncio Urgente")
+                with st.form("form_anuncio_tv"):
+                    titulo_an = st.text_input("Título del Anuncio", max_chars=50)
+                    desc_an = st.text_area("Detalles del anuncio")
+                    prio_an = st.radio("Prioridad", [("Alta (Rojo)", 1), ("Media (Amarillo)", 2)], format_func=lambda x: x[0])
+                    expira_an = st.date_input("Válido hasta", min_value=dt.date.today())
+                    
+                    if st.form_submit_button("Publicar Anuncio", type="primary", use_container_width=True):
+                        if titulo_an.strip():
+                            # Añadimos 23:59:59 a la fecha de expiración para que dure todo el día seleccionado
+                            exp_dt = dt_datetime.combine(expira_an, dt.time(23, 59, 59)).isoformat()
+                            supabase.table("anuncios_urgentes").insert({
+                                "titulo": titulo_an, "descripcion": desc_an, 
+                                "prioridad": prio_an[1], "expiracion": exp_dt, "is_active": True
+                            }).execute()
+                            st.success("Anuncio publicado en la TV.")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("El título es obligatorio.")
+                        
