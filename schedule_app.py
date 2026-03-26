@@ -1749,11 +1749,18 @@ elif page == "Modo TV":
                 })
         
         # 2. Anuncios y Eventos (Desde Supabase)
-        # Usamos la fecha corregida strftime para evitar APIError de Supabase
         fecha_actual_sql_tv = dt_datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        anuncios_supa_data = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).gte("expiracion", fecha_actual_sql_tv).execute().data
-        eventos_supa_data = supabase.table("eventos_tv").select("*").eq("is_active", True).gte("fecha_evento", hoy_str).order("fecha_evento").execute().data
+        anuncios_supa_data = []
+        eventos_supa_data = []
+        
+        # --- BLOQUE TRAMPA PARA ATRAPAR EL ERROR DE SUPABASE ---
+        try:
+            anuncios_supa_data = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).gte("expiracion", fecha_actual_sql_tv).execute().data
+            eventos_supa_data = supabase.table("eventos_tv").select("*").eq("is_active", True).gte("fecha_evento", hoy_str).order("fecha_evento").execute().data
+        except Exception as e:
+            st.error(f"🚨 ERROR REAL DE SUPABASE: {e}")
+        # -------------------------------------------------------
 
         # --- CÓDIGO HTML/CSS/JS (FULL MODAL MODE) ---
         import json
@@ -1772,16 +1779,16 @@ elif page == "Modo TV":
             body {{ margin: 0; padding: 0; background-color: #0f172a; font-family: 'Inter', sans-serif; color: white; overflow: hidden; }}
             .tv-wrapper {{ display: flex; flex-direction: column; height: 100vh; width: 100vw; background: radial-gradient(circle at top right, #1e293b, #0f172a); }}
             
-            # --- HEADER ---
+            /* --- HEADER --- */
             .header {{ display: flex; justify-content: space-between; align-items: center; padding: 20px 30px; background: rgba(15, 23, 42, 0.8); border-bottom: 2px solid #334155; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }}
             .title {{ font-size: 28px; font-weight: 900; color: #38bdf8; letter-spacing: 2px; text-transform: uppercase; }}
             .fullscreen-btn {{ background: #0284c7; color: white; border: none; padding: 10px 20px; font-size: 16px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: background 0.3s; z-index: 1000; }}
             .fullscreen-btn:hover {{ background: #38bdf8; color: #0f172a; }}
             
-            # --- MAIN CONTENT ---
+            /* --- MAIN CONTENT --- */
             .main-content {{ flex-grow: 1; padding: 25px; display: flex; gap: 25px; }}
             
-            # --- LEFT COLUMN (SCHEDULE) 2/3 ---
+            /* --- LEFT COLUMN (SCHEDULE) 2/3 --- */
             .schedule-column {{ flex: 2; display: flex; flex-direction: column; gap: 15px; overflow: hidden; }}
             .schedule-title {{ font-size: 22px; font-weight: 700; color: #e2e8f0; text-transform: uppercase; margin-bottom: 10px; border-left: 5px solid #38bdf8; padding-left: 10px; }}
             
@@ -1795,15 +1802,15 @@ elif page == "Modo TV":
             .resource-text {{ font-size: 36px; font-weight: 900; color: #38bdf8; margin-bottom: 8px; text-shadow: 0 2px 5px rgba(0,0,0,0.5); }}
             .prof-text {{ font-size: 22px; color: #cbd5e1; font-weight: 400; }}
             
-            # --- RIGHT COLUMN (EVENTS) 1/3 ---
+            /* --- RIGHT COLUMN (EVENTS) 1/3 --- */
             .events-column {{ flex: 1; background: rgba(15, 23, 42, 0.9); padding: 20px; border-radius: 12px; border: 1px solid #334155; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; }}
             .events-title {{ font-size: 22px; font-weight: 700; color: #e2e8f0; text-transform: uppercase; margin-bottom: 10px; border-left: 5px solid #dc3545; padding-left: 10px; }}
             
-            # --- ANUNCIOS URGENTES STYLE (Imagen 2) ---
+            /* --- ANUNCIOS URGENTES STYLE --- */
             .anuncio-card {{ background-color: #dc3545; color: white; border-radius: 10px; padding: 15px; box-shadow: 0 4px 10px rgba(220,53,69,0.5); border: 2px solid #ffcccc; animation: pulse 2s infinite; }}
             .anuncio-card-medio {{ background-color: #ffc107; color: #0f172a; border-radius: 10px; padding: 15px; box-shadow: 0 4px 10px rgba(255,193,7,0.3); }}
             
-            # --- EVENTOSSTYLE (Imagen 1) ---
+            /* --- EVENTOS STYLE --- */
             .evento-card-tv {{ background: rgba(255, 255, 255, 0.03); border-left: 5px solid #0056b3; border-radius: 8px; padding: 15px; transition: background 0.3s; }}
             .evento-card-tv:hover {{ background: rgba(255, 255, 255, 0.08); }}
             .evento-cat {{ text-transform: uppercase; font-size: 0.8em; font-weight: bold; color: #0056b3; margin-bottom: 5px; }}
@@ -1812,7 +1819,7 @@ elif page == "Modo TV":
             
             .progress-bar {{ position: absolute; bottom: 0; left: 0; height: 6px; background: #38bdf8; width: 0%; transition: width 8s linear; }}
             
-            # --- ANIMATIONS ---
+            /* --- ANIMATIONS --- */
             @keyframes pulse {{
                 0% {{ box-shadow: 0 0 0 0 rgba(220,53,69,0.7); }}
                 70% {{ box-shadow: 0 0 0 10px rgba(220,53,69,0); }}
@@ -1828,13 +1835,11 @@ elif page == "Modo TV":
                 </div>
                 
                 <div class="main-content">
-                    # --- LEFT COLUMN ---
                     <div class="schedule-column">
                         <div class="schedule-title">Horario de Hoy</div>
                         <div id="schedule-cards-container"></div>
                     </div>
                     
-                    # --- RIGHT COLUMN ---
                     <div class="events-column">
                         <div class="events-title">Anuncios y Eventos</div>
                         <div id="announcements-container"></div>
@@ -1846,7 +1851,7 @@ elif page == "Modo TV":
             </div>
 
             <script>
-                # --- DATA LOAD ---
+                // --- DATA LOAD ---
                 const scheduleData = {schedule_json};
                 const anunciosData = {anuncios_json};
                 const eventosData = {eventos_json};
@@ -1857,10 +1862,10 @@ elif page == "Modo TV":
                 const progress = document.getElementById('progress-el');
                 
                 let currentIndex = 0;
-                const itemsPerPage = 4; # Muestra 4 bloques por pantalla
-                const slideDuration = 8000; # 8 segundos por pantalla
+                const itemsPerPage = 4; // Muestra 4 bloques por pantalla
+                const slideDuration = 8000; // 8 segundos por pantalla
 
-                # --- FULLSCREEN FUNCTION (Solicitud Principal) ---
+                // --- FULLSCREEN FUNCTION ---
                 function toggleFullScreen() {{
                     const elem = document.documentElement;
                     if (!document.fullscreenElement) {{
@@ -1870,17 +1875,17 @@ elif page == "Modo TV":
                     }}
                 }}
 
-                # --- RENDER SCHEDULE (Imagen 1 style with colors) ---
+                // --- RENDER SCHEDULE ---
                 function renderScheduleCards() {{
                     scheduleContainer.innerHTML = '';
                     
-                    if (scheduleData.length === 0) {{
+                    if (!scheduleData || scheduleData.length === 0) {{
                         scheduleContainer.innerHTML = '<div style="padding: 20px; font-style:italic; color: #94a3b8;">No hay reservas programadas para hoy.</div>';
                         progress.style.width = '100%';
                         return;
                     }}
 
-                    # Reiniciar barra de progreso
+                    // Reiniciar barra de progreso
                     progress.style.transition = 'none';
                     progress.style.width = '0%';
                     setTimeout(() => {{
@@ -1888,7 +1893,7 @@ elif page == "Modo TV":
                         progress.style.width = '100%';
                     }}, 50);
 
-                    # Seleccionar los datos de esta página
+                    // Seleccionar los datos de esta página
                     const pageData = [];
                     for(let i=0; i<itemsPerPage; i++) {{
                         if(scheduleData.length > 0) {{
@@ -1896,8 +1901,8 @@ elif page == "Modo TV":
                         }}
                     }}
                     
-                    # Eliminar duplicados visuales si hay pocas reservas
-                    const uniquePageData = [...new Set(pageData)];
+                    // Eliminar duplicados visuales si hay pocas reservas
+                    const uniquePageData = [...new Set(pageData.map(JSON.stringify))].map(JSON.parse);
 
                     uniquePageData.forEach((item, index) => {{
                         const card = document.createElement('div');
@@ -1914,19 +1919,19 @@ elif page == "Modo TV":
                         `;
                         scheduleContainer.appendChild(card);
                         
-                        # Animación en cascada para entrar
+                        // Animación en cascada para entrar
                         setTimeout(() => {{ card.classList.add('visible'); }}, index * 200);
                     }});
 
-                    # Avanzar el índice
+                    // Avanzar el índice
                     if (scheduleData.length > itemsPerPage) {{
                         currentIndex = (currentIndex + itemsPerPage) % scheduleData.length;
                     }}
                 }}
 
-                # --- RENDER EVENTS (Imagen 1 & 2 combination) ---
+                // --- RENDER EVENTS ---
                 function renderEventsColumn() {{
-                    # 1. Anuncios Urgentes (Imagen 2 style)
+                    // 1. Anuncios Urgentes
                     if (anunciosData && anunciosData.length > 0) {{
                         anunciosData.forEach(a => {{
                             const isHigh = a.prioridad === 1;
@@ -1941,7 +1946,7 @@ elif page == "Modo TV":
                         }});
                     }}
 
-                    # 2. Eventos Próximos (Imagen 1 style)
+                    // 2. Eventos Próximos
                     if (eventosData && eventosData.length > 0) {{
                         eventosData.forEach(e => {{
                             const card = document.createElement('div');
@@ -1960,14 +1965,14 @@ elif page == "Modo TV":
                     }}
                 }}
 
-                # --- INITIALIZE ---
+                // --- INITIALIZE ---
                 renderScheduleCards();
                 renderEventsColumn();
 
-                if(scheduleData.length > itemsPerPage) {{
+                if(scheduleData && scheduleData.length > itemsPerPage) {{
                     setInterval(renderScheduleCards, slideDuration);
                 }} else {{
-                    # Si hay pocas reservas, dejar barra llena y no rotar
+                    // Si hay pocas reservas, dejar barra llena y no rotar
                     progress.style.transition = 'width 1s linear';
                     progress.style.width = '100%';
                 }}
@@ -1980,7 +1985,7 @@ elif page == "Modo TV":
         st.components.v1.html(tv_html_full, height=850, scrolling=True)
 
     # ==========================================
-    # PESTAÑA 2: GESTIÓN DE EVENTOS (FORMULARIOS) - (SE MANTIENE IGUAL)
+    # PESTAÑA 2: GESTIÓN DE EVENTOS (FORMULARIOS)
     # ==========================================
     with tab_gestion:
         st.header("Gestión de Pantalla TV")
@@ -2000,16 +2005,19 @@ elif page == "Modo TV":
                     
                     if st.form_submit_button("Guardar Evento", use_container_width=True):
                         if titulo_ev.strip():
-                            supabase.table("eventos_tv").insert({
-                                "titulo": titulo_ev, 
-                                "descripcion": desc_ev, 
-                                "fecha_evento": str(fecha_ev), 
-                                "categoria": cat_ev, 
-                                "is_active": True
-                            }).execute()
-                            st.success(f"Evento '{titulo_ev}' guardado. Aparecerá en la TV.")
-                            time.sleep(1)
-                            st.rerun()
+                            try:
+                                supabase.table("eventos_tv").insert({
+                                    "titulo": titulo_ev, 
+                                    "descripcion": desc_ev, 
+                                    "fecha_evento": str(fecha_ev), 
+                                    "categoria": cat_ev, 
+                                    "is_active": True
+                                }).execute()
+                                st.success(f"Evento '{titulo_ev}' guardado. Aparecerá en la TV.")
+                                time.sleep(1)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error al guardar: {e}")
                         else:
                             st.error("El título es obligatorio.")
 
@@ -2025,17 +2033,20 @@ elif page == "Modo TV":
                     
                     if st.form_submit_button("Publicar Anuncio", type="primary", use_container_width=True):
                         if titulo_an.strip():
-                            # Añadimos 23:59:59 a la fecha de expiración para que dure todo el día seleccionado
+                            # Añadimos 23:59:59 a la fecha de expiración
                             exp_dt_full = dt_datetime.combine(expira_an, dt.time(23, 59, 59)).strftime("%Y-%m-%d %H:%M:%S")
-                            supabase.table("anuncios_urgentes").insert({
-                                "titulo": titulo_an, 
-                                "descripcion": desc_an, 
-                                "prioridad": prio_an[1], 
-                                "expiracion": exp_dt_full, 
-                                "is_active": True
-                            }).execute()
-                            st.success(f"Anuncio '{titulo_an}' publicado con prioridad {prio_an[1]}. Aparecerá en la TV.")
-                            time.sleep(1)
-                            st.rerun()
+                            try:
+                                supabase.table("anuncios_urgentes").insert({
+                                    "titulo": titulo_an, 
+                                    "descripcion": desc_an, 
+                                    "prioridad": prio_an[1], 
+                                    "expiracion": exp_dt_full, 
+                                    "is_active": True
+                                }).execute()
+                                st.success(f"Anuncio '{titulo_an}' publicado con prioridad {prio_an[1]}. Aparecerá en la TV.")
+                                time.sleep(1)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error al guardar: {e}")
                         else:
                             st.error("El título es obligatorio.")
