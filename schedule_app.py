@@ -791,7 +791,6 @@ if page == "Base de datos":
                         st.error(f"Error al sincronizar: {e}")
         else:
             st.write("No hay datos registrados.")
-
 # --- VISTA SEMANAL ---
 elif page == "Semana": 
     import json # Necesario para la animación del monitor
@@ -811,7 +810,7 @@ elif page == "Semana":
         profesores_list = df['Profesor'].dropna().unique().tolist() if not df.empty else []
         cursos_list = df['Curso'].dropna().unique().tolist() if not df.empty else []
         
-       if not df.empty:
+        if not df.empty:
             df['fecha_obj'] = pd.to_datetime(df['Fecha']).dt.date
             default_date_week = dt.date.today() # ✅ CORREGIDO: Siempre usa la fecha de hoy
         else:
