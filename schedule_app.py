@@ -576,14 +576,32 @@ st.sidebar.markdown("---")
 # 1. Definimos la estructura de la ventana flotante (con ancho "large")
 @st.dialog("🤖 Asistente Técnico IA", width="large")
 def abrir_ventana_chat():
-    st.info("💡 Pregúntame sobre reparaciones, fallas o configuraciones. Cierra esta ventana con la 'X' arriba a la derecha.")
+    st.info("💡 Pregúntame sobre reparaciones, fallas, configuraciones o cómo usar el sistema. Cierra esta ventana con la 'X' arriba a la derecha.")
     
-    # Inicializar la memoria de la IA
+    # Inicializar la memoria de la IA con CONTEXTO TOTAL DEL SISTEMA Y PERSONALIDAD
     if "chat_session" not in st.session_state:
+        
+        instrucciones_sistema = """
+        Eres el Asistente de IA exclusivo del Departamento de Informática/Enlaces del 'Liceo Bicentenario Colegio Antonio Varas'.
+        Tu misión es ayudar a los técnicos y administradores con el soporte diario y guiarlos en el uso de esta plataforma.
+        
+        Conoces a la perfección todas las secciones de nuestro sistema:
+        1. Mis Reservas / Registrar: Módulo donde los profesores agendan los recursos del colegio (laboratorios, proyectores, carritos de tablets, etc.).
+        2. Semana (Calendario): La vista semanal para organizar los horarios y ver qué recursos están ocupados y por quién.
+        3. Dashboard: Panel de estadísticas donde vemos gráficos de uso, métricas de fallas, equipos con más problemas y profesores que más reservan.
+        4. Base de Datos: Nuestro motor es Supabase. Ahí se guarda todo nuestro inventario, los usuarios, el historial de reservas y los reportes de mantenimiento.
+        5. Panel Técnico: El centro de mando. Aquí gestionamos los Tickets (fallas reportadas por QR que pasan a Pendiente, Revisión o Resuelto), creamos Códigos QR para pegar en los equipos nuevos, y procesamos las Bajas de Equipos obsoletos generando informes automáticos en Word.
+        6. Configuración: Módulo de administración para agregar/eliminar recursos del inventario o gestionar usuarios.
+        
+        Tu tono y personalidad:
+        Háblame como un colega informático más del equipo. Sé directo, empático, resolutivo y nada robótico. Puedes usar términos informáticos y modismos chilenos de forma natural (ej: 'apañar', 'la pega', 'dar jugo', 'sacar el cacho'). 
+        Si te pregunto por un problema técnico (ej. un notebook no conecta o una impresora mancha) o cómo usar una sección del sistema, dame soluciones prácticas, paso a paso, y pensadas para la realidad de nuestro colegio.
+        """
+        
         st.session_state.chat_session = model.start_chat(
             history=[
-                {"role": "user", "parts": ["Actúa como un ingeniero informático senior dando soporte a otros técnicos. Sé breve y directo."]},
-                {"role": "model", "parts": ["Entendido. Estoy aquí para ayudarte."]}
+                {"role": "user", "parts": [instrucciones_sistema]},
+                {"role": "model", "parts": ["¡Todo anotado! Ya tengo el mapa completo del sistema del colegio en mi cabeza (Reservas, Dashboard, Supabase, Tickets...). Listo para apañar con la pega técnica. ¿Qué revisamos hoy?"]}
             ]
         )
         
@@ -591,15 +609,15 @@ def abrir_ventana_chat():
     contenedor_chat = st.container(height=400) 
     
     with contenedor_chat:
-        # Mostrar el historial
+        # Mostrar el historial (Filtramos las instrucciones para que no se vean en pantalla)
         for mensaje in st.session_state.chat_session.history:
-            if "Actúa como un ingeniero" not in mensaje.parts[0].text and "Entendido" not in mensaje.parts[0].text:
+            if "Eres el Asistente de IA exclusivo" not in mensaje.parts[0].text and "¡Todo anotado!" not in mensaje.parts[0].text:
                 rol = "assistant" if mensaje.role == "model" else "user"
                 with st.chat_message(rol):
                     st.markdown(mensaje.parts[0].text)
-    
+                    
     # Caja de texto para el usuario
-    if pregunta := st.chat_input("Escribe tu duda técnica aquí..."):
+    if pregunta := st.chat_input("Escribe tu duda técnica o del sistema aquí..."):
         with contenedor_chat:
             with st.chat_message("user"):
                 st.markdown(pregunta)
