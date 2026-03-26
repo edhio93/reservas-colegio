@@ -1401,22 +1401,7 @@ elif page == "Técnicos":
 
     st.header("🛠️ Panel de Soporte Técnico")
 
-    # --- SCRIPT TEMPORAL DE DEPURACIÓN ---
-    st.info("🕵️ Buscando modelos permitidos para tu API Key...")
-    try:
-        # Asegúrate de que la API Key ya esté configurada arriba
-        modelos_permitidos = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                modelos_permitidos.append(m.name)
-        
-        if modelos_permitidos:
-            st.success(f"✅ ¡Éxito! Copia uno de estos nombres: {modelos_permitidos}")
-        else:
-            st.warning("⚠️ Tu API Key no tiene modelos habilitados para generar texto.")
-    except Exception as e:
-        st.error(f"🚨 Error de conexión con Google: {e}")
-    # -------------------------------------
+   
     
     modulo_tec = st.radio("Selecciona el módulo de trabajo:", 
                           ["🎫 Tickets", "🗑️ Baja de Equipos", "📋 Generador QR"], 
