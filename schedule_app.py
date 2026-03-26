@@ -766,10 +766,13 @@ if page == "Base de datos":
                     try:
                         original_indices = set(df.index)
                         edited_indices = set(edited_df.index)
-                        deleted_indices = original_indices - edited_indices
                         
+                        # ---------------------------------------------------------
+                        # 1. ELIMINACIONES
+                        # ---------------------------------------------------------
+                        deleted_indices = original_indices - edited_indices
                         for idx in deleted_indices:
-                            id_borrar = df.loc[idx, 'id']
+                            id_borrar = int(df.loc[idx, 'id'])
                             supabase.table("reservas").delete().eq("id", id_borrar).execute()
                             
                             prof_name = df.loc[idx, 'Profesor']
@@ -779,9 +782,40 @@ if page == "Base de datos":
                                 body = f"""<html><body><p>Hola {prof_name.split(' ')[0]},</p><p>Te informamos que la siguiente reserva ha sido <b>cancelada</b>:</p><ul><li><b>Fecha:</b> {format_date_es(df.loc[idx, 'Fecha'])}</li><li><b>Horario:</b> {df.loc[idx, 'Hora inicio'].strftime('%H:%M')} - {df.loc[idx, 'Hora fin'].strftime('%H:%M')}</li><li><b>Curso:</b> {df.loc[idx, 'Curso']}</li><li><b>Recurso:</b> {df.loc[idx, 'Recurso']}</li></ul><p>Saludos,<br>Sistema de Horarios CAV</p></body></html>"""
                                 send_email(subject, body, email_to)
 
-                        # --- AQUÍ ESTABA EL ERROR, AHORA ESTÁ ALINEADO PERFECTO ---
+                        # ---------------------------------------------------------
+                        # 2. MODIFICACIONES (¡Lo que nos faltaba!)
+                        # ---------------------------------------------------------
+                        common_indices = original_indices.intersection(edited_indices)
+                        for idx in common_indices:
+                            r_orig = df_display.loc[idx]
+                            r_edit = edited_df.loc[idx]
+                            
+                            # Comparamos si cambió alguna celda (Fecha, hora, profe, etc.)
+                            if str(r_orig["Fecha"]) != str(r_edit["Fecha"]) or \
+                               str(r_orig["Hora inicio"]) != str(r_edit["Hora inicio"]) or \
+                               str(r_orig["Hora fin"]) != str(r_edit["Hora fin"]) or \
+                               str(r_orig["Profesor"]) != str(r_edit["Profesor"]) or \
+                               str(r_orig["Curso"]) != str(r_edit["Curso"]) or \
+                               str(r_orig["Recurso"]) != str(r_edit["Recurso"]) or \
+                               str(r_orig.get("Observaciones", "")) != str(r_edit.get("Observaciones", "")):
+                               
+                                # Si algo cambió, actualizamos esa fila específica en Supabase
+                                id_actualizar = int(df.loc[idx, 'id'])
+                                datos_actualizados = {
+                                    "fecha": str(r_edit["Fecha"]),
+                                    "hora_inicio": str(r_edit["Hora inicio"]),
+                                    "hora_fin": str(r_edit["Hora fin"]),
+                                    "profesor": map_prof.get(r_edit["Profesor"]),
+                                    "curso": map_cur.get(r_edit["Curso"]),
+                                    "recurso": map_rec.get(r_edit["Recurso"]),
+                                    "observaciones": r_edit.get("Observaciones", "")
+                                }
+                                supabase.table("reservas").update(datos_actualizados).eq("id", id_actualizar).execute()
+
+                        # ---------------------------------------------------------
+                        # 3. NUEVAS INSERCIONES
+                        # ---------------------------------------------------------
                         new_rows = edited_df[~edited_df.index.isin(original_indices)]
-                        
                         if not new_rows.empty:
                             nuevas_inserciones = []
                             for _, r in new_rows.iterrows():
@@ -796,6 +830,7 @@ if page == "Base de datos":
                                 })
                             supabase.table("reservas").insert(nuevas_inserciones).execute()
                             
+                        # Fin del proceso: recargamos la interfaz
                         st.success("Sincronización completa.")
                         st.cache_data.clear()
                         time.sleep(0.5)
