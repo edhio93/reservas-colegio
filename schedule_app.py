@@ -765,26 +765,26 @@ if page == "Base de datos":
                                 body = f"""<html><body><p>Hola {prof_name.split(' ')[0]},</p><p>Te informamos que la siguiente reserva ha sido <b>cancelada</b>:</p><ul><li><b>Fecha:</b> {format_date_es(df.loc[idx, 'Fecha'])}</li><li><b>Horario:</b> {df.loc[idx, 'Hora inicio'].strftime('%H:%M')} - {df.loc[idx, 'Hora fin'].strftime('%H:%M')}</li><li><b>Curso:</b> {df.loc[idx, 'Curso']}</li><li><b>Recurso:</b> {df.loc[idx, 'Recurso']}</li></ul><p>Saludos,<br>Sistema de Horarios CAV</p></body></html>"""
                                 send_email(subject, body, email_to)
 
-                     new_rows = edited_df[~edited_df.index.isin(original_indices)]
-                    
-                    if not new_rows.empty:
-                        nuevas_inserciones = []
-                        for _, r in new_rows.iterrows():
-                            nuevas_inserciones.append({
-                                "fecha": str(r["Fecha"]),
-                                "hora_inicio": str(r["Hora inicio"]),
-                                "hora_fin": str(r["Hora fin"]),
-                                "profesor": map_prof.get(r["Profesor"]),
-                                "curso": map_cur.get(r["Curso"]),
-                                "recurso": map_rec.get(r["Recurso"]),
-                                "observaciones": r["Observaciones"]
-                            })
-                        supabase.table("reservas").insert(nuevas_inserciones).execute()
+                         new_rows = edited_df[~edited_df.index.isin(original_indices)]
                         
-                    st.success("Sincronización completa.")
-                    st.cache_data.clear()
-                    time.sleep(0.5)
-                    st.rerun()
+                        if not new_rows.empty:
+                            nuevas_inserciones = []
+                            for _, r in new_rows.iterrows():
+                                nuevas_inserciones.append({
+                                    "fecha": str(r["Fecha"]),
+                                    "hora_inicio": str(r["Hora inicio"]),
+                                    "hora_fin": str(r["Hora fin"]),
+                                    "profesor": map_prof.get(r["Profesor"]),
+                                    "curso": map_cur.get(r["Curso"]),
+                                    "recurso": map_rec.get(r["Recurso"]),
+                                    "observaciones": r["Observaciones"]
+                                })
+                            supabase.table("reservas").insert(nuevas_inserciones).execute()
+                            
+                        st.success("Sincronización completa.")
+                        st.cache_data.clear()
+                        time.sleep(0.5)
+                        st.rerun()
                         
                     except Exception as e:
                         st.error(f"Error al sincronizar: {e}")
