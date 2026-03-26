@@ -765,8 +765,7 @@ if page == "Base de datos":
                                 body = f"""<html><body><p>Hola {prof_name.split(' ')[0]},</p><p>Te informamos que la siguiente reserva ha sido <b>cancelada</b>:</p><ul><li><b>Fecha:</b> {format_date_es(df.loc[idx, 'Fecha'])}</li><li><b>Horario:</b> {df.loc[idx, 'Hora inicio'].strftime('%H:%M')} - {df.loc[idx, 'Hora fin'].strftime('%H:%M')}</li><li><b>Curso:</b> {df.loc[idx, 'Curso']}</li><li><b>Recurso:</b> {df.loc[idx, 'Recurso']}</li></ul><p>Saludos,<br>Sistema de Horarios CAV</p></body></html>"""
                                 send_email(subject, body, email_to)
 
-                        new_rows = edited_df[~edited_df.index.isin(original_indices)]
-                        if not new_rows.empty:
+                      if not new_rows.empty:
                             nuevas_inserciones = []
                             for _, r in new_rows.iterrows():
                                 nuevas_inserciones.append({
@@ -781,9 +780,13 @@ if page == "Base de datos":
                             supabase.table("reservas").insert(nuevas_inserciones).execute()
                             
                         st.success("Sincronización completa.")
-                        st.cache_data.clear(); time.sleep(1); st.rerun()
-                        st.cache_data.clear() # Obliga a Streamlit a borrar la memoria vieja
-                        st.rerun()            # Recarga la página instantáneamente para ver el cambio
+                        
+                        # --- ESTA ES LA ÚNICA PARTE QUE NECESITAS ---
+                        st.cache_data.clear()  # Borramos memoria vieja
+                        time.sleep(0.5)        # Medio segundo de pausa para Supabase
+                        st.rerun()             # Recargamos la página
+                        # -------------------------------------------
+                        
                     except Exception as e:
                         st.error(f"Error al sincronizar: {e}")
         else:
