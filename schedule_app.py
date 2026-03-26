@@ -634,9 +634,7 @@ def abrir_ventana_chat():
 if st.sidebar.button("💬 Abrir Asistente IA", type="primary", use_container_width=True):
     abrir_ventana_chat()
 
-# ------------------------------------------------------------------
-# PÁGINAS (Aquí continúa tu código original...)
-# ------------------------------------------------------------------
+
 # ------------------------------------------------------------------
 # PÁGINAS
 # ------------------------------------------------------------------
@@ -784,6 +782,8 @@ if page == "Base de datos":
                             
                         st.success("Sincronización completa.")
                         st.cache_data.clear(); time.sleep(1); st.rerun()
+                        st.cache_data.clear() # Obliga a Streamlit a borrar la memoria vieja
+                        st.rerun()            # Recarga la página instantáneamente para ver el cambio
                     except Exception as e:
                         st.error(f"Error al sincronizar: {e}")
         else:
@@ -808,9 +808,9 @@ elif page == "Semana":
         profesores_list = df['Profesor'].dropna().unique().tolist() if not df.empty else []
         cursos_list = df['Curso'].dropna().unique().tolist() if not df.empty else []
         
-        if not df.empty:
+       if not df.empty:
             df['fecha_obj'] = pd.to_datetime(df['Fecha']).dt.date
-            default_date_week = df['fecha_obj'].max()
+            default_date_week = dt.date.today() # ✅ CORREGIDO: Siempre usa la fecha de hoy
         else:
             default_date_week = dt.date.today()
             
