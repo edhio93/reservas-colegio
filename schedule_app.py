@@ -1754,7 +1754,9 @@ elif page == "Modo TV":
             st.subheader("📢 Anuncios y Eventos")
             
             # Consultar Anuncios Activos
-            anuncios_data = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).gte("expiracion", dt_datetime.now().isoformat()).execute().data
+           # Usamos strftime para darle a Supabase un formato que entiende sin problemas (YYYY-MM-DD HH:MM:SS)
+fecha_actual_sql = dt_datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+anuncios_data = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).gte("expiracion", fecha_actual_sql).execute().data
             if anuncios_data:
                 for a in anuncios_data:
                     clase_css = "anuncio-alto" if a['prioridad'] == 1 else "anuncio-medio"
