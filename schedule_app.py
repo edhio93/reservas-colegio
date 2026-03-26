@@ -742,10 +742,24 @@ if page == "Registrar":
 if page == "Base de datos":
     st.title("🗃️ Base de Datos de Reservas")
     st.info("Nota: Para eliminar una fila selecciónala y presiona Supr/Delete, luego guarda.")
+    
     with st.container(border=True):
         if not df.empty:
             df_display = df.drop(columns=['id'])
-            edited_df = st.data_editor(df_display, hide_index=True, use_container_width=True, num_rows="dynamic", column_config={"Fecha": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"), "Hora inicio": st.column_config.TimeColumn("Hora Inicio", format="HH:mm"), "Hora fin": st.column_config.TimeColumn("Hora Fin", format="HH:mm"), "Profesor": st.column_config.SelectboxColumn("Profesor", options=PROFESORES, required=True), "Curso": st.column_config.SelectboxColumn("Curso", options=CURSOS, required=True), "Recurso": st.column_config.SelectboxColumn("Recurso", options=RECURSOS, required=True)})
+            edited_df = st.data_editor(
+                df_display, 
+                hide_index=True, 
+                use_container_width=True, 
+                num_rows="dynamic", 
+                column_config={
+                    "Fecha": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"), 
+                    "Hora inicio": st.column_config.TimeColumn("Hora Inicio", format="HH:mm"), 
+                    "Hora fin": st.column_config.TimeColumn("Hora Fin", format="HH:mm"), 
+                    "Profesor": st.column_config.SelectboxColumn("Profesor", options=PROFESORES, required=True), 
+                    "Curso": st.column_config.SelectboxColumn("Curso", options=CURSOS, required=True), 
+                    "Recurso": st.column_config.SelectboxColumn("Recurso", options=RECURSOS, required=True)
+                }
+            )
             
             if st.button("💾 Guardar Cambios en la Nube", use_container_width=True, type="primary"):
                 with st.spinner("Sincronizando con Supabase..."):
@@ -765,7 +779,8 @@ if page == "Base de datos":
                                 body = f"""<html><body><p>Hola {prof_name.split(' ')[0]},</p><p>Te informamos que la siguiente reserva ha sido <b>cancelada</b>:</p><ul><li><b>Fecha:</b> {format_date_es(df.loc[idx, 'Fecha'])}</li><li><b>Horario:</b> {df.loc[idx, 'Hora inicio'].strftime('%H:%M')} - {df.loc[idx, 'Hora fin'].strftime('%H:%M')}</li><li><b>Curso:</b> {df.loc[idx, 'Curso']}</li><li><b>Recurso:</b> {df.loc[idx, 'Recurso']}</li></ul><p>Saludos,<br>Sistema de Horarios CAV</p></body></html>"""
                                 send_email(subject, body, email_to)
 
-                         new_rows = edited_df[~edited_df.index.isin(original_indices)]
+                        # --- AQUÍ ESTABA EL ERROR, AHORA ESTÁ ALINEADO PERFECTO ---
+                        new_rows = edited_df[~edited_df.index.isin(original_indices)]
                         
                         if not new_rows.empty:
                             nuevas_inserciones = []
