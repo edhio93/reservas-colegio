@@ -1708,6 +1708,9 @@ if page == "Configuración":
                             st.cache_data.clear(); time.sleep(0.5); st.rerun()
                         except Exception as e: st.error("No se puede eliminar porque tiene reservas o reportes de mantenimiento asociados.")
 
+# ==============================================================================
+# 📺 PÁGINA: MODO TV INDEPENDIENTE (CON GRÁFICAS Y PANTALLA COMPLETA)
+# ==============================================================================
 elif page == "Modo TV":
     # --- PESTAÑAS DEL MODO TV ---
     tab_tv, tab_gestion = st.tabs(["📺 Pantalla de Visualización", "📝 Gestión de Eventos y Anuncios"])
@@ -1717,97 +1720,294 @@ elif page == "Modo TV":
     # ==========================================
     with tab_tv:
         # Auto-refresco cada 60 segundos (60000 ms) solo en esta pestaña
-        count = st_autorefresh(interval=60000, key="tv_autorefresh")
+        count = st_autorefresh(interval=60000, key="tv_autorefresh_full")
         
-        # Ocultar menú superior y padding para aprovechar toda la pantalla (Modo Kiosco simulado)
-        st.markdown("""
-            <style>
-                .block-container { padding-top: 1rem; padding-bottom: 0rem; }
-                header { visibility: hidden; }
-                .evento-card { background-color: #f8f9fa; border-left: 5px solid #0056b3; padding: 15px; margin-bottom: 10px; border-radius: 5px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); }
-                .anuncio-alto { background-color: #ffeaea; border-left: 5px solid #dc3545; padding: 15px; margin-bottom: 10px; border-radius: 5px; }
-                .anuncio-medio { background-color: #fff8ea; border-left: 5px solid #ffc107; padding: 15px; margin-bottom: 10px; border-radius: 5px; }
-            </style>
-        """, unsafe_allow_html=True)
+        # Necesitamos la función de color aquí dentro para el HTML dinámico
+        def get_color_from_string_tv(s):
+            import hashlib
+            hash_val = int(hashlib.md5(s.encode('utf-8')).hexdigest(), 16)
+            hue = hash_val % 360
+            return f"hsl({hue}, 75%, 50%)"
 
-        st.markdown("<h1 style='text-align: center; color: #1f2937;'>Panel Informativo CAV</h1>", unsafe_allow_html=True)
-        st.markdown("---")
+        # --- PREPARACIÓN DE DATOS (PYTHON) ---
+        hoy_dt = dt.date.today()
+        hoy_str = hoy_dt.strftime("%Y-%m-%d")
+        
+        # 1. Horario de Hoy (Desde tu df principal de reservas)
+        reservas_hoy = df[df['Fecha'].astype(str) == hoy_str] if not df.empty else pd.DataFrame()
+        reservas_hoy_sorted = reservas_hoy.sort_values(by=['Hora inicio']) if not reservas_hoy.empty else pd.DataFrame()
+        
+        tv_schedule_data = []
+        if not reservas_hoy_sorted.empty:
+            for _, row in reservas_hoy_sorted.iterrows():
+                tv_schedule_data.append({
+                    "horario": f"{str(row['Hora inicio'])[:5]} a {str(row['Hora fin'])[:5]}",
+                    "recurso": str(row['Recurso']),
+                    "profesor": str(row['Profesor']),
+                    "curso": str(row['Curso']),
+                    "color": get_color_from_string_tv(str(row['Profesor']))
+                })
+        
+        # 2. Anuncios y Eventos (Desde Supabase)
+        # Usamos la fecha corregida strftime para evitar APIError de Supabase
+        fecha_actual_sql_tv = dt_datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        anuncios_supa_data = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).gte("expiracion", fecha_actual_sql_tv).execute().data
+        eventos_supa_data = supabase.table("eventos_tv").select("*").eq("is_active", True).gte("fecha_evento", hoy_str).order("fecha_evento").execute().data
 
-        col_horario, col_eventos = st.columns([2, 1], gap="large")
-
-        with col_horario:
-            st.subheader("📅 Horario de Hoy")
-            # Aquí filtramos las reservas para mostrar solo las del día de hoy
-            hoy_str = dt.date.today().strftime("%Y-%m-%d")
-            reservas_hoy = df[df['Fecha'].astype(str) == hoy_str] if not df.empty else pd.DataFrame()
+        # --- CÓDIGO HTML/CSS/JS (FULL MODAL MODE) ---
+        import json
+        
+        # Serializamos los datos para que JS los pueda leer
+        schedule_json = json.dumps(tv_schedule_data)
+        anuncios_json = json.dumps(anuncios_supa_data)
+        eventos_json = json.dumps(eventos_supa_data)
+        
+        tv_html_full = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+            body {{ margin: 0; padding: 0; background-color: #0f172a; font-family: 'Inter', sans-serif; color: white; overflow: hidden; }}
+            .tv-wrapper {{ display: flex; flex-direction: column; height: 100vh; width: 100vw; background: radial-gradient(circle at top right, #1e293b, #0f172a); }}
             
-            if not reservas_hoy.empty:
-                # Mostrar tabla limpia sin ID y ordenada por hora
-                st.dataframe(
-                    reservas_hoy[['Hora inicio', 'Hora fin', 'Curso', 'Profesor', 'Recurso']].sort_values('Hora inicio'),
-                    hide_index=True, use_container_width=True, height=500
-                )
-            else:
-                st.info("No hay reservas programadas para el día de hoy.")
-
-        with col_eventos:
-            st.subheader("📢 Anuncios y Eventos")
+            # --- HEADER ---
+            .header {{ display: flex; justify-content: space-between; align-items: center; padding: 20px 30px; background: rgba(15, 23, 42, 0.8); border-bottom: 2px solid #334155; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }}
+            .title {{ font-size: 28px; font-weight: 900; color: #38bdf8; letter-spacing: 2px; text-transform: uppercase; }}
+            .fullscreen-btn {{ background: #0284c7; color: white; border: none; padding: 10px 20px; font-size: 16px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: background 0.3s; z-index: 1000; }}
+            .fullscreen-btn:hover {{ background: #38bdf8; color: #0f172a; }}
             
-            # Consultar Anuncios Activos
-           # Usamos strftime para darle a Supabase un formato que entiende sin problemas (YYYY-MM-DD HH:MM:SS)
-            fecha_actual_sql = dt_datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            anuncios_data = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).gte("expiracion", fecha_actual_sql).execute().data
-            if anuncios_data:
-                for a in anuncios_data:
-                    clase_css = "anuncio-alto" if a['prioridad'] == 1 else "anuncio-medio"
-                    icono = "🚨" if a['prioridad'] == 1 else "⚠️"
-                    st.markdown(f"""
-                        <div class="{clase_css}">
-                            <h4 style="margin:0;">{icono} {a['titulo']}</h4>
-                            <p style="margin:5px 0 0 0;">{a['descripcion']}</p>
-                        </div>
-                    """, unsafe_allow_html=True)
-
-            # Consultar Eventos Activos (Hoy y Futuros)
-            eventos_data = supabase.table("eventos_tv").select("*").eq("is_active", True).gte("fecha_evento", hoy_str).order("fecha_evento").execute().data
-            if eventos_data:
-                for e in eventos_data:
-                    iconos_cat = {"Reunión": "🤝", "Examen": "📝", "Efeméride": "📅", "Taller": "🛠️", "Otro": "📌"}
-                    st.markdown(f"""
-                        <div class="evento-card">
-                            <h5 style="margin:0; color: #0056b3;">{iconos_cat.get(e['categoria'], '📌')} {e['titulo']}</h5>
-                            <p style="margin:5px 0; font-size: 0.9em;"><b>Fecha:</b> {e['fecha_evento']}</p>
-                            <p style="margin:0;">{e['descripcion']}</p>
-                        </div>
-                    """, unsafe_allow_html=True)
+            # --- MAIN CONTENT ---
+            .main-content {{ flex-grow: 1; padding: 25px; display: flex; gap: 25px; }}
             
-            if not anuncios_data and not eventos_data:
-                st.write("No hay eventos ni anuncios activos.")
+            # --- LEFT COLUMN (SCHEDULE) 2/3 ---
+            .schedule-column {{ flex: 2; display: flex; flex-direction: column; gap: 15px; overflow: hidden; }}
+            .schedule-title {{ font-size: 22px; font-weight: 700; color: #e2e8f0; text-transform: uppercase; margin-bottom: 10px; border-left: 5px solid #38bdf8; padding-left: 10px; }}
+            
+            .schedule-card {{ background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border-left: 10px solid; border-radius: 12px; padding: 20px; display: flex; align-items: center; box-shadow: 0 8px 20px rgba(0,0,0,0.3); opacity: 0; transform: translateY(20px); transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1); }}
+            .schedule-card.visible {{ opacity: 1; transform: translateY(0); }}
+            
+            .time-box {{ min-width: 200px; border-right: 2px solid rgba(255,255,255,0.1); margin-right: 30px; padding-right: 15px; }}
+            .time-text {{ font-size: 32px; font-weight: 900; color: #e2e8f0; }}
+            
+            .details-box {{ flex-grow: 1; }}
+            .resource-text {{ font-size: 36px; font-weight: 900; color: #38bdf8; margin-bottom: 8px; text-shadow: 0 2px 5px rgba(0,0,0,0.5); }}
+            .prof-text {{ font-size: 22px; color: #cbd5e1; font-weight: 400; }}
+            
+            # --- RIGHT COLUMN (EVENTS) 1/3 ---
+            .events-column {{ flex: 1; background: rgba(15, 23, 42, 0.9); padding: 20px; border-radius: 12px; border: 1px solid #334155; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; }}
+            .events-title {{ font-size: 22px; font-weight: 700; color: #e2e8f0; text-transform: uppercase; margin-bottom: 10px; border-left: 5px solid #dc3545; padding-left: 10px; }}
+            
+            # --- ANUNCIOS URGENTES STYLE (Imagen 2) ---
+            .anuncio-card {{ background-color: #dc3545; color: white; border-radius: 10px; padding: 15px; box-shadow: 0 4px 10px rgba(220,53,69,0.5); border: 2px solid #ffcccc; animation: pulse 2s infinite; }}
+            .anuncio-card-medio {{ background-color: #ffc107; color: #0f172a; border-radius: 10px; padding: 15px; box-shadow: 0 4px 10px rgba(255,193,7,0.3); }}
+            
+            # --- EVENTOSSTYLE (Imagen 1) ---
+            .evento-card-tv {{ background: rgba(255, 255, 255, 0.03); border-left: 5px solid #0056b3; border-radius: 8px; padding: 15px; transition: background 0.3s; }}
+            .evento-card-tv:hover {{ background: rgba(255, 255, 255, 0.08); }}
+            .evento-cat {{ text-transform: uppercase; font-size: 0.8em; font-weight: bold; color: #0056b3; margin-bottom: 5px; }}
+            .evento-title-tv {{ font-size: 1.1em; font-weight: bold; color: #e2e8f0; }}
+            .evento-desc-tv {{ font-size: 0.9em; color: #cbd5e1; margin-top: 5px; }}
+            
+            .progress-bar {{ position: absolute; bottom: 0; left: 0; height: 6px; background: #38bdf8; width: 0%; transition: width 8s linear; }}
+            
+            # --- ANIMATIONS ---
+            @keyframes pulse {{
+                0% {{ box-shadow: 0 0 0 0 rgba(220,53,69,0.7); }}
+                70% {{ box-shadow: 0 0 0 10px rgba(220,53,69,0); }}
+                100% {{ box-shadow: 0 0 0 0 rgba(220,53,69,0); }}
+            }}
+        </style>
+        </head>
+        <body>
+            <div class="tv-wrapper" id="tv-wrapper-el">
+                <div class="header">
+                    <div class="title">📡 PANEL INFORMATIVO CAV - HOY</div>
+                    <button class="fullscreen-btn" onclick="toggleFullScreen()">🔲 Pantalla Completa</button>
+                </div>
+                
+                <div class="main-content">
+                    # --- LEFT COLUMN ---
+                    <div class="schedule-column">
+                        <div class="schedule-title">Horario de Hoy</div>
+                        <div id="schedule-cards-container"></div>
+                    </div>
+                    
+                    # --- RIGHT COLUMN ---
+                    <div class="events-column">
+                        <div class="events-title">Anuncios y Eventos</div>
+                        <div id="announcements-container"></div>
+                        <div id="events-container"></div>
+                    </div>
+                </div>
+                
+                <div class="progress-bar" id="progress-el"></div>
+            </div>
+
+            <script>
+                # --- DATA LOAD ---
+                const scheduleData = {schedule_json};
+                const anunciosData = {anuncios_json};
+                const eventosData = {eventos_json};
+                
+                const scheduleContainer = document.getElementById('schedule-cards-container');
+                const anunciosContainer = document.getElementById('announcements-container');
+                const eventosContainer = document.getElementById('events-container');
+                const progress = document.getElementById('progress-el');
+                
+                let currentIndex = 0;
+                const itemsPerPage = 4; # Muestra 4 bloques por pantalla
+                const slideDuration = 8000; # 8 segundos por pantalla
+
+                # --- FULLSCREEN FUNCTION (Solicitud Principal) ---
+                function toggleFullScreen() {{
+                    const elem = document.documentElement;
+                    if (!document.fullscreenElement) {{
+                        elem.requestFullscreen().catch(err => console.log(err));
+                    }} else {{
+                        if (document.exitFullscreen) document.exitFullscreen();
+                    }}
+                }}
+
+                # --- RENDER SCHEDULE (Imagen 1 style with colors) ---
+                function renderScheduleCards() {{
+                    scheduleContainer.innerHTML = '';
+                    
+                    if (scheduleData.length === 0) {{
+                        scheduleContainer.innerHTML = '<div style="padding: 20px; font-style:italic; color: #94a3b8;">No hay reservas programadas para hoy.</div>';
+                        progress.style.width = '100%';
+                        return;
+                    }}
+
+                    # Reiniciar barra de progreso
+                    progress.style.transition = 'none';
+                    progress.style.width = '0%';
+                    setTimeout(() => {{
+                        progress.style.transition = `width ${{slideDuration}}ms linear`;
+                        progress.style.width = '100%';
+                    }}, 50);
+
+                    # Seleccionar los datos de esta página
+                    const pageData = [];
+                    for(let i=0; i<itemsPerPage; i++) {{
+                        if(scheduleData.length > 0) {{
+                            pageData.push(scheduleData[(currentIndex + i) % scheduleData.length]);
+                        }}
+                    }}
+                    
+                    # Eliminar duplicados visuales si hay pocas reservas
+                    const uniquePageData = [...new Set(pageData)];
+
+                    uniquePageData.forEach((item, index) => {{
+                        const card = document.createElement('div');
+                        card.className = 'schedule-card';
+                        card.style.borderLeftColor = item.color;
+                        card.innerHTML = `
+                            <div class="time-box">
+                                <div class="time-text">🕒 ${{item.horario}}</div>
+                            </div>
+                            <div class="details-box">
+                                <div class="resource-text">${{item.recurso}}</div>
+                                <div class="prof-text">👨‍🏫 ${{item.profesor}} &nbsp;|&nbsp; 📚 ${{item.curso}}</div>
+                            </div>
+                        `;
+                        scheduleContainer.appendChild(card);
+                        
+                        # Animación en cascada para entrar
+                        setTimeout(() => {{ card.classList.add('visible'); }}, index * 200);
+                    }});
+
+                    # Avanzar el índice
+                    if (scheduleData.length > itemsPerPage) {{
+                        currentIndex = (currentIndex + itemsPerPage) % scheduleData.length;
+                    }}
+                }}
+
+                # --- RENDER EVENTS (Imagen 1 & 2 combination) ---
+                function renderEventsColumn() {{
+                    # 1. Anuncios Urgentes (Imagen 2 style)
+                    if (anunciosData && anunciosData.length > 0) {{
+                        anunciosData.forEach(a => {{
+                            const isHigh = a.prioridad === 1;
+                            const card = document.createElement('div');
+                            card.className = isHigh ? 'anuncio-card' : 'anuncio-card-medio';
+                            card.innerHTML = `
+                                <h4 style="margin:0; font-size:1.2em;">${{isHigh ? '🚨 ALTA PRIORIDAD' : '⚠️ ANUNCIO'}}</h4>
+                                <h3 style="margin:5px 0 0 0; font-size:1.5em; font-weight:900;">${{a.titulo}}</h3>
+                                <p style="margin:10px 0 0 0; font-size:1.1em;">${{a.descripcion}}</p>
+                            `;
+                            anunciosContainer.appendChild(card);
+                        }});
+                    }}
+
+                    # 2. Eventos Próximos (Imagen 1 style)
+                    if (eventosData && eventosData.length > 0) {{
+                        eventosData.forEach(e => {{
+                            const card = document.createElement('div');
+                            card.className = 'evento-card-tv';
+                            card.innerHTML = `
+                                <div class="evento-cat">${{e.categoria}}</div>
+                                <div class="evento-title-tv">📅 ${{e.titulo}} - ${{e.fecha_evento}}</div>
+                                <div class="evento-desc-tv">${{e.descripcion}}</div>
+                            `;
+                            eventosContainer.appendChild(card);
+                        }});
+                    }}
+                    
+                    if ((!anunciosData || anunciosData.length === 0) && (!eventosData || eventosData.length === 0)) {{
+                        eventosContainer.innerHTML = '<div style="padding: 10px; font-style:italic; color: #94a3b8;">No hay eventos ni anuncios activos.</div>';
+                    }}
+                }}
+
+                # --- INITIALIZE ---
+                renderScheduleCards();
+                renderEventsColumn();
+
+                if(scheduleData.length > itemsPerPage) {{
+                    setInterval(renderScheduleCards, slideDuration);
+                }} else {{
+                    # Si hay pocas reservas, dejar barra llena y no rotar
+                    progress.style.transition = 'width 1s linear';
+                    progress.style.width = '100%';
+                }}
+            </script>
+        </body>
+        </html>
+        """
+        
+        # Usamos st.components.v1.html con una altura alta para visualizar bien antes del fullscreen
+        st.components.v1.html(tv_html_full, height=850, scrolling=True)
 
     # ==========================================
-    # PESTAÑA 2: GESTIÓN DE EVENTOS (FORMULARIOS)
+    # PESTAÑA 2: GESTIÓN DE EVENTOS (FORMULARIOS) - (SE MANTIENE IGUAL)
     # ==========================================
     with tab_gestion:
         st.header("Gestión de Pantalla TV")
+        st.info("Utiliza estos formularios para agregar información que se mostrará en el 'Modo TV'.")
         
         col_form1, col_form2 = st.columns(2)
         
         with col_form1:
             with st.container(border=True):
                 st.subheader("🗓️ Registrar Nuevo Evento")
+                st.write("Ideal para reuniones, exámenes, efemérides o talleres.")
                 with st.form("form_evento_tv"):
-                    titulo_ev = st.text_input("Título del Evento", max_chars=50)
-                    desc_ev = st.text_area("Descripción corta", max_chars=200)
+                    titulo_ev = st.text_input("Título del Evento", max_chars=50, placeholder="Ej: Reunión Docente")
+                    desc_ev = st.text_area("Descripción corta (opcional)", max_chars=200, placeholder="Breve detalle...")
                     cat_ev = st.selectbox("Categoría", ["Reunión", "Examen", "Efeméride", "Taller", "Otro"])
                     fecha_ev = st.date_input("Fecha del Evento", min_value=dt.date.today())
                     
                     if st.form_submit_button("Guardar Evento", use_container_width=True):
                         if titulo_ev.strip():
                             supabase.table("eventos_tv").insert({
-                                "titulo": titulo_ev, "descripcion": desc_ev, 
-                                "fecha_evento": str(fecha_ev), "categoria": cat_ev, "is_active": True
+                                "titulo": titulo_ev, 
+                                "descripcion": desc_ev, 
+                                "fecha_evento": str(fecha_ev), 
+                                "categoria": cat_ev, 
+                                "is_active": True
                             }).execute()
-                            st.success("Evento guardado. Aparecerá en la TV en el próximo refresco.")
+                            st.success(f"Evento '{titulo_ev}' guardado. Aparecerá en la TV.")
                             time.sleep(1)
                             st.rerun()
                         else:
@@ -1816,23 +2016,26 @@ elif page == "Modo TV":
         with col_form2:
             with st.container(border=True):
                 st.subheader("🚨 Registrar Anuncio Urgente")
+                st.write("Para alertas de última hora, cancelaciones o recordatorios vitales.")
                 with st.form("form_anuncio_tv"):
-                    titulo_an = st.text_input("Título del Anuncio", max_chars=50)
-                    desc_an = st.text_area("Detalles del anuncio")
-                    prio_an = st.radio("Prioridad", [("Alta (Rojo)", 1), ("Media (Amarillo)", 2)], format_func=lambda x: x[0])
-                    expira_an = st.date_input("Válido hasta", min_value=dt.date.today())
+                    titulo_an = st.text_input("Título del Anuncio", max_chars=50, placeholder="Ej: Suspensión de Clases")
+                    desc_an = st.text_area("Detalles del anuncio", placeholder="Indica cursos afectados o razones...")
+                    prio_an = st.radio("Prioridad visual", [("🚨 Alta (Rojo Pulsante)", 1), ("⚠️ Media (Amarillo)", 2)], format_func=lambda x: x[0])
+                    expira_an = st.date_input("Válido hasta (Expiración)", min_value=dt.date.today())
                     
                     if st.form_submit_button("Publicar Anuncio", type="primary", use_container_width=True):
                         if titulo_an.strip():
                             # Añadimos 23:59:59 a la fecha de expiración para que dure todo el día seleccionado
-                            exp_dt = dt_datetime.combine(expira_an, dt.time(23, 59, 59)).isoformat()
+                            exp_dt_full = dt_datetime.combine(expira_an, dt.time(23, 59, 59)).strftime("%Y-%m-%d %H:%M:%S")
                             supabase.table("anuncios_urgentes").insert({
-                                "titulo": titulo_an, "descripcion": desc_an, 
-                                "prioridad": prio_an[1], "expiracion": exp_dt, "is_active": True
+                                "titulo": titulo_an, 
+                                "descripcion": desc_an, 
+                                "prioridad": prio_an[1], 
+                                "expiracion": exp_dt_full, 
+                                "is_active": True
                             }).execute()
-                            st.success("Anuncio publicado en la TV.")
+                            st.success(f"Anuncio '{titulo_an}' publicado con prioridad {prio_an[1]}. Aparecerá en la TV.")
                             time.sleep(1)
                             st.rerun()
                         else:
                             st.error("El título es obligatorio.")
-                        
