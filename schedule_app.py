@@ -1969,8 +1969,11 @@ elif page == "Modo TV":
                 if st.form_submit_button("Guardar Evento", use_container_width=True):
                     if titulo_ev.strip():
                         supabase.table("eventos_tv").insert({
-                            "titulo": titulo_ev, "descripcion": desc_ev, 
-                            "fecha_evento": str(fecha_ev), "categoria": cat_ev, "is_active": True
+                            "titulo": titulo_ev, 
+                            "descripcion": desc_ev, 
+                            "fecha_evento": str(fecha_ev), 
+                            "categoria": cat_ev, 
+                            "is_active": True
                         }).execute()
                         st.success("Evento guardado. Aparecerá en la TV pública.")
                         time.sleep(1)
@@ -1986,8 +1989,20 @@ elif page == "Modo TV":
                 desc_an = st.text_area("Detalles del anuncio")
                 prio_an = st.radio("Prioridad visual", [("🚨 Alta (Rojo)", 1), ("⚠️ Media (Amarillo)", 2)], format_func=lambda x: x[0])
                 
-                # NUEVO: SECCIÓN DE TIEMPO LÍMITE (Fecha + Hora)
                 st.markdown("**⏳ Tiempo Límite del Anuncio**")
+                
+                # NUEVO: Elegir el método de expiración
+                tipo_limite = st.radio(
+                    "¿Cómo quieres definir el límite?", 
+                    ["⏱️ Duración rápida (Minutos)", "📅 Fecha y hora exacta"]
+                )
+                
+                # Opción 1: Minutos
+                st.caption("Si elegiste 'Duración rápida', usa este campo:")
+                minutos_an = st.number_input("¿Cuántos minutos estará visible?", min_value=1, max_value=1440, value=30, step=5)
+                
+                # Opción 2: Fecha y Hora
+                st.caption("Si elegiste 'Fecha y hora', usa estos campos:")
                 col_fecha, col_hora = st.columns(2)
                 with col_fecha:
                     expira_fecha = st.date_input("Válido hasta", min_value=dt.date.today())
@@ -1996,17 +2011,33 @@ elif page == "Modo TV":
                 
                 if st.form_submit_button("Publicar Anuncio", type="primary", use_container_width=True):
                     if titulo_an.strip():
-                        exp_dt_full = dt_datetime.combine(expira_fecha, expira_hora).strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        import datetime # Por si acaso para usar timedelta
+                        
+                        # === LÓGICA DE TIEMPO ===
+                        if tipo_limite == "⏱️ Duración rápida (Minutos)":
+                            # Le sumamos los minutos a la hora actual
+                            tiempo_final = dt_datetime.now() + datetime.timedelta(minutes=minutos_an)
+                            exp_dt_full = tiempo_final.strftime("%Y-%m-%d %H:%M:%S")
+                        else:
+                            # Usamos el modo clásico de combinar fecha y hora
+                            exp_dt_full = dt_datetime.combine(expira_fecha, expira_hora).strftime("%Y-%m-%d %H:%M:%S")
+                            
+                        # Guardar en base de datos
                         supabase.table("anuncios_urgentes").insert({
-                            "titulo": titulo_an, "descripcion": desc_an, 
-                            "prioridad": prio_an[1], "expiracion": exp_dt_full, "is_active": True
+                            "titulo": titulo_an, 
+                            "descripcion": desc_an, 
+                            "prioridad": prio_an[1], 
+                            "expiracion": exp_dt_full, 
+                            "is_active": True
                         }).execute()
+                        
                         st.success("Anuncio publicado en la TV.")
                         time.sleep(1)
                         st.rerun()
                     else:
                         st.error("El título es obligatorio.")
-
+                        
     # --- NUEVO: MOSTRAR REGISTROS JUNTOS (EVENTOS Y ENLACES) ---
     st.markdown("---")
     st.subheader("📋 Registros Actuales (Eventos TV y Enlaces)")
@@ -2015,12 +2046,18 @@ elif page == "Modo TV":
         # 1. Obtener Eventos de la TV (Solo los que no han pasado)
         hoy_str = dt.date.today().strftime("%Y-%m-%d")
         res_eventos = supabase.table("eventos_tv").select("id, categoria, titulo, descripcion, fecha_evento, is_active").gte("fecha_evento", hoy_str).execute()
-        df_eventos = pd.DataFrame(res_eventos.data)
+        
+        # Manejo seguro si .data es None
+        datos_eventos_raw = res_eventos.data if res_eventos.data else []
+        df_eventos = pd.DataFrame(datos_eventos_raw)
         
         if not df_eventos.empty:
             df_eventos.rename(columns={
-                "categoria": "Categoría", "titulo": "Título", 
-                "descripcion": "Descripción", "fecha_evento": "Fecha Evento", "is_active": "Activo"
+                "categoria": "Categoría", 
+                "titulo": "Título", 
+                "descripcion": "Descripción", 
+                "fecha_evento": "Fecha Evento", 
+                "is_active": "Activo"
             }, inplace=True)
             df_eventos["Origen"] = "🖥️ Creado en TV"
         else:
@@ -2049,13 +2086,15 @@ elif page == "Modo TV":
         df_enlaces = pd.DataFrame(datos_enlaces) if datos_enlaces else pd.DataFrame(columns=df_eventos.columns)
         
         # 3. Combinar ambas tablas en una sola para mostrarla
-        df_combinado = pd.concat([df_eventos, df_enlaces], ignore_index=True)
+        # Asegurarnos de que no estén vacías antes de concatenar para evitar warnings de Pandas
+        frames = [df for df in [df_eventos, df_enlaces] if not df.empty]
         
-        if not df_combinado.empty:
+        if frames:
+            df_combinado = pd.concat(frames, ignore_index=True)
             # Ordenar por fecha para que lo más próximo salga primero
             df_combinado = df_combinado.sort_values(by="Fecha Evento")
             
-            # Dibujar la tabla estética con Data Editor
+            # Dibujar la tabla estética
             st.dataframe(
                 df_combinado[["Origen", "Categoría", "Título", "Descripción", "Fecha Evento", "Activo"]], 
                 use_container_width=True,
