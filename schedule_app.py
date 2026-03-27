@@ -258,7 +258,8 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                             info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-clipboard-text info-icon icon-observaciones'></i> {item['observaciones']}</div>"
                         info_row_html += "</div>"
                     
-                    hora_icon_html = "<i class='ph-fill ph-clock icon-hora'></i>" if item['categoria'] != "Evento" else "<i class='ph-fill ph-
+                   hora_icon_html = "<i class='ph-fill ph-clock icon-hora'></i>" if item['categoria'] != "Evento" else "<i class='ph-fill ph-star icon-hora'></i>"
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 0) CONFIGURACIÓN GLOBAL Y ESTILO
 # ──────────────────────────────────────────────────────────────────────────────
