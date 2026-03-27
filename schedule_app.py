@@ -67,7 +67,7 @@ import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 
 # ==============================================================================
-# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO SIN LOGIN - DARK MODE)
+# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO SIN LOGIN)
 # ==============================================================================
 if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
 
@@ -76,7 +76,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         st.session_state.tv_scale = 100
 
     # Temporizador de recarga de la página: 40000ms = 40 segundos
-    # Esto fuerza la recarga de datos de la BD y avanza el carrusel
     refresh_count = st_autorefresh(interval=40000, limit=None, key="tv_refresh_timer")
     
     ruta_logo = "logotv.png"
@@ -98,7 +97,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     # Calculamos el multiplicador de escala
     escala = st.session_state.tv_scale / 100.0
 
-    # === NUEVO ESTILO DARK MODE ===
+    # === ESTILO: FONDO OSCURO, TARJETAS BLANCAS ===
     aesthetic_style = f"""            
     <style>
         @import url('https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css');
@@ -108,59 +107,64 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         }}
 
         /* Fondo general oscuro */
-        .stApp {{ background-color: #0b1120; color: #f8fafc; font-family: 'Inter', sans-serif; }}
+        .stApp {{ background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }}
         [data-testid="stHeader"] {{ background: rgba(0,0,0,0); }}
         [data-testid="stToolbar"] {{ display: none; }}
         [data-testid="stSidebar"] {{ display: none; }}
         
-        /* Contenedor Superior (Header) Oscuro */
+        /* Cabecera Principal - Blanca/Gris Clara */
         .tv-header-container {{ 
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-            color: #f8fafc; padding: 15px 25px 0 25px; border-radius: 20px; 
-            margin-bottom: 25px; border: 1px solid #334155; 
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3); overflow: hidden; 
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            color: #0f172a; padding: 15px 25px 0 25px; border-radius: 20px; 
+            margin-bottom: 25px; border: 1px solid #cbd5e1; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15); overflow: hidden; 
             display: flex; flex-direction: column; align-items: center;
         }}
         .header-content-layout {{ display: flex; align-items: center; justify-content: space-between; width: 100%; padding-bottom: 15px; }}
-        .header-logo-img {{ height: calc(85px * var(--tv-scale)); width: auto; display: block; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }}
-        .header-logo-fallback {{ font-size: calc(4rem * var(--tv-scale)); color: #94a3b8; line-height: 1; display: block; }}
+        .header-logo-img {{ height: calc(85px * var(--tv-scale)); width: auto; display: block; }}
+        .header-logo-fallback {{ font-size: calc(4rem * var(--tv-scale)); color: #64748b; line-height: 1; display: block; }}
 
-        .header-info-group {{ display: flex; align-items: center; gap: 15px; font-size: calc(1.2rem * var(--tv-scale)); font-weight: 600; color: #f1f5f9; }}
-        .header-divider {{ opacity: 0.5; font-weight: 300; font-size: calc(1.5rem * var(--tv-scale)); color: #64748b; }}
-        .header-status {{ display: flex; align-items: center; color: #94a3b8; }}
+        .header-info-group {{ display: flex; align-items: center; gap: 15px; font-size: calc(1.2rem * var(--tv-scale)); font-weight: 600; color: #1e293b; }}
+        .header-divider {{ opacity: 0.3; font-weight: 300; font-size: calc(1.5rem * var(--tv-scale)); color: #94a3b8; }}
+        .header-status {{ display: flex; align-items: center; color: #475569; }}
         .status-icon {{ margin-right: 8px; font-size: calc(1.3rem * var(--tv-scale)); color: #10b981; }}
         
-        /* Barra de progreso de 40 segundos */
-        .progress-container {{ width: 100%; height: 6px; background-color: #334155; }}
+        /* Barra de progreso 40s */
+        .progress-container {{ width: 100%; height: 6px; background-color: #cbd5e1; }}
         .progress-bar {{ height: 100%; background-color: #3b82f6; width: 0%; animation: loadBar 40s linear infinite; }}
         @keyframes loadBar {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
         
+        /* Títulos de sección adaptados para fondo oscuro */
         .tv-sub-header {{ color: #f8fafc; font-weight: 800; font-size: calc(1.6rem * var(--tv-scale)); margin-top: 5px; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #334155; padding-bottom: 10px;}}
         
-        /* === ANIMACIONES === */
+        /* Animaciones */
         @keyframes cascadeIn {{ 0% {{ opacity: 0; transform: translateY(30px) scale(0.98); }} 100% {{ opacity: 1; transform: translateY(0) scale(1); }} }}
         @keyframes pulseAlert {{ 0% {{ box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }} 70% {{ box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }} 100% {{ box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }} }}
 
-        /* Tarjetas de Cronograma (Dark Mode) */
-        .block-card {{ padding: 22px; border-radius: 16px; border-left: 8px solid; margin-bottom: 18px; background-color: #1e293b; box-shadow: 0 6px 15px rgba(0,0,0,0.2); }}
-        .block-title {{ font-weight: 700; font-size: calc(1.35rem * var(--tv-scale)); margin-bottom: 8px; text-transform: uppercase;}}
-        .block-info {{ font-size: calc(1.05rem * var(--tv-scale)); color: #cbd5e1; }}
+        /* Tarjetas Cronograma - Blancas */
+        .block-card {{ padding: 22px; border-radius: 16px; border-left: 8px solid; margin-bottom: 18px; background-color: white; box-shadow: 0 6px 15px rgba(0,0,0,0.1); }}
+        
+        /* Nuevo título con hora a la derecha */
+        .block-title-row {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; width: 100%; }}
+        .block-title-text {{ font-weight: 700; font-size: calc(1.35rem * var(--tv-scale)); text-transform: uppercase; }}
+        .block-time-badge {{ display: flex; align-items: center; gap: 6px; background-color: #f1f5f9; color: #475569; padding: 6px 12px; border-radius: 8px; font-weight: 700; font-size: calc(1.1rem * var(--tv-scale)); border: 1px solid #e2e8f0; }}
+        
+        .block-info {{ font-size: calc(1.05rem * var(--tv-scale)); color: #475569; }}
         .block-info-row {{ display: flex; gap: 20px; align-items: center; margin-top: 12px; font-size: calc(1rem * var(--tv-scale));}}
-        .block-info-item {{ display: flex; align-items: center; color: #94a3b8; }}
+        .block-info-item {{ display: flex; align-items: center; color: #64748b; }}
         
         .info-icon {{ font-size: calc(1.25rem * var(--tv-scale)); margin-right: 8px; }}
         .icon-profesor {{ color: #4ade80; }} 
         .icon-observaciones {{ color: #fbbf24; }} 
         
-        .block-hora-pill {{ margin-top: 15px; font-weight: 600; color: #cbd5e1; background: #0f172a; display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 10px; font-size: calc(0.9rem * var(--tv-scale)); border: 1px solid #334155;}}
-        .icon-hora {{ color: #60a5fa; margin-right: 7px; font-size: calc(1.1rem * var(--tv-scale));}} 
-        .icon-categoria {{ color: #818cf8; margin-left: 10px; margin-right: 7px; font-size: calc(1.1rem * var(--tv-scale));}} 
+        .block-hora-pill {{ margin-top: 15px; font-weight: 600; color: #64748b; background: #f8fafc; display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 10px; font-size: calc(0.9rem * var(--tv-scale)); border: 1px solid #e2e8f0;}}
+        .icon-categoria {{ color: #818cf8; margin-right: 7px; font-size: calc(1.1rem * var(--tv-scale));}} 
 
-        /* Contenedor de Anuncios (Dark Mode) */
-        .announcements-container {{ background-color: #1e293b; border-radius: 20px; padding: 25px; border: 1px solid #334155; box-shadow: 0 4px 15px rgba(0,0,0,0.2); height: 100%; }}
-        .announcement-card {{ padding: 20px; border-radius: 16px; margin-bottom: 18px; border-left: 6px solid;}}
+        /* Contenedor Avisos - Blanco */
+        .announcements-container {{ background-color: white; border-radius: 20px; padding: 25px; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.1); height: 100%; }}
+        .announcement-card {{ padding: 20px; border-radius: 16px; border: 1px solid #e2e8f0; margin-bottom: 18px; border-left: 6px solid;}}
         .announcement-title {{ font-weight: 700; margin-bottom: 7px; font-size: calc(1.2rem * var(--tv-scale)); text-transform: uppercase;}}
-        .announcement-desc {{ font-size: calc(1rem * var(--tv-scale)); line-height: 1.5; }}
+        .announcement-desc {{ font-size: calc(1rem * var(--tv-scale)); color: #334155; line-height: 1.5; }}
     </style>
     """
     st.markdown(aesthetic_style, unsafe_allow_html=True) 
@@ -175,7 +179,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     <div class="header-date">{fecha_es_formateada}</div>
                     <div class="header-divider">|</div>
                     <div class="header-status">
-                        <i class="ph-fill ph-check-circle status-icon"></i> Siguiente slide en 40s
+                        <i class="ph-fill ph-check-circle status-icon"></i> Siguiente página en 40s
                     </div>
                 </div>
             </div>
@@ -187,21 +191,20 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     
     with col_main:
         try:
-            # Traemos todo (*) para asegurar que extraemos las horas si existen en la BD
             res_tv_hoy = supabase.table("eventos_tv").select("*").eq("fecha_evento", hoy_str).eq("is_active", True).execute().data
             res_reservas_hoy = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute().data
             
             events_hoy_list = []
             
-            # --- PROCESAMIENTO CON EXTRACCIÓN DE HORA ---
+            # Formatear la hora y guardar en la lista
             for ev in res_tv_hoy:
-                h_ini = ev.get("hora_inicio", ev.get("hora", "00:00"))
-                h_fin = ev.get("hora_fin", "")
+                h_ini = str(ev.get("hora_inicio", ev.get("hora", "00:00")))[:5]
+                h_fin = str(ev.get("hora_fin", ""))[:5]
                 disp_hora = f"{h_ini} - {h_fin}" if h_fin and h_fin != h_ini else f"{h_ini}"
-                if not h_ini or disp_hora == " - ": disp_hora = "TODO EL DÍA"
+                if not h_ini or h_ini == "None" or h_ini == "00:00": disp_hora = "TODO EL DÍA"
                 
                 events_hoy_list.append({
-                    "hora_sort": h_ini if h_ini and h_ini != "00:00" else "23:59", 
+                    "hora_sort": h_ini if h_ini and h_ini != "None" and h_ini != "00:00" else "23:59", 
                     "display_hora": disp_hora,
                     "titulo": ev.get("titulo", "Evento"), "descripcion": ev.get("descripcion", ""),
                     "categoria": ev.get("categoria", "Evento")
@@ -213,19 +216,19 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 curso = r.get("cursos", {}).get("nombre", "Curso") if r.get("cursos") else "Curso"
                 obs = r.get("observaciones", "")
                 
-                h_ini = r.get("hora_inicio", r.get("hora", "00:00"))
-                h_fin = r.get("hora_fin", "")
+                h_ini = str(r.get("hora_inicio", r.get("hora", "00:00")))[:5]
+                h_fin = str(r.get("hora_fin", ""))[:5]
                 disp_hora = f"{h_ini} - {h_fin}" if h_fin and h_fin != h_ini else f"{h_ini}"
-                if not h_ini or disp_hora == " - ": disp_hora = "RESERVA"
+                if not h_ini or h_ini == "None" or h_ini == "00:00": disp_hora = "RESERVA"
                 
                 events_hoy_list.append({
-                    "hora_sort": h_ini if h_ini and h_ini != "00:00" else "23:59", 
+                    "hora_sort": h_ini if h_ini and h_ini != "None" and h_ini != "00:00" else "23:59", 
                     "display_hora": disp_hora,
                     "titulo": f"{rec} ➔ {curso}", "profesor": prof,
                     "observaciones": obs, "categoria": "Clase / Uso Recurso"
                 })
                 
-            # Ordenamos la lista cronológicamente
+            # Ordenamos cronológicamente
             events_hoy_list = sorted(events_hoy_list, key=lambda x: str(x.get("hora_sort", "99:99")))
                 
             if not events_hoy_list:
@@ -243,11 +246,11 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 
                 st.markdown(f"<div class='tv-sub-header'>⏱️ Cronograma de Hoy (Pág. {pagina_actual + 1}/{total_paginas})</div>", unsafe_allow_html=True)
                 
-                paleta_colores = ["#38bdf8", "#34d399", "#fbbf24", "#f472b6", "#a78bfa", "#2dd4bf"]
+                paleta_colores = ["#0ea5e9", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#14b8a6"]
                 html_cronograma = ""
                 
                 for i, item in enumerate(eventos_a_mostrar):
-                    color_tema = "#818cf8" if item['categoria'] == "Evento" else paleta_colores[i % len(paleta_colores)]
+                    color_tema = "#6366f1" if item['categoria'] == "Evento" else paleta_colores[i % len(paleta_colores)]
                     delay = i * 0.15 
                     
                     info_row_html = ""
@@ -259,15 +262,19 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                             info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-clipboard-text info-icon icon-observaciones'></i> {item['observaciones']}</div>"
                         info_row_html += "</div>"
                     
-                    hora_icon_html = "<i class='ph-fill ph-clock icon-hora'></i>" if item['categoria'] != "Evento" else "<i class='ph-fill ph-star icon-hora'></i>"
                     desc_text = item.get('descripcion', '')
+                    hora_icon = "<i class='ph-fill ph-clock'></i>" if item['categoria'] != "Evento" else "<i class='ph-fill ph-star'></i>"
                     
+                    # === NUEVO DISEÑO DE TARJETA CON LA HORA EN EL TÍTULO ===
                     html_cronograma += (
                         f"<div class='block-card' style='border-left-color: {color_tema}; animation: cascadeIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; animation-delay: {delay}s; opacity: 0;'>"
-                        f"<div class='block-title' style='color: {color_tema};'>{item['titulo']}</div>"
-                        f"<div class='block-info'>{desc_text}</div>"
-                        f"{info_row_html}"
-                        f"<div class='block-hora-pill'>{hora_icon_html} <span>{item['display_hora']}</span> <i class='ph-fill ph-tag icon-categoria'></i> <span>{item['categoria']}</span></div>"
+                        f"  <div class='block-title-row'>"
+                        f"      <div class='block-title-text' style='color: {color_tema};'>{item['titulo']}</div>"
+                        f"      <div class='block-time-badge'>{hora_icon} {item['display_hora']}</div>"
+                        f"  </div>"
+                        f"  <div class='block-info'>{desc_text}</div>"
+                        f"  {info_row_html}"
+                        f"  <div class='block-hora-pill'><i class='ph-fill ph-tag icon-categoria'></i> <span>{item['categoria']}</span></div>"
                         f"</div>"
                     )
                 st.markdown(html_cronograma, unsafe_allow_html=True)
@@ -279,8 +286,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         with st.expander("⚙️ Controles de Pantalla", expanded=False):
             
             st.slider("🔍 Tamaño del texto (%)", min_value=50, max_value=250, value=st.session_state.tv_scale, step=5, key="tv_scale")
-            
-            st.markdown("<hr style='border-top: 1px solid #334155; margin: 10px 0;'>", unsafe_allow_html=True)
+            st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
             
             if st.button("🔙 Volver al Login", use_container_width=True):
                 st.session_state.ver_pantalla_tv = False
@@ -291,13 +297,13 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 <style>
                     body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
                     button {
-                        width: 100%; height: 38px; background-color: #1e293b;
-                        border: 1px solid #334155; border-radius: 8px; color: #f8fafc;
+                        width: 100%; height: 38px; background-color: #ffffff;
+                        border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a;
                         font-size: 14px; font-weight: 500; cursor: pointer;
                         display: flex; align-items: center; justify-content: center; gap: 8px;
                         transition: all 0.2s;
                     }
-                    button:hover { border-color: #475569; background-color: #0f172a; }
+                    button:hover { border-color: #94a3b8; background-color: #f8fafc; }
                 </style>
                 <button onclick="
                     const doc = window.parent.document;
@@ -340,12 +346,12 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 for i, ann in enumerate(active_ann):
                     delay_ann = i * 0.15 
                     
-                    # Adaptación de colores para Dark Mode
+                    # Colores originales de fondo claro
                     if ann['prioridad'] == 1:
-                        bg_color = "#450a0a"; border_color = "#ef4444"; title_color = "#f87171"; desc_color = "#fecaca"
+                        bg_color = "#fef2f2"; border_color = "#ef4444"; title_color = "#dc2626"; desc_color = "#334155"
                         animacion_extra = ", pulseAlert 2s infinite"
                     else:
-                        bg_color = "#422006"; border_color = "#f59e0b"; title_color = "#fbbf24"; desc_color = "#fde68a"
+                        bg_color = "#fffbeb"; border_color = "#f59e0b"; title_color = "#d97706"; desc_color = "#334155"
                         animacion_extra = "" 
                     
                     html_anuncios += (
