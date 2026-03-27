@@ -58,9 +58,9 @@ supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 # 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO SIN LOGIN)
 # ==============================================================================
 # === REEMPLAZO TOTAL DE LA PANTALLA INFORMATIVA PÚBLICA (MODO TV) ===
-    if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
-        # Define light aesthetic theme styles in-code for robustness
-        aesthetic_style = """
+if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
+                # Define light aesthetic theme styles in-code for robustness
+                aesthetic_style = """            
             <style>
                 /* Main background */
                 .stApp { background-color: #f8fafc; color: #0f172a; }
