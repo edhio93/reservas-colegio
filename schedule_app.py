@@ -1900,11 +1900,11 @@ if page == "Configuración":
                         except Exception as e: st.error("No se puede eliminar porque tiene reservas o reportes de mantenimiento asociados.")
 
 # ==============================================================================
-# 📺 PÁGINA: GESTIÓN DE TV (SOLO FORMULARIOS INTERNOS)
+# 📺 PÁGINA: GESTIÓN DE TV (SOLO FORMULARIOS INTERNOS Y TABLA)
 # ==============================================================================
 elif page == "Modo TV":
     st.header("📝 Gestión de Pantalla TV")
-    st.info("Utiliza estos formularios para agregar información que se mostrará en el 'Modo TV' público.")
+    st.info("Utiliza estos formularios para agregar información y visualiza los registros actuales.")
     
     col_form1, col_form2 = st.columns(2)
     
@@ -1914,7 +1914,9 @@ elif page == "Modo TV":
             with st.form("form_evento_tv"):
                 titulo_ev = st.text_input("Título del Evento", max_chars=50)
                 desc_ev = st.text_area("Descripción corta (opcional)", max_chars=200)
-                cat_ev = st.selectbox("Categoría", ["Reunión", "Examen", "Efeméride", "Taller", "Otro"])
+                
+                # NUEVO: SE AGREGÓ "Evento" y "Enlace"
+                cat_ev = st.selectbox("Categoría", ["Evento", "Enlace", "Reunión", "Examen", "Efeméride", "Taller", "Otro"])
                 fecha_ev = st.date_input("Fecha del Evento", min_value=dt.date.today())
                 
                 if st.form_submit_button("Guardar Evento", use_container_width=True):
@@ -1924,7 +1926,8 @@ elif page == "Modo TV":
                             "fecha_evento": str(fecha_ev), "categoria": cat_ev, "is_active": True
                         }).execute()
                         st.success("Evento guardado. Aparecerá en la TV pública.")
-                        time.sleep(1); st.rerun()
+                        time.sleep(1)
+                        st.rerun()
                     else:
                         st.error("El título es obligatorio.")
 
@@ -1935,16 +1938,84 @@ elif page == "Modo TV":
                 titulo_an = st.text_input("Título del Anuncio", max_chars=50)
                 desc_an = st.text_area("Detalles del anuncio")
                 prio_an = st.radio("Prioridad visual", [("🚨 Alta (Rojo)", 1), ("⚠️ Media (Amarillo)", 2)], format_func=lambda x: x[0])
-                expira_an = st.date_input("Válido hasta", min_value=dt.date.today())
+                
+                # NUEVO: SECCIÓN DE TIEMPO LÍMITE (Fecha + Hora)
+                st.markdown("**⏳ Tiempo Límite del Anuncio**")
+                col_fecha, col_hora = st.columns(2)
+                with col_fecha:
+                    expira_fecha = st.date_input("Válido hasta", min_value=dt.date.today())
+                with col_hora:
+                    expira_hora = st.time_input("Hora de borrado", value=dt.time(23, 59))
                 
                 if st.form_submit_button("Publicar Anuncio", type="primary", use_container_width=True):
                     if titulo_an.strip():
-                        exp_dt_full = dt_datetime.combine(expira_an, dt.time(23, 59, 59)).strftime("%Y-%m-%d %H:%M:%S")
+                        exp_dt_full = dt_datetime.combine(expira_fecha, expira_hora).strftime("%Y-%m-%d %H:%M:%S")
                         supabase.table("anuncios_urgentes").insert({
                             "titulo": titulo_an, "descripcion": desc_an, 
                             "prioridad": prio_an[1], "expiracion": exp_dt_full, "is_active": True
                         }).execute()
                         st.success("Anuncio publicado en la TV.")
-                        time.sleep(1); st.rerun()
+                        time.sleep(1)
+                        st.rerun()
                     else:
                         st.error("El título es obligatorio.")
+
+    # --- NUEVO: MOSTRAR REGISTROS JUNTOS (EVENTOS Y ENLACES) ---
+    st.markdown("---")
+    st.subheader("📋 Registros Actuales (Eventos TV y Enlaces)")
+    
+    try:
+        # 1. Obtener Eventos de la TV (Solo los que no han pasado)
+        hoy_str = dt.date.today().strftime("%Y-%m-%d")
+        res_eventos = supabase.table("eventos_tv").select("id, categoria, titulo, descripcion, fecha_evento, is_active").gte("fecha_evento", hoy_str).execute()
+        df_eventos = pd.DataFrame(res_eventos.data)
+        
+        if not df_eventos.empty:
+            df_eventos.rename(columns={
+                "categoria": "Categoría", "titulo": "Título", 
+                "descripcion": "Descripción", "fecha_evento": "Fecha Evento", "is_active": "Activo"
+            }, inplace=True)
+            df_eventos["Origen"] = "🖥️ Creado en TV"
+        else:
+            df_eventos = pd.DataFrame(columns=["id", "Categoría", "Título", "Descripción", "Fecha Evento", "Activo", "Origen"])
+
+        # 2. Obtener Enlaces / Reservas (Desde tu base principal)
+        res_enlaces = supabase.table("reservas").select("id, fecha, profesores(nombre), recursos(nombre), cursos(nombre), observaciones").gte("fecha", hoy_str).execute()
+        
+        datos_enlaces = []
+        if res_enlaces.data:
+            for r in res_enlaces.data:
+                prof = r.get("profesores", {}).get("nombre", "Sin Profesor") if r.get("profesores") else "Sin Profesor"
+                rec = r.get("recursos", {}).get("nombre", "Sin Recurso") if r.get("recursos") else "Sin Recurso"
+                curso = r.get("cursos", {}).get("nombre", "Sin Curso") if r.get("cursos") else "Sin Curso"
+                
+                datos_enlaces.append({
+                    "id": r["id"],
+                    "Categoría": "Reserva / Enlace",
+                    "Título": f"Reserva de {prof}",
+                    "Descripción": f"Uso de {rec} para {curso}. {r.get('observaciones', '')}",
+                    "Fecha Evento": r["fecha"],
+                    "Activo": True,
+                    "Origen": "📅 Sistema Reservas"
+                })
+        
+        df_enlaces = pd.DataFrame(datos_enlaces) if datos_enlaces else pd.DataFrame(columns=df_eventos.columns)
+        
+        # 3. Combinar ambas tablas en una sola para mostrarla
+        df_combinado = pd.concat([df_eventos, df_enlaces], ignore_index=True)
+        
+        if not df_combinado.empty:
+            # Ordenar por fecha para que lo más próximo salga primero
+            df_combinado = df_combinado.sort_values(by="Fecha Evento")
+            
+            # Dibujar la tabla estética con Data Editor
+            st.dataframe(
+                df_combinado[["Origen", "Categoría", "Título", "Descripción", "Fecha Evento", "Activo"]], 
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("No hay eventos ni reservas próximas registradas.")
+            
+    except Exception as e:
+        st.error(f"Error al cargar la tabla de registros: {e}")
