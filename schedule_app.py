@@ -112,63 +112,58 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     col_main, col_ann = st.columns([2.5, 1], gap="large")
     
     with col_main:
-        # 2. Daily Schedule Section (nicely styled colorful list)
+        # 2. Daily Schedule Section
         st.markdown("<div class='tv-sub-header'>⏱️ Cronograma de Hoy</div>", unsafe_allow_html=True)
         
         try:
-            # === NUEVO: CONSULTA FILTRADA SOLO POR HOY ===
+            # === CORRECCIÓN 1: Consulta limpia sin 'asignaturas' ni columnas inexistentes ===
             res_tv_hoy = supabase.table("eventos_tv").select("id, titulo, descripcion, categoria").eq("fecha_evento", hoy_str).eq("is_active", True).execute().data
-            res_reservas_hoy = supabase.table("reservas").select("id, profesores(nombre), recursos(nombre), cursos(nombre), asignaturas(nombre), hora_bloque_inicio, observaciones").eq("fecha", hoy_str).execute().data
+            res_reservas_hoy = supabase.table("reservas").select("id, profesores(nombre), recursos(nombre), cursos(nombre), observaciones").eq("fecha", hoy_str).execute().data
             
             events_hoy_list = []
             
-            # Treat TV events as top-priority "all-day" style (Purple)
+            # Procesamos eventos de TV (Salen de primeros)
             for ev in res_tv_hoy:
                 events_hoy_list.append({
-                    "hora_sort": "99:99", # Sort key for end
-                    "display_hora": "🗓️ Evento",
+                    "hora_sort": "99:99", 
+                    "display_hora": "🗓️ Evento Principal",
                     "titulo": ev["titulo"],
                     "descripcion": ev.get("descripcion", ""),
                     "categoria": ev.get("categoria", "Evento")
                 })
                 
+            # Procesamos las reservas de los profesores
             for r in res_reservas_hoy:
                 prof = r.get("profesores", {}).get("nombre", "Docente S/N") if r.get("profesores") else "Docente S/N"
                 rec = r.get("recursos", {}).get("nombre", "Recurso S/N") if r.get("recursos") else "Recurso S/N"
                 curso = r.get("cursos", {}).get("nombre", "Curso S/N") if r.get("cursos") else "Curso S/N"
-                asig = r.get("asignaturas", {}).get("nombre", "Asignatura S/N") if r.get("asignaturas") else "Asignatura S/N"
                 obs = r.get("observaciones", "")
                 
-                hora_bloque = r.get("hora_bloque_inicio", "00:00:00")
-                hora_hm = hora_bloque[:5] # format HH:MM
-                
+                # Como quitamos la hora específica para evitar errores, lo listamos como Reserva
                 events_hoy_list.append({
-                    "hora_sort": hora_hm, # standard hour for sorting
-                    "display_hora": f"⏱️ {hora_hm}",
+                    "hora_sort": "10:00", # Orden estándar
+                    "display_hora": "⏱️ Reserva",
                     "titulo": f"{rec} - {curso}",
-                    "descripcion": f"{asig} con Prof. {prof}. {obs}",
+                    "descripcion": f"Prof. {prof}. {obs}",
                     "categoria": "Clase / Uso Recurso"
                 })
                 
-            # Standard timed events sorted by hour, then all-day events at top
-            timed_hoy = sorted([e for e in events_hoy_list if e['hora_sort'] != "99:99"], key=lambda x: x['hora_sort'])
-            all_day_hoy = sorted([e for e in events_hoy_list if e['hora_sort'] == "99:99"], key=lambda x: x['titulo'])
-            
-            final_hoy_list = all_day_hoy + timed_hoy # render events first, then schedules
+            # Combinamos todo
+            final_hoy_list = events_hoy_list 
 
             if not final_hoy_list:
                 st.info(f"No hay eventos ni reservas registradas para hoy.")
             else:
                 for item in final_hoy_list:
-                    # Draw aesthetic colorful card
-                    border_color = "#38bdf8" # Blue for standard
+                    # Dibujamos las tarjetas con colores según tipo
+                    border_color = "#38bdf8" 
                     text_style = "color: #38bdf8; font-weight: 500;"
                     
                     if item['categoria'] == "Evento": 
-                        border_color = "#818cf8" # Purple for Events
+                        border_color = "#818cf8" 
                         text_style = "color: #818cf8; font-weight: 500;"
-                    if item['categoria'] == "Reserva / Uso Recurso": 
-                        border_color = "#22c55e" # Green for classes
+                    if item['categoria'] == "Clase / Uso Recurso": 
+                        border_color = "#22c55e" 
                         text_style = "color: #22c55e; font-weight: 500;"
                     
                     card_html = f"""
@@ -185,46 +180,48 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             st.error(f"Error técnico al consultar cronograma de hoy: {e}")
     
     with col_ann:
-        # 3. Urgent Announcements Section on Right (within styled colorful container)
+        # 3. Urgent Announcements Section
         st.markdown("<div class='tv-sub-header'>🚨 Anuncios</div>", unsafe_allow_html=True)
         
-        with st.container(class_="announcements-column"):
-            try:
-                now = dt_datetime.now()
-                ann_data = supabase.table("anuncios_urgentes").select("id, titulo, descripcion, prioridad, expiracion").eq("is_active", True).execute().data
-                
-                active_ann = []
-                for ann in ann_data:
-                    try:
-                        # Asegúrate de usar la hora límite exacta para filtrar
-                        exp_dt = dt_datetime.strptime(ann['expiracion'], "%Y-%m-%d %H:%M:%S")
-                        if exp_dt > now: # Solo si no ha caducado
-                            active_ann.append(ann)
-                    except (ValueError, TypeError):
-                        pass
-                
-                # Sort by priority (1 High, 2 Medium)
-                active_ann = sorted(active_ann, key=lambda x: x['prioridad'])
-                
-                if not active_ann:
-                    st.write("No hay anuncios urgentes activos en este momento.")
-                else:
-                    for ann in active_ann:
-                        # Lógica corregida para el color de fondo y bordes de los anuncios
-                        bg_color = "#fff8f8" if ann['prioridad'] == 1 else "#fffbeb"
-                        border_color = "#ef4444" if ann['prioridad'] == 1 else "#f59e0b"
-                        title_color = "#b91c1c" if ann['prioridad'] == 1 else "#b45309"
-                        desc_color = "#991b1b" if ann['prioridad'] == 1 else "#a16207"
-                        
-                        draw_ann = f"""
-                            <div class="announcement-card" style="border-left-color: {border_color}; background-color: {bg_color};">
-                                <div class="announcement-title" style="color: {title_color};">{ann["titulo"]}</div>
-                                <div class="announcement-desc" style="color: {desc_color};">{ann["descripcion"]}</div>
-                            </div>
-                        """
-                        st.markdown(draw_ann, unsafe_allow_html=True)
-            except Exception as e:
-                st.error(f"Error técnico al consultar anuncios: {e}")
+        try:
+            now = dt_datetime.now()
+            ann_data = supabase.table("anuncios_urgentes").select("id, titulo, descripcion, prioridad, expiracion").eq("is_active", True).execute().data
+            
+            active_ann = []
+            for ann in ann_data:
+                try:
+                    exp_dt = dt_datetime.strptime(ann['expiracion'], "%Y-%m-%d %H:%M:%S")
+                    if exp_dt > now: 
+                        active_ann.append(ann)
+                except (ValueError, TypeError):
+                    pass
+            
+            active_ann = sorted(active_ann, key=lambda x: x['prioridad'])
+            
+            # === CORRECCIÓN 2: Uso de HTML nativo en lugar del st.container que fallaba ===
+            html_anuncios = '<div class="announcements-column">'
+            
+            if not active_ann:
+                html_anuncios += "<p style='color: #64748b;'>No hay anuncios urgentes activos en este momento.</p>"
+            else:
+                for ann in active_ann:
+                    bg_color = "#fff8f8" if ann['prioridad'] == 1 else "#fffbeb"
+                    border_color = "#ef4444" if ann['prioridad'] == 1 else "#f59e0b"
+                    title_color = "#b91c1c" if ann['prioridad'] == 1 else "#b45309"
+                    desc_color = "#991b1b" if ann['prioridad'] == 1 else "#a16207"
+                    
+                    html_anuncios += f"""
+                        <div class="announcement-card" style="border-left-color: {border_color}; background-color: {bg_color};">
+                            <div class="announcement-title" style="color: {title_color};">{ann["titulo"]}</div>
+                            <div class="announcement-desc" style="color: {desc_color};">{ann["descripcion"]}</div>
+                        </div>
+                    """
+            
+            html_anuncios += '</div>' # Cerramos la columna
+            st.markdown(html_anuncios, unsafe_allow_html=True) # Imprimimos todo de golpe
+            
+        except Exception as e:
+            st.error(f"Error técnico al consultar anuncios: {e}")
     
     st.stop() # Prevent login from showing
 # === FIN DEL REEMPLAZO PANTALLA PÚBLICA ===
