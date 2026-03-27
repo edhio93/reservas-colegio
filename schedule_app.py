@@ -258,9 +258,11 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                             info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-clipboard-text info-icon icon-observaciones'></i> {item['observaciones']}</div>"
                         info_row_html += "</div>"
                     
+                    # Aquí definimos el ícono de la hora correctamente
                     hora_icon_html = "<i class='ph-fill ph-clock icon-hora'></i>" if item['categoria'] != "Evento" else "<i class='ph-fill ph-star icon-hora'></i>"
                     desc_text = item.get('descripcion', '')
                     
+                    # Armamos la tarjeta
                     html_cronograma += (
                         f"<div class='block-card' style='border-left-color: {color_tema}; animation: cascadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; animation-delay: {delay}s; opacity: 0;'>"
                         f"<div class='block-title' style='color: {color_tema};'>{item['titulo']}</div>"
@@ -269,8 +271,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                         f"<div class='block-hora-pill'>{hora_icon_html} <span>{item['display_hora']}</span> <i class='ph-fill ph-tag icon-categoria'></i> <span>{item['categoria']}</span></div>"
                         f"</div>"
                     )
-                    
-                   hora_icon_html = "<i class='ph-fill ph-clock icon-hora'></i>" if item['categoria'] != "Evento" else "<i class='ph-fill ph-star icon-hora'></i>"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 0) CONFIGURACIÓN GLOBAL Y ESTILO
