@@ -22,6 +22,8 @@ import google.generativeai as genai
 import base64
 import os
 from streamlit_autorefresh import st_autorefresh
+import base64
+import os
 
 
 # --- CONFIGURACIÓN DE GEMINI ---
@@ -58,8 +60,15 @@ opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
 supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 
 
+import base64
+import os
+# Asegúrate de tener estas importaciones al inicio de tu archivo si no están
+# from datetime import datetime as dt_datetime
+# import datetime as dt
+from streamlit_autorefresh import st_autorefresh
+
 # ==============================================================================
-# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO SIN LOGIN)
+# 📺 PANTALLA INFORMATIVA PPUBLIC (MODO KIOSCO SIN LOGIN)
 # ==============================================================================
 if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     
@@ -67,14 +76,34 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     # Actualiza exactamente cada 30,000 milisegundos (30 segundos)
     st_autorefresh(interval=30000, limit=None, key="tv_refresh_timer")
     
-    # === CARGAR LOGO TV ===
-    # Convertimos la imagen a texto (Base64) para poder inyectarla en nuestro diseño Aesthetic
-    logo_html = "✈️" # Emoji por defecto si no encuentra la imagen
+    # === CARGAR Y CONFIGURAR LOGO TV ===
     ruta_logo = "logotv.png"
+    logo_src_html = ""
+    
     if os.path.exists(ruta_logo):
         with open(ruta_logo, "rb") as image_file:
             encoded_string = base64.b64encode(image_file.read()).decode()
-            logo_html = f"<img src='data:image/png;base64,{encoded_string}' style='height: 55px; margin-right: 15px; vertical-align: bottom;'/>"
+            # Altura de 60px para que sea correlativo y balanceado con el texto
+            logo_src_html = f"<img src='data:image/png;base64,{encoded_string}' class='header-logo-img'/>"
+    else:
+        # Fallback elegante si no hay logo
+        logo_src_html = "<span class='header-logo-fallback'>✈️</span>"
+
+    # === LÓGICA DE FECHA ROBUSTA EN ESPAÑOL ===
+    now_dt = dt_datetime.now()
+    hoy_str = now_dt.strftime("%Y-%m-%d") # Filtro base para consultas
+
+    # Diccionarios manuales para garantizar español
+    dias_es = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+    meses_es = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+
+    # weekday() devuelve 0(Lunes)-6(Domingo)
+    nombre_dia = dias_es[now_dt.weekday()]
+    # month devuelve 1(Enero)-12(Diciembre), restamos 1 para índice del array
+    nombre_mes = meses_es[now_dt.month - 1]
+
+    # Formato final: Jueves, 23 de Abril de 2024
+    fecha_es_formateada = f"{nombre_dia}, {now_dt.day} de {nombre_mes} de {now_dt.year}"
 
     # Define light aesthetic theme styles in-code
     aesthetic_style = """            
@@ -87,13 +116,79 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         [data-testid="stToolbar"] { display: none; }
         [data-testid="stSidebar"] { display: none; }
         
-        /* Title Banners - Colorful Gradient Aesthetic */
-        .tv-header { background: linear-gradient(90deg, #38bdf8 0%, #8b5cf6 100%); color: white; padding: 25px 25px 0 25px; border-radius: 15px; text-align: center; margin-bottom: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; }
-        .tv-header h1 { margin: 0; font-size: 2.5rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; display: flex; align-items: center; justify-content: center; }
-        .tv-header h3 { margin: 10px 0 15px 0; font-weight: 500; font-size: 1.1rem; }
+        /* === NUEVA CABECERA TV OPTIMIZADA === */
+        .tv-header-container { 
+            background: linear-gradient(90deg, #38bdf8 0%, #8b5cf6 100%); 
+            color: white; 
+            padding: 10px 20px 0 20px; /* Reducido acolchado vertical */
+            border-radius: 15px; 
+            margin-bottom: 25px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+            overflow: hidden; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Contenedor principal de contenido (Logo + Info) */
+        .header-content-layout {
+            display: flex;
+            align-items: center; /* Centrado vertical de logo y texto */
+            justify-content: space-between; /* Logo a la izq, Info a la der */
+            width: 100%;
+            padding-bottom: 10px; /* Espacio antes de la barra de progreso */
+        }
+
+        /* Estilos del Logo */
+        .header-logo-img {
+            height: 60px; /* Altura correlativa al texto */
+            width: auto;
+            display: block;
+        }
+        .header-logo-fallback {
+            font-size: 3rem;
+            line-height: 1;
+            display: block;
+        }
+
+        /* Grupo de información de la derecha (ordenado y cuadrado) */
+        .header-info-group {
+            display: flex;
+            align-items: center;
+            gap: 15px; /* Espacio entre elementos */
+            font-size: 1.15rem; /* Tamaño de fuente optimizado */
+            font-weight: 500;
+        }
+
+        /* Separador visual '|' */
+        .header-divider {
+            opacity: 0.6;
+            font-weight: 300;
+            font-size: 1.3rem;
+        }
+
+        /* Estado de actualización */
+        .header-status {
+            display: flex;
+            align-items: center;
+            color: rgba(255,255,255,0.9);
+        }
+        .status-icon {
+            margin-right: 6px;
+        }
+
+        /* Link de volver */
+        .header-link a {
+            color: white;
+            text-decoration: underline;
+            transition: opacity 0.2s;
+        }
+        .header-link a:hover {
+            opacity: 0.8;
+        }
         
-        /* === BARRA DE PROGRESO ANIMADA (30 SEGUNDOS) === */
-        .progress-container { width: 100%; height: 6px; background-color: rgba(255,255,255,0.2); margin-top: 15px; }
+        /* === BARRA DE PROGRESO ANIMADA (SE MANTIENE IGUAL) === */
+        .progress-container { width: 100%; height: 6px; background-color: rgba(255,255,255,0.2); }
         .progress-bar { height: 100%; background-color: #ffffff; width: 0%; animation: loadBar 30s linear infinite; }
         
         @keyframes loadBar {
@@ -101,27 +196,24 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             100% { width: 100%; }
         }
         
-        .tv-sub-header { color: #1e293b; font-weight: 700; font-size: 1.5rem; margin-top: 10px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1.5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;}
+        /* === ESTILOS RESTANTES (CRONOGRAMA Y ANUNCIOS) === */
+        .tv-sub-header { color: #1e293b; font-weight: 700; font-size: 1.5rem; margin-top: 5px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1.5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;}
         
-        /* Animación CASCADA (Efecto Aeropuerto) */
         @keyframes cascadeIn {
             0% { opacity: 0; transform: translateY(40px) scale(0.95); }
             100% { opacity: 1; transform: translateY(0) scale(1); }
         }
         
-        /* Animación LATIDO de Emergencia */
         @keyframes pulseAlert {
             0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
             70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
             100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
 
-        /* Schedule Blocks */
         .block-card { padding: 18px; border-radius: 12px; border-left: 8px solid; margin-bottom: 14px; background-color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         .block-title { font-weight: 700; color: #0f172a; font-size: 1.25rem; margin-bottom: 5px; text-transform: uppercase;}
         .block-info { color: #475569; font-size: 1rem; }
         
-        /* Announcements Section */
         .announcements-column { background-color: white; border-radius: 15px; padding: 25px; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
         .announcement-card { padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 15px; border-left: 6px solid; }
         .announcement-title { font-weight: 700; margin-bottom: 5px; font-size: 1.15rem; text-transform: uppercase;}
@@ -130,15 +222,25 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     """
     st.markdown(aesthetic_style, unsafe_allow_html=True) 
 
-    # Obtenemos la hora actual y la fecha de hoy
-    now_dt = dt_datetime.now()
-    hoy_str = now_dt.strftime("%Y-%m-%d") 
-    
-    # Header Banner (Con Logo inyectado y Barra de progreso)
+    # === CABECERA GENERADA CON HTML HTML (Nuevo diseño ordenado y correlativo) ===
     st.markdown(f"""
-        <div class="tv-header">
-            <h1>{logo_html} PANEL DE INFORMACIÓN Y HORARIOS</h1>
-            <h3>{now_dt.strftime("%A, %d de %B, %Y")} | 🔄 Actualizando en tiempo real | <a href='/' target='_self' style='color: white; text-decoration: underline;'>Volver al Login</a></h3>
+        <div class="tv-header-container">
+            <div class="header-content-layout">
+                <div class="header-logo-section">
+                    {logo_src_html}
+                </div>
+                <div class="header-info-group">
+                    <div class="header-date">{fecha_es_formateada}</div>
+                    <div class="header-divider">|</div>
+                    <div class="header-status">
+                        <span class="status-icon">🔄</span> Actualizando en tiempo real
+                    </div>
+                    <div class="header-divider">|</div>
+                    <div class="header-link">
+                        <a href='/' target='_self'>Volver al Login</a>
+                    </div>
+                </div>
+            </div>
             <div class="progress-container"><div class="progress-bar"></div></div>
         </div>
     """, unsafe_allow_html=True)
