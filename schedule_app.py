@@ -71,41 +71,45 @@ from streamlit_autorefresh import st_autorefresh
 # ==============================================================================
 if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     
-    col_btn1, col_btn2, _ = st.columns([1.5, 1.5, 5])
-    with col_btn1:
-        if st.button("🔙 Volver al Login", use_container_width=True):
-            st.session_state.ver_pantalla_tv = False
-            st.rerun()
-    with col_btn2:
-        components.html(
-            """
-            <style>
-                body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
-                button {
-                    width: 100%; height: 38px; background-color: #ffffff;
-                    border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a;
-                    font-size: 14px; font-weight: 500; cursor: pointer;
-                    display: flex; align-items: center; justify-content: center; gap: 8px;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: all 0.2s;
-                }
-                button:hover { border-color: #94a3b8; background-color: #f8fafc; }
-            </style>
-            <button onclick="
-                const doc = window.parent.document;
-                if (!doc.fullscreenElement) {
-                    doc.documentElement.requestFullscreen();
-                    this.innerHTML = '🗗 Salir Pantalla Completa';
-                } else {
-                    doc.exitFullscreen();
-                    this.innerHTML = '🔲 Pantalla Completa';
-                }
-            ">
-                🔲 Pantalla Completa
-            </button>
-            """,
-            height=40
-        )
+    # --- NUEVO: Controles agrupados y movidos a la esquina superior derecha ---
+    col_espacio, col_controles = st.columns([8.5, 1.5])
+    
+    with col_controles:
+        with st.expander("⚙️ Controles", expanded=False):
+            if st.button("🔙 Volver al Login", use_container_width=True):
+                st.session_state.ver_pantalla_tv = False
+                st.rerun()
+                
+            components.html(
+                """
+                <style>
+                    body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+                    button {
+                        width: 100%; height: 38px; background-color: #ffffff;
+                        border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a;
+                        font-size: 14px; font-weight: 500; cursor: pointer;
+                        display: flex; align-items: center; justify-content: center; gap: 8px;
+                        box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: all 0.2s;
+                    }
+                    button:hover { border-color: #94a3b8; background-color: #f8fafc; }
+                </style>
+                <button onclick="
+                    const doc = window.parent.document;
+                    if (!doc.fullscreenElement) {
+                        doc.documentElement.requestFullscreen();
+                        this.innerHTML = '🗗 Salir Pantalla Completa';
+                    } else {
+                        doc.exitFullscreen();
+                        this.innerHTML = '🔲 Pantalla Completa';
+                    }
+                ">
+                    🔲 Pantalla Completa
+                </button>
+                """,
+                height=40
+            )
 
+    # El temporizador de recarga de la página (cada 30 segundos)
     st_autorefresh(interval=30000, limit=None, key="tv_refresh_timer")
     
     ruta_logo = "logotv.png"
@@ -155,8 +159,9 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         
         .tv-sub-header { color: #1e293b; font-weight: 800; font-size: 1.6rem; margin-top: 5px; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;}
         
-        @keyframes cascadeIn { 0% { opacity: 0; transform: translateY(20px) scale(0.98); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
-        @keyframes pulseAlert { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+        /* === ANIMACIONES (Cascada y Parpadeo Rojo) === */
+        @keyframes cascadeIn { 0% { opacity: 0; transform: translateY(30px) scale(0.98); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes pulseAlert { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 
         .block-card { padding: 22px; border-radius: 16px; border-left: 8px solid; margin-bottom: 18px; background-color: white; box-shadow: 0 6px 15px rgba(0,0,0,0.05); }
         .block-title { font-weight: 700; color: #0f172a; font-size: 1.35rem; margin-bottom: 8px; text-transform: uppercase;}
@@ -249,8 +254,9 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     hora_icon_html = "<i class='ph-fill ph-clock icon-hora'></i>" if item['categoria'] != "Evento" else "<i class='ph-fill ph-star icon-hora'></i>"
                     desc_text = item.get('descripcion', '')
                     
+                    # === CRONOGRAMA CASCADA ===
                     html_cronograma += (
-                        f"<div class='block-card' style='border-left-color: {color_tema}; animation: cascadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; animation-delay: {delay}s; opacity: 0;'>"
+                        f"<div class='block-card' style='border-left-color: {color_tema}; animation: cascadeIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; animation-delay: {delay}s; opacity: 0;'>"
                         f"<div class='block-title' style='color: {color_tema};'>{item['titulo']}</div>"
                         f"<div class='block-info' style='color: #475569;'>{desc_text}</div>"
                         f"{info_row_html}"
@@ -288,15 +294,16 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 for i, ann in enumerate(active_ann):
                     delay_ann = i * 0.15 
                     
+                    # === AVISOS: CASCADA + PARPADEO ROJO SI ES ALTA PRIORIDAD ===
                     if ann['prioridad'] == 1:
                         bg_color = "#fef2f2"; border_color = "#ef4444"; title_color = "#dc2626"
-                        animacion_extra = "animation: pulseAlert 2s infinite;"
+                        animacion_extra = ", pulseAlert 2s infinite"
                     else:
                         bg_color = "#fffbeb"; border_color = "#f59e0b"; title_color = "#d97706"
-                        animacion_extra = ""
+                        animacion_extra = "" 
                     
                     html_anuncios += (
-                        f"<div class='announcement-card' style='border-left-color: {border_color}; background-color: {bg_color}; {animacion_extra} animation-delay: {delay_ann}s; opacity: 0;'>"
+                        f"<div class='announcement-card' style='border-left-color: {border_color}; background-color: {bg_color}; animation: cascadeIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards{animacion_extra}; animation-delay: {delay_ann}s; opacity: 0;'>"
                         f"<div class='announcement-title' style='color: {title_color};'>{ann['titulo']}</div>"
                         f"<div class='announcement-desc'>{ann['descripcion']}</div>"
                         f"</div>"
