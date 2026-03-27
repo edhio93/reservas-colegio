@@ -59,13 +59,16 @@ CLAVE_SUPABASE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
 supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 
+import base64
+import os
+import pandas as pd
+from streamlit_autorefresh import st_autorefresh
+
 # ==============================================================================
 # 📺 PANTALLA INFORMATIVA PUBLICA (MODO KIOSCO SIN LOGIN)
 # ==============================================================================
 if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     
-    # === SOLUCIÓN AUTO-REFRESCO: Actualización nativa sin perder la sesión ===
-    # Actualiza exactamente cada 30,000 milisegundos (30 segundos)
     st_autorefresh(interval=30000, limit=None, key="tv_refresh_timer")
     
     # === CARGAR Y CONFIGURAR LOGO TV ===
@@ -75,47 +78,35 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     if os.path.exists(ruta_logo):
         with open(ruta_logo, "rb") as image_file:
             encoded_string = base64.b64encode(image_file.read()).decode()
-            # Altura aumentada de 60px a 85px para que sea correlativo y balanceado con el texto
             logo_src_html = f"<img src='data:image/png;base64,{encoded_string}' class='header-logo-img'/>"
     else:
-        # Fallback elegante con icono moderno si no hay logo
         logo_src_html = "<i class='ph-fill ph-airplane-landing header-logo-fallback'></i>"
 
     # === LÓGICA DE FECHA ROBUSTA EN ESPAÑOL ===
     now_dt = dt_datetime.now()
-    hoy_str = now_dt.strftime("%Y-%m-%d") # Filtro base para consultas
+    hoy_str = now_dt.strftime("%Y-%m-%d")
 
-    # Diccionarios manuales para garantizar español
     dias_es = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
     meses_es = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 
-    # weekday() devuelve 0(Lunes)-6(Domingo)
     nombre_dia = dias_es[now_dt.weekday()]
-    # month devuelve 1(Enero)-12(Diciembre), restamos 1 para índice del array
     nombre_mes = meses_es[now_dt.month - 1]
-
-    # Formato final: Jueves, 23 de Abril de 2024
     fecha_es_formateada = f"{nombre_dia}, {now_dt.day} de {nombre_mes} de {now_dt.year}"
 
-    # Define light aesthetic theme styles in-code
     aesthetic_style = """            
     <style>
-        /* IMPORTAR FONT PHOSPHOR ICONS (AESTHETIC) */
         @import url('https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css');
 
-        /* Main background */
         .stApp { background-color: #f8fafc; color: #0f172a; font-family: 'Inter', sans-serif;}
         
-        /* Main Page Header (Hide toolbar and sidebar) */
         [data-testid="stHeader"] { background: rgba(0,0,0,0); }
         [data-testid="stToolbar"] { display: none; }
         [data-testid="stSidebar"] { display: none; }
         
-        /* === NUEVA CABECERA TV OPTIMIZADA (NUEVO COLOR CHARCOAL PARA RESALTAR LOGO) === */
         .tv-header-container { 
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); /* NUEVO COLOR OSCURO AESTHETIC */
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); 
             color: white; 
-            padding: 15px 25px 0 25px; /* Reducido acolchado vertical */
+            padding: 15px 25px 0 25px; 
             border-radius: 20px; 
             margin-bottom: 30px; 
             box-shadow: 0 10px 25px rgba(0,0,0,0.1); 
@@ -125,108 +116,48 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             align-items: center;
         }
 
-        /* Contenedor principal de contenido (Logo + Info) */
         .header-content-layout {
             display: flex;
-            align-items: center; /* Centrado vertical de logo y texto */
-            justify-content: space-between; /* Logo a la izq, Info a la der */
+            align-items: center; 
+            justify-content: space-between; 
             width: 100%;
-            padding-bottom: 15px; /* Espacio antes de la barra de progreso */
+            padding-bottom: 15px; 
         }
 
-        /* Estilos del Logo (AUMENTADO A 85PX) */
-        .header-logo-img {
-            height: 85px; /* Aumentado a 85px correlativo al texto */
-            width: auto;
-            display: block;
-        }
-        .header-logo-fallback {
-            font-size: 4rem;
-            color: #38bdf8;
-            line-height: 1;
-            display: block;
-        }
+        .header-logo-img { height: 85px; width: auto; display: block; }
+        .header-logo-fallback { font-size: 4rem; color: #38bdf8; line-height: 1; display: block; }
 
-        /* Grupo de información de la derecha (ordenado y cuadrado) */
-        .header-info-group {
-            display: flex;
-            align-items: center;
-            gap: 15px; /* Espacio entre elementos */
-            font-size: 1.2rem; /* Tamaño de fuente optimizado */
-            font-weight: 500;
-        }
-
-        /* Separador visual '|' */
-        .header-divider {
-            opacity: 0.3;
-            font-weight: 300;
-            font-size: 1.5rem;
-        }
-
-        /* Estado de actualización */
-        .header-status {
-            display: flex;
-            align-items: center;
-            color: rgba(255,255,255,0.8);
-        }
-        .status-icon {
-            margin-right: 8px;
-            font-size: 1.3rem;
-            color: #22c55e;
-        }
-
-        /* Link de volver */
-        .header-link a {
-            color: white;
-            text-decoration: underline;
-            transition: opacity 0.2s;
-        }
-        .header-link a:hover {
-            opacity: 0.8;
-        }
+        .header-info-group { display: flex; align-items: center; gap: 15px; font-size: 1.2rem; font-weight: 500; }
+        .header-divider { opacity: 0.3; font-weight: 300; font-size: 1.5rem; }
+        .header-status { display: flex; align-items: center; color: rgba(255,255,255,0.8); }
+        .status-icon { margin-right: 8px; font-size: 1.3rem; color: #22c55e; }
+        .header-link a { color: white; text-decoration: underline; transition: opacity 0.2s; }
+        .header-link a:hover { opacity: 0.8; }
         
-        /* === BARRA DE PROGRESO ANIMADA (SE MANTIENE IGUAL) === */
         .progress-container { width: 100%; height: 6px; background-color: rgba(255,255,255,0.15); }
         .progress-bar { height: 100%; background-color: #ffffff; width: 0%; animation: loadBar 30s linear infinite; }
         
-        @keyframes loadBar {
-            0% { width: 0%; }
-            100% { width: 100%; }
-        }
+        @keyframes loadBar { 0% { width: 0%; } 100% { width: 100%; } }
         
-        /* === ESTILOS RESTANTES (CRONOGRAMA Y ANUNCIOS AESTHETIC) === */
         .tv-sub-header { color: #1e293b; font-weight: 800; font-size: 1.6rem; margin-top: 5px; margin-bottom: 25px; text-transform: uppercase; letter-spacing: 1.5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px;}
         
-        @keyframes cascadeIn {
-            0% { opacity: 0; transform: translateY(40px) scale(0.95); }
-            100% { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        
-        @keyframes pulseAlert {
-            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-            70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-        }
+        @keyframes cascadeIn { 0% { opacity: 0; transform: translateY(40px) scale(0.95); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes pulseAlert { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 
-        /* TARJETAS DEL CRONOGRAMA AESTHETIC */
         .block-card { padding: 22px; border-radius: 16px; border-left: 8px solid; margin-bottom: 18px; background-color: white; box-shadow: 0 6px 15px rgba(0,0,0,0.03); opacity: 0;}
         .block-title { font-weight: 700; color: #0f172a; font-size: 1.35rem; margin-bottom: 8px; text-transform: uppercase;}
         
-        /* INFO SECUNDARIA (PROFESOR, OBSERVACIONES, HORA) */
         .block-info-row { display: flex; gap: 20px; align-items: center; margin-top: 12px; font-size: 1rem;}
         .block-info-item { display: flex; align-items: center; color: #64748b; }
         
-        /* ESTILOS DE ICONOS PHOSPHOR EN LA TARJETA (AESTHETIC COLOREADOS COMO IMAGEN) */
         .info-icon { font-size: 1.25rem; margin-right: 8px; }
-        .icon-profesor { color: #4ade80; } /* Verde suave */
-        .icon-observaciones { color: #fbbf24; } /* Amarillo suave */
+        .icon-profesor { color: #4ade80; } 
+        .icon-observaciones { color: #fbbf24; } 
         
-        /* HORA Y CATEGORIA */
         .block-hora-pill { margin-top: 15px; font-weight: 600; color: #64748b; background: #f1f5f9; display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 10px; font-size: 0.9rem;}
-        .icon-hora { color: #60a5fa; margin-right: 7px; font-size: 1.1rem;} /* Azul suave */
-        .icon-categoria { color: #818cf8; margin-left: 10px; margin-right: 7px;} /* Púrpura suave */
+        .icon-hora { color: #60a5fa; margin-right: 7px; font-size: 1.1rem;} 
+        .icon-categoria { color: #818cf8; margin-left: 10px; margin-right: 7px;} 
 
-        /* SECCIÓN ANUNCIOS */
         .announcements-column { background-color: white; border-radius: 20px; padding: 30px; border: 1px solid #e2e8f0; box-shadow: 0 6px 15px rgba(0,0,0,0.03); }
         .announcement-card { padding: 20px; border-radius: 16px; border: 1px solid #e2e8f0; margin-bottom: 18px; border-left: 6px solid; opacity: 0;}
         .announcement-title { font-weight: 700; margin-bottom: 7px; font-size: 1.2rem; text-transform: uppercase;}
@@ -235,7 +166,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     """
     st.markdown(aesthetic_style, unsafe_allow_html=True) 
 
-    # === CABECERA GENERADA CON HTML HTML (Nuevo diseño ordenado y ultra-aesthetic correlativo) ===
     st.markdown(f"""
         <div class="tv-header-container">
             <div class="header-content-layout">
@@ -307,9 +237,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     else:
                         color_tema = paleta_colores[i % len(paleta_colores)]
                     
-                    # === GENERACIÓN DE HTML ULTRA AESTHETIC CON ICONOS PHOSPHOR COLOREADOS ===
-                    
-                    # Determinar filas de información
                     info_row_html = ""
                     if item.get("profesor") or item.get("observaciones"):
                         info_row_html = "<div class='block-info-row'>"
@@ -319,22 +246,19 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                             info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-clipboard-text info-icon icon-observaciones'></i> {item['observaciones']}</div>"
                         info_row_html += "</div>"
                     
-                    # Determinar icono principal y hora
                     hora_icon_html = "<i class='ph-fill ph-clock icon-hora'></i>" if item['categoria'] != "Evento" else "<i class='ph-fill ph-star icon-hora'></i>"
+                    desc_text = item.get('descripcion', '')
                     
-                    card_html = f"""
-                        <div class="block-card" style="border-left-color: {color_tema}; animation: cascadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; animation-delay: {delay}s;">
-                            <div class="block-title" style="color: {color_tema};">{item['titulo']}</div>
-                            <div class="block-info" style="color: #475569;">{item.get('descripcion', '')}</div>
-                            
-                            {info_row_html}
-                            
-                            <div class="block-hora-pill">
-                                {hora_icon_html} <span>{item['display_hora']}</span>
-                                <i class='ph-fill ph-tag icon-categoria'></i> <span>{item['categoria']}</span>
-                            </div>
-                        </div>
-                    """
+                    # === CORRECCIÓN AQUÍ ===
+                    # Se concatena en una sola línea lógica para que Streamlit no lo interprete como texto Markdown.
+                    card_html = (
+                        f"<div class='block-card' style='border-left-color: {color_tema}; animation: cascadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; animation-delay: {delay}s; opacity: 0;'>"
+                        f"<div class='block-title' style='color: {color_tema};'>{item['titulo']}</div>"
+                        f"<div class='block-info' style='color: #475569;'>{desc_text}</div>"
+                        f"{info_row_html}"
+                        f"<div class='block-hora-pill'>{hora_icon_html} <span>{item['display_hora']}</span> <i class='ph-fill ph-tag icon-categoria'></i> <span>{item['categoria']}</span></div>"
+                        f"</div>"
+                    )
                     st.markdown(card_html, unsafe_allow_html=True)
         except Exception as e:
             st.error(f"Error técnico al consultar cronograma: {e}")
@@ -376,12 +300,13 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                         title_color = "#d97706"
                         animacion_extra = ""
                     
-                    html_anuncios += f"""
-                        <div class="announcement-card" style="border-left-color: {border_color}; background-color: {bg_color}; animation: cascadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards, {animacion_extra}; animation-delay: {delay_ann}s;">
-                            <div class="announcement-title" style="color: {title_color};">{ann["titulo"]}</div>
-                            <div class="announcement-desc">{ann["descripcion"]}</div>
-                        </div>
-                    """
+                    # Lo mismo aquí para los anuncios
+                    html_anuncios += (
+                        f"<div class='announcement-card' style='border-left-color: {border_color}; background-color: {bg_color}; animation: cascadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards, {animacion_extra}; animation-delay: {delay_ann}s; opacity: 0;'>"
+                        f"<div class='announcement-title' style='color: {title_color};'>{ann['titulo']}</div>"
+                        f"<div class='announcement-desc'>{ann['descripcion']}</div>"
+                        f"</div>"
+                    )
             
             html_anuncios += '</div>'
             st.markdown(html_anuncios, unsafe_allow_html=True)
@@ -390,7 +315,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             st.error(f"Error técnico al consultar anuncios: {e}")
     
     st.stop()
-
 # ──────────────────────────────────────────────────────────────────────────────
 # 0) CONFIGURACIÓN GLOBAL Y ESTILO
 # ──────────────────────────────────────────────────────────────────────────────
