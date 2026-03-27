@@ -70,44 +70,6 @@ from streamlit_autorefresh import st_autorefresh
 # 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO SIN LOGIN)
 # ==============================================================================
 if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
-    
-    # --- NUEVO: Controles agrupados y movidos a la esquina superior derecha ---
-    col_espacio, col_controles = st.columns([8.5, 1.5])
-    
-    with col_controles:
-        with st.expander("⚙️ Controles", expanded=False):
-            if st.button("🔙 Volver al Login", use_container_width=True):
-                st.session_state.ver_pantalla_tv = False
-                st.rerun()
-                
-            components.html(
-                """
-                <style>
-                    body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
-                    button {
-                        width: 100%; height: 38px; background-color: #ffffff;
-                        border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a;
-                        font-size: 14px; font-weight: 500; cursor: pointer;
-                        display: flex; align-items: center; justify-content: center; gap: 8px;
-                        box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: all 0.2s;
-                    }
-                    button:hover { border-color: #94a3b8; background-color: #f8fafc; }
-                </style>
-                <button onclick="
-                    const doc = window.parent.document;
-                    if (!doc.fullscreenElement) {
-                        doc.documentElement.requestFullscreen();
-                        this.innerHTML = '🗗 Salir Pantalla Completa';
-                    } else {
-                        doc.exitFullscreen();
-                        this.innerHTML = '🔲 Pantalla Completa';
-                    }
-                ">
-                    🔲 Pantalla Completa
-                </button>
-                """,
-                height=40
-            )
 
     # El temporizador de recarga de la página (cada 30 segundos)
     st_autorefresh(interval=30000, limit=None, key="tv_refresh_timer")
@@ -269,6 +231,41 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             st.error(f"Error técnico al consultar cronograma: {e}")
     
     with col_ann:
+        # --- MENÚ DE CONTROLES MOVIDO AQUÍ ---
+        with st.expander("⚙️ Controles de Pantalla", expanded=False):
+            if st.button("🔙 Volver al Login", use_container_width=True):
+                st.session_state.ver_pantalla_tv = False
+                st.rerun()
+                
+            components.html(
+                """
+                <style>
+                    body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+                    button {
+                        width: 100%; height: 38px; background-color: #ffffff;
+                        border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a;
+                        font-size: 14px; font-weight: 500; cursor: pointer;
+                        display: flex; align-items: center; justify-content: center; gap: 8px;
+                        box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: all 0.2s;
+                    }
+                    button:hover { border-color: #94a3b8; background-color: #f8fafc; }
+                </style>
+                <button onclick="
+                    const doc = window.parent.document;
+                    if (!doc.fullscreenElement) {
+                        doc.documentElement.requestFullscreen();
+                        this.innerHTML = '🗗 Salir Pantalla Completa';
+                    } else {
+                        doc.exitFullscreen();
+                        this.innerHTML = '🔲 Pantalla Completa';
+                    }
+                ">
+                    🔲 Pantalla Completa
+                </button>
+                """,
+                height=40
+            )
+
         st.markdown("<div class='tv-sub-header'>🚨 Avisos Urgentes</div>", unsafe_allow_html=True)
         
         try:
