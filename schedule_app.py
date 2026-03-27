@@ -541,7 +541,7 @@ if not st.session_state.logged:
                             else: st.error("Contraseña incorrecta")
     st.stop() 
 
-st.markdown("---")
+        st.markdown("---")
         st.markdown("<h4 style='text-align:center;'>Acceso Público</h4>", unsafe_allow_html=True)
         
         # Este botón activa la pantalla TV sin necesidad de contraseñas
