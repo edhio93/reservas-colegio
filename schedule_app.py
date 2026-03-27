@@ -71,8 +71,13 @@ from streamlit_autorefresh import st_autorefresh
 # ==============================================================================
 if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
 
-    # El temporizador de recarga de la página (cada 30 segundos)
-    st_autorefresh(interval=30000, limit=None, key="tv_refresh_timer")
+    # Inicializamos el zoom en el session state si no existe
+    if "tv_scale" not in st.session_state:
+        st.session_state.tv_scale = 100
+
+    # Temporizador de recarga de la página: 60000ms = 60 segundos
+    # Guardamos el contador de recargas para usarlo en la paginación
+    refresh_count = st_autorefresh(interval=60000, limit=None, key="tv_refresh_timer")
     
     ruta_logo = "logotv.png"
     logo_src_html = ""
@@ -90,58 +95,67 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     meses_es = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
     fecha_es_formateada = f"{dias_es[now_dt.weekday()]}, {now_dt.day} de {meses_es[now_dt.month - 1]} de {now_dt.year}"
 
-    aesthetic_style = """            
+    # Calculamos el multiplicador de escala
+    escala = st.session_state.tv_scale / 100.0
+
+    aesthetic_style = f"""            
     <style>
         @import url('https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css');
 
-        .stApp { background-color: #f8fafc; color: #0f172a; font-family: 'Inter', sans-serif;}
-        [data-testid="stHeader"] { background: rgba(0,0,0,0); }
-        [data-testid="stToolbar"] { display: none; }
-        [data-testid="stSidebar"] { display: none; }
+        :root {{
+            --tv-scale: {escala};
+        }}
+
+        .stApp {{ background-color: #f8fafc; color: #0f172a; font-family: 'Inter', sans-serif; }}
+        [data-testid="stHeader"] {{ background: rgba(0,0,0,0); }}
+        [data-testid="stToolbar"] {{ display: none; }}
+        [data-testid="stSidebar"] {{ display: none; }}
         
-        .tv-header-container { 
+        .tv-header-container {{ 
             background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
             color: #0f172a; padding: 15px 25px 0 25px; border-radius: 20px; 
             margin-bottom: 25px; border: 1px solid #cbd5e1; 
             box-shadow: 0 4px 15px rgba(0,0,0,0.05); overflow: hidden; 
             display: flex; flex-direction: column; align-items: center;
-        }
-        .header-content-layout { display: flex; align-items: center; justify-content: space-between; width: 100%; padding-bottom: 15px; }
-        .header-logo-img { height: 85px; width: auto; display: block; }
-        .header-logo-fallback { font-size: 4rem; color: #64748b; line-height: 1; display: block; }
+        }}
+        .header-content-layout {{ display: flex; align-items: center; justify-content: space-between; width: 100%; padding-bottom: 15px; }}
+        .header-logo-img {{ height: calc(85px * var(--tv-scale)); width: auto; display: block; }}
+        .header-logo-fallback {{ font-size: calc(4rem * var(--tv-scale)); color: #64748b; line-height: 1; display: block; }}
 
-        .header-info-group { display: flex; align-items: center; gap: 15px; font-size: 1.2rem; font-weight: 600; color: #1e293b; }
-        .header-divider { opacity: 0.3; font-weight: 300; font-size: 1.5rem; color: #94a3b8; }
-        .header-status { display: flex; align-items: center; color: #475569; }
-        .status-icon { margin-right: 8px; font-size: 1.3rem; color: #10b981; }
+        .header-info-group {{ display: flex; align-items: center; gap: 15px; font-size: calc(1.2rem * var(--tv-scale)); font-weight: 600; color: #1e293b; }}
+        .header-divider {{ opacity: 0.3; font-weight: 300; font-size: calc(1.5rem * var(--tv-scale)); color: #94a3b8; }}
+        .header-status {{ display: flex; align-items: center; color: #475569; }}
+        .status-icon {{ margin-right: 8px; font-size: calc(1.3rem * var(--tv-scale)); color: #10b981; }}
         
-        .progress-container { width: 100%; height: 6px; background-color: #cbd5e1; }
-        .progress-bar { height: 100%; background-color: #3b82f6; width: 0%; animation: loadBar 30s linear infinite; }
-        @keyframes loadBar { 0% { width: 0%; } 100% { width: 100%; } }
+        .progress-container {{ width: 100%; height: 6px; background-color: #cbd5e1; }}
+        /* Animación ajustada a 60 segundos */
+        .progress-bar {{ height: 100%; background-color: #3b82f6; width: 0%; animation: loadBar 60s linear infinite; }}
+        @keyframes loadBar {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
         
-        .tv-sub-header { color: #1e293b; font-weight: 800; font-size: 1.6rem; margin-top: 5px; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;}
+        .tv-sub-header {{ color: #1e293b; font-weight: 800; font-size: calc(1.6rem * var(--tv-scale)); margin-top: 5px; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;}}
         
-        /* === ANIMACIONES (Cascada y Parpadeo Rojo) === */
-        @keyframes cascadeIn { 0% { opacity: 0; transform: translateY(30px) scale(0.98); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
-        @keyframes pulseAlert { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+        /* === ANIMACIONES === */
+        @keyframes cascadeIn {{ 0% {{ opacity: 0; transform: translateY(30px) scale(0.98); }} 100% {{ opacity: 1; transform: translateY(0) scale(1); }} }}
+        @keyframes pulseAlert {{ 0% {{ box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }} 70% {{ box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }} 100% {{ box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }} }}
 
-        .block-card { padding: 22px; border-radius: 16px; border-left: 8px solid; margin-bottom: 18px; background-color: white; box-shadow: 0 6px 15px rgba(0,0,0,0.05); }
-        .block-title { font-weight: 700; color: #0f172a; font-size: 1.35rem; margin-bottom: 8px; text-transform: uppercase;}
-        .block-info-row { display: flex; gap: 20px; align-items: center; margin-top: 12px; font-size: 1rem;}
-        .block-info-item { display: flex; align-items: center; color: #64748b; }
+        .block-card {{ padding: 22px; border-radius: 16px; border-left: 8px solid; margin-bottom: 18px; background-color: white; box-shadow: 0 6px 15px rgba(0,0,0,0.05); }}
+        .block-title {{ font-weight: 700; color: #0f172a; font-size: calc(1.35rem * var(--tv-scale)); margin-bottom: 8px; text-transform: uppercase;}}
+        .block-info {{ font-size: calc(1.05rem * var(--tv-scale)); color: #475569; }}
+        .block-info-row {{ display: flex; gap: 20px; align-items: center; margin-top: 12px; font-size: calc(1rem * var(--tv-scale));}}
+        .block-info-item {{ display: flex; align-items: center; color: #64748b; }}
         
-        .info-icon { font-size: 1.25rem; margin-right: 8px; }
-        .icon-profesor { color: #4ade80; } 
-        .icon-observaciones { color: #fbbf24; } 
+        .info-icon {{ font-size: calc(1.25rem * var(--tv-scale)); margin-right: 8px; }}
+        .icon-profesor {{ color: #4ade80; }} 
+        .icon-observaciones {{ color: #fbbf24; }} 
         
-        .block-hora-pill { margin-top: 15px; font-weight: 600; color: #64748b; background: #f1f5f9; display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 10px; font-size: 0.9rem;}
-        .icon-hora { color: #60a5fa; margin-right: 7px; font-size: 1.1rem;} 
-        .icon-categoria { color: #818cf8; margin-left: 10px; margin-right: 7px;} 
+        .block-hora-pill {{ margin-top: 15px; font-weight: 600; color: #64748b; background: #f1f5f9; display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 10px; font-size: calc(0.9rem * var(--tv-scale));}}
+        .icon-hora {{ color: #60a5fa; margin-right: 7px; font-size: calc(1.1rem * var(--tv-scale));}} 
+        .icon-categoria {{ color: #818cf8; margin-left: 10px; margin-right: 7px; font-size: calc(1.1rem * var(--tv-scale));}} 
 
-        .announcements-container { background-color: white; border-radius: 20px; padding: 25px; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.03); height: 100%; }
-        .announcement-card { padding: 20px; border-radius: 16px; border: 1px solid #e2e8f0; margin-bottom: 18px; border-left: 6px solid;}
-        .announcement-title { font-weight: 700; margin-bottom: 7px; font-size: 1.2rem; text-transform: uppercase;}
-        .announcement-desc { font-size: 1rem; color: #334155; line-height: 1.5; }
+        .announcements-container {{ background-color: white; border-radius: 20px; padding: 25px; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.03); height: 100%; }}
+        .announcement-card {{ padding: 20px; border-radius: 16px; border: 1px solid #e2e8f0; margin-bottom: 18px; border-left: 6px solid;}}
+        .announcement-title {{ font-weight: 700; margin-bottom: 7px; font-size: calc(1.2rem * var(--tv-scale)); text-transform: uppercase;}}
+        .announcement-desc {{ font-size: calc(1rem * var(--tv-scale)); color: #334155; line-height: 1.5; }}
     </style>
     """
     st.markdown(aesthetic_style, unsafe_allow_html=True) 
@@ -156,7 +170,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     <div class="header-date">{fecha_es_formateada}</div>
                     <div class="header-divider">|</div>
                     <div class="header-status">
-                        <i class="ph-fill ph-check-circle status-icon"></i> Actualizando en tiempo real
+                        <i class="ph-fill ph-check-circle status-icon"></i> Siguiente slide en 60s
                     </div>
                 </div>
             </div>
@@ -167,8 +181,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     col_main, col_ann = st.columns([2.5, 1], gap="large")
     
     with col_main:
-        st.markdown("<div class='tv-sub-header'>⏱️ Cronograma de Hoy</div>", unsafe_allow_html=True)
-        
         try:
             res_tv_hoy = supabase.table("eventos_tv").select("id, titulo, descripcion, categoria").eq("fecha_evento", hoy_str).eq("is_active", True).execute().data
             res_reservas_hoy = supabase.table("reservas").select("id, profesores(nombre), recursos(nombre), cursos(nombre), observaciones").eq("fecha", hoy_str).execute().data
@@ -195,12 +207,26 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 })
                 
             if not events_hoy_list:
+                st.markdown("<div class='tv-sub-header'>⏱️ Cronograma de Hoy</div>", unsafe_allow_html=True)
                 st.info("No hay eventos ni reservas registradas para hoy.")
             else:
+                # === LÓGICA DE PAGINACIÓN ===
+                ITEMS_POR_PAGINA = 3
+                total_paginas = max(1, (len(events_hoy_list) + ITEMS_POR_PAGINA - 1) // ITEMS_POR_PAGINA)
+                
+                # Usamos el contador de recargas para calcular en qué página estamos
+                pagina_actual = refresh_count % total_paginas 
+                
+                inicio_idx = pagina_actual * ITEMS_POR_PAGINA
+                fin_idx = inicio_idx + ITEMS_POR_PAGINA
+                eventos_a_mostrar = events_hoy_list[inicio_idx:fin_idx]
+                
+                st.markdown(f"<div class='tv-sub-header'>⏱️ Cronograma de Hoy (Pág. {pagina_actual + 1}/{total_paginas})</div>", unsafe_allow_html=True)
+                
                 paleta_colores = ["#0ea5e9", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#14b8a6"]
                 html_cronograma = ""
                 
-                for i, item in enumerate(events_hoy_list):
+                for i, item in enumerate(eventos_a_mostrar):
                     color_tema = "#6366f1" if item['categoria'] == "Evento" else paleta_colores[i % len(paleta_colores)]
                     delay = i * 0.15 
                     
@@ -216,11 +242,10 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     hora_icon_html = "<i class='ph-fill ph-clock icon-hora'></i>" if item['categoria'] != "Evento" else "<i class='ph-fill ph-star icon-hora'></i>"
                     desc_text = item.get('descripcion', '')
                     
-                    # === CRONOGRAMA CASCADA ===
                     html_cronograma += (
                         f"<div class='block-card' style='border-left-color: {color_tema}; animation: cascadeIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; animation-delay: {delay}s; opacity: 0;'>"
                         f"<div class='block-title' style='color: {color_tema};'>{item['titulo']}</div>"
-                        f"<div class='block-info' style='color: #475569;'>{desc_text}</div>"
+                        f"<div class='block-info'>{desc_text}</div>"
                         f"{info_row_html}"
                         f"<div class='block-hora-pill'>{hora_icon_html} <span>{item['display_hora']}</span> <i class='ph-fill ph-tag icon-categoria'></i> <span>{item['categoria']}</span></div>"
                         f"</div>"
@@ -231,8 +256,13 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             st.error(f"Error técnico al consultar cronograma: {e}")
     
     with col_ann:
-        # --- MENÚ DE CONTROLES MOVIDO AQUÍ ---
         with st.expander("⚙️ Controles de Pantalla", expanded=False):
+            
+            # --- NUEVO CONTROL DE TAMAÑO DE TEXTO ---
+            st.slider("🔍 Tamaño del texto (%)", min_value=50, max_value=250, value=st.session_state.tv_scale, step=5, key="tv_scale")
+            
+            st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+            
             if st.button("🔙 Volver al Login", use_container_width=True):
                 st.session_state.ver_pantalla_tv = False
                 st.rerun()
@@ -291,7 +321,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 for i, ann in enumerate(active_ann):
                     delay_ann = i * 0.15 
                     
-                    # === AVISOS: CASCADA + PARPADEO ROJO SI ES ALTA PRIORIDAD ===
                     if ann['prioridad'] == 1:
                         bg_color = "#fef2f2"; border_color = "#ef4444"; title_color = "#dc2626"
                         animacion_extra = ", pulseAlert 2s infinite"
