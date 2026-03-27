@@ -519,35 +519,41 @@ if not st.session_state.logged:
                     with st.form("admin_form", clear_on_submit=True):
                         u_adm = st.text_input("Nombre de Administrador", placeholder="Ej: Edgar")
                         p_adm = st.text_input("Contraseña", type="password", placeholder="••••••••")
-                        if st.form_submit_button("INICIAR SESIÓN ADMIN", use_container_width=True, type="primary"):
-                            if u_adm.strip().upper() in ["EDGAR", "GLORIA", "CARLOS", "ALEXIS"] and p_adm == "cav690":
-                                st.session_state.logged = True
-                                st.session_state.role = "admin"
-                                st.session_state.profesor_name = u_adm.strip().capitalize()
-                                st.rerun()
-                            else:
-                                st.error("Acceso denegado")
-                else:
-                    with st.form("profe_form", clear_on_submit=True):
-                        u_profe = st.selectbox("Busca tu nombre", PROFESORES, index=None, placeholder="Selecciona...")
-                        p_profe = st.text_input("Clave de Acceso", type="password", placeholder="6904")
-                        if st.form_submit_button("ENTRAR AL PANEL", use_container_width=True, type="primary"):
-                            if u_profe and p_profe == "6904":
-                                st.session_state.logged = True
-                                st.session_state.role = "profesor"
-                                st.session_state.profesor_name = u_profe
-                                st.rerun()
-                            elif not u_profe: st.warning("Por favor selecciona tu nombre")
-                            else: st.error("Contraseña incorrecta")
-    st.stop() 
-
-                        st.markdown("---")
-                        st.markdown("<h4 style='text-align:center;'>Acceso Público</h4>", unsafe_allow_html=True)
-        
-                        # Este botón activa la pantalla TV sin necesidad de contraseñas
-                        if st.button("📺 Abrir Pantalla Informativa", use_container_width=True):
-                            st.session_state.ver_pantalla_tv = True
+                       if st.form_submit_button("INICIAR SESIÓN ADMIN", use_container_width=True, type="primary"):
+                        if u_adm.strip().upper() in ["EDGAR", "GLORIA", "CARLOS", "ALEXIS"] and p_adm == "cav690":
+                            st.session_state.logged = True
+                            st.session_state.role = "admin"
+                            st.session_state.profesor_name = u_adm.strip().capitalize()
                             st.rerun()
+                        else:
+                            st.error("Acceso denegado")
+            else:
+                with st.form("profe_form", clear_on_submit=True):
+                    u_profe = st.selectbox("Busca tu nombre", PROFESORES, index=None, placeholder="Selecciona...")
+                    p_profe = st.text_input("Clave de Acceso", type="password", placeholder="6904")
+                    if st.form_submit_button("ENTRAR AL PANEL", use_container_width=True, type="primary"):
+                        if u_profe and p_profe == "6904":
+                            st.session_state.logged = True
+                            st.session_state.role = "profesor"
+                            st.session_state.profesor_name = u_profe
+                            st.rerun()
+                        elif not u_profe: 
+                            st.warning("Por favor selecciona tu nombre")
+                        else: 
+                            st.error("Contraseña incorrecta")
+            
+            # --- AQUÍ VA EL ACCESO PÚBLICO (Fuera de los formularios) ---
+            st.markdown("---")
+            st.markdown("<h4 style='text-align:center;'>Acceso Público</h4>", unsafe_allow_html=True)
+
+            # Este botón activa la pantalla TV sin necesidad de contraseñas
+            if st.button("📺 Abrir Pantalla Informativa", use_container_width=True):
+                st.session_state.ver_pantalla_tv = True
+                st.rerun()
+            # -------------------------------------------------------------
+
+    # ESTO SIEMPRE DEBE IR AL FINAL DEL BLOQUE DE LOGIN
+    st.stop()
     
 # ------------------------------------------------------------------
 # 3) CARGA DE LA BASE DE DATOS PRINCIPAL 
