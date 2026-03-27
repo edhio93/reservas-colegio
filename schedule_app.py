@@ -57,173 +57,181 @@ supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 # ==============================================================================
 # 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO SIN LOGIN)
 # ==============================================================================
-if "ver_pantalla_tv" not in st.session_state:
-    st.session_state.ver_pantalla_tv = False
+# === REEMPLAZO TOTAL DE LA PANTALLA INFORMATIVA PÚBLICA (MODO TV) ===
+    if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
+        # Define light aesthetic theme styles in-code for robustness
+        aesthetic_style = """
+            <style>
+                /* Main background */
+                .stApp { background-color: #f8fafc; color: #0f172a; }
+                
+                /* Main Page Header (Hide toolbar and sidebar) */
+                [data-testid="stHeader"] { background: rgba(0,0,0,0); }
+                [data-testid="stToolbar"] { display: none; }
+                [data-testid="stSidebar"] { display: none; }
+                
+                /* Title Banners - Colorful Gradient Aesthetic */
+                .tv-header { background: linear-gradient(90deg, #38bdf8 0%, #818cf8 100%); color: white; padding: 25px; border-radius: 15px; text-align: center; margin-bottom: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+                .tv-header h1 { margin: 0; font-size: 2.5rem; font-weight: 700; }
+                .tv-header h3 { margin: 5px 0 0 0; font-weight: 500; font-size: 1.2rem; }
+                
+                .tv-sub-header { color: #1e293b; font-weight: 600; font-size: 1.5rem; margin-top: 20px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; }
+                
+                /* Schedule Blocks (Rounded Cards in list view for dynamic feel) */
+                .block-card { padding: 18px; border-radius: 12px; border-left: 7px solid; margin-bottom: 12px; background-color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: transform 0.2s; }
+                .block-card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+                .block-title { font-weight: 600; color: #0f172a; font-size: 1.2rem; margin-bottom: 7px; }
+                .block-info { color: #64748b; font-size: 0.95rem; }
+                
+                /* Announcements Section on Right (Sidebar Card) */
+                .announcements-column { background-color: white; border-radius: 15px; padding: 25px; border: 1px solid #e2e8f0; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+                
+                /* Announcements Cards (Colorful borders based on priority) */
+                .announcement-card { padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0; background-color: #fffbeb; margin-bottom: 15px; border-left: 5px solid; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+                .announcement-title { font-weight: 600; color: #b45309; margin-bottom: 5px; font-size: 1.1rem; }
+                .announcement-desc { color: #a16207; font-size: 0.95rem; }
+            </style>
+        """
+        st.markdown(aesthetic_style, unsafe_allow_html=True) # Apply light theme
 
-if st.session_state.ver_pantalla_tv:
-    # Botón invisible/pequeño para volver al login si es necesario
-    if st.button("⬅️ Volver al Login"):
-        st.session_state.ver_pantalla_tv = False
-        st.rerun()
-
-    # Auto-refresco cada 60 segundos
-    count = st_autorefresh(interval=60000, key="tv_autorefresh_public")
-    
-    def get_color_from_string_tv(s):
-        import hashlib
-        hash_val = int(hashlib.md5(s.encode('utf-8')).hexdigest(), 16)
-        hue = hash_val % 360
-        return f"hsl({hue}, 75%, 50%)"
-
-    hoy_str = dt.date.today().strftime("%Y-%m-%d")
-    fecha_actual_sql_tv = dt_datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # 1. Obtenemos los datos directamente de Supabase para no depender del login
-    try:
-        reservas_data = supabase.table("reservas").select("*").eq("fecha", hoy_str).execute().data
-        anuncios_supa_data = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).gte("expiracion", fecha_actual_sql_tv).execute().data
-        eventos_supa_data = supabase.table("eventos_tv").select("*").eq("is_active", True).gte("fecha_evento", hoy_str).order("fecha_evento").execute().data
-    except Exception as e:
-        st.error(f"Error de conexión: {e}")
-        reservas_data, anuncios_supa_data, eventos_supa_data = [], [], []
-
-    # Procesar reservas
-    tv_schedule_data = []
-    if reservas_data:
-        # Convertimos a DataFrame solo para ordenar fácilmente por hora
-        df_res = pd.DataFrame(reservas_data)
-        if not df_res.empty:
-            df_res = df_res.sort_values(by=['hora_inicio'])
-            for _, row in df_res.iterrows():
-                tv_schedule_data.append({
-                    "horario": f"{str(row['hora_inicio'])[:5]} a {str(row['hora_fin'])[:5]}",
-                    "recurso": str(row['recurso']),
-                    "profesor": str(row['profesor']),
-                    "curso": str(row['curso']),
-                    "color": get_color_from_string_tv(str(row['profesor']))
-                })
-
-    import json
-    schedule_json = json.dumps(tv_schedule_data)
-    anuncios_json = json.dumps(anuncios_supa_data)
-    eventos_json = json.dumps(eventos_supa_data)
-    
-    # --- AQUÍ VA TODO EL HTML/CSS QUE ARMAMOS EN EL PASO ANTERIOR ---
-    # (Para no hacer el mensaje gigantesco, pega aquí exactamente el mismo texto
-    # de la variable tv_html_full = f""" <!DOCTYPE html> ... """ que te di antes)
-    
-    # (Simulando la inserción del HTML)
-    tv_html_full = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-            body {{ margin: 0; padding: 0; background-color: #0f172a; font-family: 'Inter', sans-serif; color: white; overflow: hidden; }}
-            .tv-wrapper {{ display: flex; flex-direction: column; height: 100vh; width: 100vw; background: radial-gradient(circle at top right, #1e293b, #0f172a); }}
-            /* (Resto de tu CSS...) */
-            .header {{ display: flex; justify-content: space-between; align-items: center; padding: 20px 30px; background: rgba(15, 23, 42, 0.8); border-bottom: 2px solid #334155; }}
-            .title {{ font-size: 28px; font-weight: 900; color: #38bdf8; }}
-            .fullscreen-btn {{ background: #0284c7; color: white; border: none; padding: 10px 20px; font-size: 16px; border-radius: 8px; cursor: pointer; font-weight: bold; }}
-            .main-content {{ flex-grow: 1; padding: 25px; display: flex; gap: 25px; }}
-            .schedule-column {{ flex: 2; display: flex; flex-direction: column; gap: 15px; overflow: hidden; }}
-            .schedule-title {{ font-size: 22px; font-weight: 700; color: #e2e8f0; margin-bottom: 10px; border-left: 5px solid #38bdf8; padding-left: 10px; }}
-            .schedule-card {{ background: rgba(255, 255, 255, 0.05); border-left: 10px solid; border-radius: 12px; padding: 20px; display: flex; align-items: center; margin-bottom: 10px; }}
-            .time-box {{ min-width: 200px; border-right: 2px solid rgba(255,255,255,0.1); margin-right: 30px; padding-right: 15px; }}
-            .time-text {{ font-size: 32px; font-weight: 900; color: #e2e8f0; }}
-            .details-box {{ flex-grow: 1; }}
-            .resource-text {{ font-size: 36px; font-weight: 900; color: #38bdf8; margin-bottom: 8px; }}
-            .prof-text {{ font-size: 22px; color: #cbd5e1; }}
-            .events-column {{ flex: 1; background: rgba(15, 23, 42, 0.9); padding: 20px; border-radius: 12px; border: 1px solid #334155; display: flex; flex-direction: column; gap: 15px; }}
-            .events-title {{ font-size: 22px; font-weight: 700; color: #e2e8f0; border-left: 5px solid #dc3545; padding-left: 10px; }}
-            .anuncio-card {{ background-color: #dc3545; color: white; border-radius: 10px; padding: 15px; border: 2px solid #ffcccc; }}
-            .anuncio-card-medio {{ background-color: #ffc107; color: #0f172a; border-radius: 10px; padding: 15px; }}
-            .evento-card-tv {{ background: rgba(255, 255, 255, 0.03); border-left: 5px solid #0056b3; border-radius: 8px; padding: 15px; margin-bottom:10px; }}
-            .evento-cat {{ font-size: 0.8em; font-weight: bold; color: #38bdf8; }}
-            .evento-title-tv {{ font-size: 1.1em; font-weight: bold; color: #e2e8f0; }}
-        </style>
-    </head>
-    <body>
-        <div class="tv-wrapper" id="tv-wrapper-el">
-            <div class="header">
-                <div class="title">📡 PANEL INFORMATIVO CAV - HOY</div>
-                <button class="fullscreen-btn" onclick="document.documentElement.requestFullscreen()">🔲 Pantalla Completa</button>
+        # Obtenemos la hora actual y la fecha de hoy
+        now_dt = dt_datetime.now()
+        hoy_str = now_dt.strftime("%Y-%m-%d") # Filtro principal
+        
+        # === NUEVO: AUTO-REFRESCO (cada 60 segundos) ===
+        st.markdown('<meta http-equiv="refresh" content="60">', unsafe_allow_html=True)
+        
+        # 1. Header Banner Aesthetic
+        st.markdown(f"""
+            <div class="tv-header">
+                <h1>📺 ACCESO PÚBLICO - HORARIOS Y RESERVAS DEL DÍA</h1>
+                <h3>{now_dt.strftime("%A, %d de %B, %Y")} | 🔄 Actualizado {now_dt.strftime("%H:%M")} | <a href='/' target='_self' style='color: white; text-decoration: underline;'>Volver</a></h3>
             </div>
-            <div class="main-content">
-                <div class="schedule-column">
-                    <div class="schedule-title">Horario de Hoy</div>
-                    <div id="schedule-cards-container"></div>
-                </div>
-                <div class="events-column">
-                    <div class="events-title">Anuncios y Eventos</div>
-                    <div id="announcements-container"></div>
-                    <div id="events-container"></div>
-                </div>
-            </div>
-        </div>
-        <script>
-            const scheduleData = {schedule_json};
-            const anunciosData = {anuncios_json};
-            const eventosData = {eventos_json};
+        """, unsafe_allow_html=True)
+        
+        col_main, col_ann = st.columns([2.5, 1], gap="large")
+        
+        with col_main:
+            # 2. Daily Schedule Section (nicely styled colorful list)
+            st.markdown("<div class='tv-sub-header'>⏱️ Cronograma de Hoy</div>", unsafe_allow_html=True)
             
-            const scheduleContainer = document.getElementById('schedule-cards-container');
-            const anunciosContainer = document.getElementById('announcements-container');
-            const eventosContainer = document.getElementById('events-container');
+            try:
+                # === NUEVO: CONSULTA FILTRADA SOLO POR HOY ===
+                res_tv_hoy = supabase.table("eventos_tv").select("id, titulo, descripcion, categoria").eq("fecha_evento", hoy_str).eq("is_active", True).execute().data
+                res_reservas_hoy = supabase.table("reservas").select("id, profesores(nombre), recursos(nombre), cursos(nombre), asignaturas(nombre), hora_bloque_inicio, observaciones").eq("fecha", hoy_str).execute().data
+                
+                events_hoy_list = []
+                
+                # Treat TV events as top-priority "all-day" style (Purple)
+                for ev in res_tv_hoy:
+                    events_hoy_list.append({
+                        "hora_sort": "99:99", # Sort key for end
+                        "display_hora": "🗓️ Evento",
+                        "titulo": ev["titulo"],
+                        "descripcion": ev.get("descripcion", ""),
+                        "categoria": ev.get("categoria", "Evento")
+                    })
+                    
+                for r in res_reservas_hoy:
+                    prof = r.get("profesores", {}).get("nombre", "Docente S/N") if r.get("profesores") else "Docente S/N"
+                    rec = r.get("recursos", {}).get("nombre", "Recurso S/N") if r.get("recursos") else "Recurso S/N"
+                    curso = r.get("cursos", {}).get("nombre", "Curso S/N") if r.get("cursos") else "Curso S/N"
+                    asig = r.get("asignaturas", {}).get("nombre", "Asignatura S/N") if r.get("asignaturas") else "Asignatura S/N"
+                    obs = r.get("observaciones", "")
+                    
+                    hora_bloque = r.get("hora_bloque_inicio", "00:00:00")
+                    hora_hm = hora_bloque[:5] # format HH:MM
+                    
+                    events_hoy_list.append({
+                        "hora_sort": hora_hm, # standard hour for sorting
+                        "display_hora": f"⏱️ {hora_hm}",
+                        "titulo": f"{rec} - {curso}",
+                        "descripcion": f"{asig} con Prof. {prof}. {obs}",
+                        "categoria": "Clase / Uso Recurso"
+                    })
+                    
+                # Standard timed events sorted by hour, then all-day events at top
+                timed_hoy = sorted([e for e in events_hoy_list if e['hora_sort'] != "99:99"], key=lambda x: x['hora_sort'])
+                all_day_hoy = sorted([e for e in events_hoy_list if e['hora_sort'] == "99:99"], key=lambda x: x['titulo'])
+                
+                final_hoy_list = all_day_hoy + timed_hoy # render events first, then schedules
 
-            function renderScheduleCards() {{
-                scheduleContainer.innerHTML = '';
-                if (!scheduleData || scheduleData.length === 0) {{
-                    scheduleContainer.innerHTML = '<div style="color: #94a3b8;">No hay reservas programadas para hoy.</div>';
-                    return;
-                }}
-                scheduleData.forEach((item) => {{
-                    scheduleContainer.innerHTML += `
-                        <div class="schedule-card" style="border-left-color: ${{item.color}}">
-                            <div class="time-box"><div class="time-text">🕒 ${{item.horario}}</div></div>
-                            <div class="details-box">
-                                <div class="resource-text">${{item.recurso}}</div>
-                                <div class="prof-text">👨‍🏫 ${{item.profesor}} &nbsp;|&nbsp; 📚 ${{item.curso}}</div>
+                if not final_hoy_list:
+                    st.info(f"No hay eventos ni reservas registradas para hoy.")
+                else:
+                    for item in final_hoy_list:
+                        # Draw aesthetic colorful card
+                        border_color = "#38bdf8" # Blue for standard
+                        text_style = "color: #38bdf8; font-weight: 500;"
+                        
+                        if item['categoria'] == "Evento": 
+                            border_color = "#818cf8" # Purple for Events
+                            text_style = "color: #818cf8; font-weight: 500;"
+                        if item['categoria'] == "Reserva / Uso Recurso": 
+                            border_color = "#22c55e" # Green for classes
+                            text_style = "color: #22c55e; font-weight: 500;"
+                        
+                        card_html = f"""
+                            <div class="block-card" style="border-left-color: {border_color};">
+                                <div class="block-title">{item['titulo']}</div>
+                                <div class="block-info">{item.get('descripcion', '')}</div>
+                                <div class="block-info" style="margin-top: 8px; {text_style}">
+                                    <span>{item['display_hora']}</span> | <span>🔖 {item['categoria']}</span>
+                                </div>
                             </div>
-                        </div>`;
-                }});
-            }}
-
-            function renderEventsColumn() {{
-                if (anunciosData) {{
-                    anunciosData.forEach(a => {{
-                        const isHigh = a.prioridad === 1;
-                        anunciosContainer.innerHTML += `
-                            <div class="${{isHigh ? 'anuncio-card' : 'anuncio-card-medio'}}">
-                                <h4>${{isHigh ? '🚨 ALTA PRIORIDAD' : '⚠️ ANUNCIO'}}</h4>
-                                <h3>${{a.titulo}}</h3><p>${{a.descripcion}}</p>
-                            </div>`;
-                    }});
-                }}
-                if (eventosData) {{
-                    eventosData.forEach(e => {{
-                        eventosContainer.innerHTML += `
-                            <div class="evento-card-tv">
-                                <div class="evento-cat">${{e.categoria}}</div>
-                                <div class="evento-title-tv">📅 ${{e.titulo}} - ${{e.fecha_evento}}</div>
-                                <p style="color:#cbd5e1; font-size:0.9em;">${{e.descripcion}}</p>
-                            </div>`;
-                    }});
-                }}
-            }}
-            renderScheduleCards();
-            renderEventsColumn();
-        </script>
-    </body>
-    </html>
-    """
-
-    st.components.v1.html(tv_html_full, height=850, scrolling=True)
-    
-    # 🛑 ¡ESTA LÍNEA ES MAGIA! Detiene la ejecución del código para que no pida login.
-    st.stop() 
-# ==============================================================================
-
-
+                        """
+                        st.markdown(card_html, unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"Error técnico al consultar cronograma de hoy: {e}")
+        
+        with col_ann:
+            # 3. Urgent Announcements Section on Right (within styled colorful container)
+            st.markdown("<div class='tv-sub-header'>🚨 Anuncios</div>", unsafe_allow_html=True)
+            
+            with st.container(class_="announcements-column"):
+                try:
+                    now = dt_datetime.now()
+                    ann_data = supabase.table("anuncios_urgentes").select("id, titulo, descripcion, prioridad, expiracion").eq("is_active", True).execute().data
+                    
+                    active_ann = []
+                    for ann in ann_data:
+                        try:
+                            # Asegúrate de usar la hora límite exacta para filtrar
+                            exp_dt = dt_datetime.strptime(ann['expiracion'], "%Y-%m-%d %H:%M:%S")
+                            if exp_dt > now: # Solo si no ha caducado
+                                active_ann.append(ann)
+                        except (ValueError, TypeError):
+                            # Handle different date formats or nulls safely
+                            pass
+                    
+                    # Sort by priority (1 High, 2 Medium)
+                    active_ann = sorted(active_ann, key=lambda x: x['prioridad'])
+                    
+                    if not active_ann:
+                        st.write("No hay anuncios urgentes activos en este momento.")
+                    else:
+                        for ann in active_ann:
+                            # Draw announcement card with priority color
+                            border_color = "#f59e0b" # Orange for Medium
+                            title_color = "#b45309"
+                            desc_color = "#a16207"
+                            if ann['prioridad'] == 1: 
+                                border_color = "#ef4444" # Red for High
+                                title_color = "#b91c1c"
+                                desc_color = "#991b1b"
+                            
+                            draw_ann = f"""
+                                <div class="announcement-card" style="border-left-color: {border_color}; background-color: #fff8f8 if {ann['prioridad']}==1 else #fffbeb;">
+                                    <div class="announcement-title" style="color: {title_color};">{ann["titulo"]}</div>
+                                    <div class="announcement-desc" style="color: {desc_color};">{ann["descripcion"]}</div>
+                                </div>
+                            """
+                            st.markdown(draw_ann, unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Error técnico al consultar anuncios: {e}")
+        
+        st.stop() # Prevent login from showing
+    # === FIN DEL REEMPLAZO PANTALLA PÚBLICA ===
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 0) CONFIGURACIÓN GLOBAL Y ESTILO
