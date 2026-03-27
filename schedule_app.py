@@ -19,6 +19,9 @@ import io
 import urllib.parse
 import zipfile
 import google.generativeai as genai
+import base64
+import os
+from streamlit_autorefresh import st_autorefresh
 
 
 # --- CONFIGURACIÓN DE GEMINI ---
@@ -54,12 +57,26 @@ CLAVE_SUPABASE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
 supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 
+
 # ==============================================================================
 # 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO SIN LOGIN)
 # ==============================================================================
-# === REEMPLAZO TOTAL DE LA PANTALLA INFORMATIVA PÚBLICA (MODO TV) ===
 if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
-    # Define light aesthetic theme styles in-code for robustness
+    
+    # === SOLUCIÓN AUTO-REFRESCO: Actualización nativa sin perder la sesión ===
+    # Actualiza exactamente cada 30,000 milisegundos (30 segundos)
+    st_autorefresh(interval=30000, limit=None, key="tv_refresh_timer")
+    
+    # === CARGAR LOGO TV ===
+    # Convertimos la imagen a texto (Base64) para poder inyectarla en nuestro diseño Aesthetic
+    logo_html = "✈️" # Emoji por defecto si no encuentra la imagen
+    ruta_logo = "logotv.png"
+    if os.path.exists(ruta_logo):
+        with open(ruta_logo, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode()
+            logo_html = f"<img src='data:image/png;base64,{encoded_string}' style='height: 55px; margin-right: 15px; vertical-align: bottom;'/>"
+
+    # Define light aesthetic theme styles in-code
     aesthetic_style = """            
     <style>
         /* Main background */
@@ -71,9 +88,18 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         [data-testid="stSidebar"] { display: none; }
         
         /* Title Banners - Colorful Gradient Aesthetic */
-        .tv-header { background: linear-gradient(90deg, #38bdf8 0%, #8b5cf6 100%); color: white; padding: 25px; border-radius: 15px; text-align: center; margin-bottom: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .tv-header h1 { margin: 0; font-size: 2.5rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
-        .tv-header h3 { margin: 5px 0 0 0; font-weight: 500; font-size: 1.2rem; }
+        .tv-header { background: linear-gradient(90deg, #38bdf8 0%, #8b5cf6 100%); color: white; padding: 25px 25px 0 25px; border-radius: 15px; text-align: center; margin-bottom: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; }
+        .tv-header h1 { margin: 0; font-size: 2.5rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; display: flex; align-items: center; justify-content: center; }
+        .tv-header h3 { margin: 10px 0 15px 0; font-weight: 500; font-size: 1.1rem; }
+        
+        /* === BARRA DE PROGRESO ANIMADA (30 SEGUNDOS) === */
+        .progress-container { width: 100%; height: 6px; background-color: rgba(255,255,255,0.2); margin-top: 15px; }
+        .progress-bar { height: 100%; background-color: #ffffff; width: 0%; animation: loadBar 30s linear infinite; }
+        
+        @keyframes loadBar {
+            0% { width: 0%; }
+            100% { width: 100%; }
+        }
         
         .tv-sub-header { color: #1e293b; font-weight: 700; font-size: 1.5rem; margin-top: 10px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1.5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;}
         
@@ -83,7 +109,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             100% { opacity: 1; transform: translateY(0) scale(1); }
         }
         
-        /* Animación LATIDO de Emergencia (Anuncios Rojos) */
+        /* Animación LATIDO de Emergencia */
         @keyframes pulseAlert {
             0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
             70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
@@ -108,14 +134,12 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     now_dt = dt_datetime.now()
     hoy_str = now_dt.strftime("%Y-%m-%d") 
     
-    # === ACTUALIZACIÓN CADA 30 SEGUNDOS ===
-    st.markdown('<meta http-equiv="refresh" content="30">', unsafe_allow_html=True)
-    
-    # Header Banner
+    # Header Banner (Con Logo inyectado y Barra de progreso)
     st.markdown(f"""
         <div class="tv-header">
-            <h1>✈️ PANEL DE INFORMACIÓN Y HORARIOS</h1>
-            <h3>{now_dt.strftime("%A, %d de %B, %Y")} | 🔄 Actualizado {now_dt.strftime("%H:%M:%S")} | <a href='/' target='_self' style='color: white; text-decoration: underline;'>Volver al Login</a></h3>
+            <h1>{logo_html} PANEL DE INFORMACIÓN Y HORARIOS</h1>
+            <h3>{now_dt.strftime("%A, %d de %B, %Y")} | 🔄 Actualizando en tiempo real | <a href='/' target='_self' style='color: white; text-decoration: underline;'>Volver al Login</a></h3>
+            <div class="progress-container"><div class="progress-bar"></div></div>
         </div>
     """, unsafe_allow_html=True)
     
@@ -158,20 +182,13 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             if not final_hoy_list:
                 st.info("No hay eventos ni reservas registradas para hoy.")
             else:
-                # Paleta de colores Aesthetic para ir alternando
                 paleta_colores = ["#0ea5e9", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#14b8a6"]
                 
-                # Enumerate nos da el índice (i) para hacer el retraso de la animación
                 for i, item in enumerate(final_hoy_list):
-                    
-                    # Calcular el retraso: cada tarjeta tarda 0.15 segundos más en aparecer que la anterior
                     delay = i * 0.15 
-                    
-                    # Asignar color dinámico
                     if item['categoria'] == "Evento": 
-                        color_tema = "#6366f1" # Indigo para eventos fijos
+                        color_tema = "#6366f1" 
                     else:
-                        # Si es reserva, va rotando por la paleta de colores según su posición
                         color_tema = paleta_colores[i % len(paleta_colores)]
                     
                     card_html = f"""
@@ -185,7 +202,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     """
                     st.markdown(card_html, unsafe_allow_html=True)
         except Exception as e:
-            st.error(f"Error técnico al consultar cronograma de hoy: {e}")
+            st.error(f"Error técnico al consultar cronograma: {e}")
     
     with col_ann:
         st.markdown("<div class='tv-sub-header'>🚨 Avisos Urgentes</div>", unsafe_allow_html=True)
@@ -214,13 +231,11 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     delay_ann = i * 0.15
                     
                     if ann['prioridad'] == 1:
-                        # Alta prioridad: Rojo con animación de latido
                         bg_color = "#fef2f2"
                         border_color = "#ef4444"
                         title_color = "#dc2626"
                         animacion_extra = "pulseAlert 2s infinite;"
                     else:
-                        # Prioridad media: Naranja/Amarillo
                         bg_color = "#fffbeb"
                         border_color = "#f59e0b"
                         title_color = "#d97706"
@@ -239,8 +254,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         except Exception as e:
             st.error(f"Error técnico al consultar anuncios: {e}")
     
-    st.stop() # Prevent login from showing
-# === FIN DEL REEMPLAZO PANTALLA PÚBLICA ===
+    st.stop()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 0) CONFIGURACIÓN GLOBAL Y ESTILO
