@@ -20,6 +20,40 @@ import urllib.parse
 import zipfile
 import google.generativeai as genai
 
+
+# --- CONFIGURACIÓN DE GEMINI ---
+# Usamos st.secrets para que no te vuelvan a bloquear la llave
+try:
+    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=GEMINI_API_KEY)
+    
+    # AQUÍ ESTÁ LA MAGIA: Usamos el nuevo modelo que tu llave sí reconoce
+    model = genai.GenerativeModel('gemini-2.5-flash') 
+    
+except KeyError:
+    st.error("🚨 Error: No se encontró la API Key en los secretos de Streamlit.")
+    st.stop()
+
+# --- TU FUNCIÓN PARA LLAMAR A LA IA ---
+def consultar_gemini(prompt):
+    try:
+        response = model.generate_content(prompt) 
+        return response.text
+    except Exception as e:
+        return f"Error con la IA: {e}"
+        st.header("💬 Asistente Técnico IA")
+
+# ------------------------------------------------------------------
+# CONFIGURACIÓN SUPABASE (NUEVO MOTOR DE BASE DE DATOS)
+# ------------------------------------------------------------------
+from supabase import create_client, Client, ClientOptions
+
+URL_SUPABASE = "https://zxzpaubemwpwgvswvwjh.supabase.co"
+CLAVE_SUPABASE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4enBhdWJlbXdwd2d2c3d2d2poIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Mzg1NzMzMiwiZXhwIjoyMDg5NDMzMzMyfQ.CGWbTQprQaAhYruqlIkmMAMhx7EzD9hJ8QnJ7wCBxto"
+
+opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
+supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
+
 # ==============================================================================
 # 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO SIN LOGIN)
 # ==============================================================================
@@ -190,39 +224,6 @@ if st.session_state.ver_pantalla_tv:
 # ==============================================================================
 
 
-
-# --- CONFIGURACIÓN DE GEMINI ---
-# Usamos st.secrets para que no te vuelvan a bloquear la llave
-try:
-    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-    genai.configure(api_key=GEMINI_API_KEY)
-    
-    # AQUÍ ESTÁ LA MAGIA: Usamos el nuevo modelo que tu llave sí reconoce
-    model = genai.GenerativeModel('gemini-2.5-flash') 
-    
-except KeyError:
-    st.error("🚨 Error: No se encontró la API Key en los secretos de Streamlit.")
-    st.stop()
-
-# --- TU FUNCIÓN PARA LLAMAR A LA IA ---
-def consultar_gemini(prompt):
-    try:
-        response = model.generate_content(prompt) 
-        return response.text
-    except Exception as e:
-        return f"Error con la IA: {e}"
-        st.header("💬 Asistente Técnico IA")
-
-# ------------------------------------------------------------------
-# CONFIGURACIÓN SUPABASE (NUEVO MOTOR DE BASE DE DATOS)
-# ------------------------------------------------------------------
-from supabase import create_client, Client, ClientOptions
-
-URL_SUPABASE = "https://zxzpaubemwpwgvswvwjh.supabase.co"
-CLAVE_SUPABASE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4enBhdWJlbXdwd2d2c3d2d2poIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Mzg1NzMzMiwiZXhwIjoyMDg5NDMzMzMyfQ.CGWbTQprQaAhYruqlIkmMAMhx7EzD9hJ8QnJ7wCBxto"
-
-opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
-supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 0) CONFIGURACIÓN GLOBAL Y ESTILO
