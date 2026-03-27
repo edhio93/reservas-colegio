@@ -2063,16 +2063,21 @@ elif page == "Modo TV":
                 
                 if st.form_submit_button("Guardar Evento", use_container_width=True):
                     if titulo_ev.strip():
-                        supabase.table("eventos_tv").insert({
-                            "titulo": titulo_ev, 
-                            "descripcion": desc_ev, 
-                            "fecha_evento": str(fecha_ev), 
-                            "categoria": cat_ev, 
-                            "is_active": True
-                        }).execute()
-                        st.success("Evento guardado. Aparecerá en la TV pública.")
-                        time.sleep(1)
-                        st.rerun()
+                        try:
+                            # Se usa .isoformat() para evitar el APIError en PostgreSQL
+                            supabase.table("eventos_tv").insert({
+                                "titulo": titulo_ev.strip(), 
+                                "descripcion": desc_ev.strip(), 
+                                "fecha_evento": fecha_ev.isoformat(), 
+                                "categoria": cat_ev, 
+                                "is_active": True
+                            }).execute()
+                            
+                            st.success("Evento guardado. Aparecerá en la TV pública.")
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al guardar en la base de datos: {e}")
                     else:
                         st.error("El título es obligatorio.")
 
@@ -2106,34 +2111,75 @@ elif page == "Modo TV":
                     if titulo_an.strip():
                         import datetime 
                         
-                        if tipo_limite == "⏱️ Duración rápida (Minutos)":
-                            tiempo_final = dt_datetime.now() + datetime.timedelta(minutes=minutos_an)
-                            exp_dt_full = tiempo_final.strftime("%Y-%m-%d %H:%M:%S")
-                        else:
-                            exp_dt_full = dt_datetime.combine(expira_fecha, expira_hora).strftime("%Y-%m-%d %H:%M:%S")
+                        try:
+                            # Cálculo de horas y formato ISO para evitar errores en DB
+                            if tipo_limite == "⏱️ Duración rápida (Minutos)":
+                                tiempo_final = dt_datetime.now() + datetime.timedelta(minutes=minutos_an)
+                                exp_dt_full = tiempo_final.isoformat()
+                            else:
+                                exp_dt_full = dt_datetime.combine(expira_fecha, expira_hora).isoformat()
+                                
+                            supabase.table("anuncios_urgentes").insert({
+                                "titulo": titulo_an.strip(), 
+                                "descripcion": desc_an.strip(), 
+                                "prioridad": int(prio_an[1]), 
+                                "expiracion": exp_dt_full, 
+                                "is_active": True
+                            }).execute()
                             
-                        supabase.table("anuncios_urgentes").insert({
-                            "titulo": titulo_an, 
-                            "descripcion": desc_an, 
-                            "prioridad": prio_an[1], 
-                            "expiracion": exp_dt_full, 
-                            "is_active": True
-                        }).execute()
-                        
-                        st.success("Anuncio publicado en la TV.")
-                        time.sleep(1)
-                        st.rerun()
+                            st.success("Anuncio publicado en la TV.")
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al guardar el anuncio: {e}")
                     else:
                         st.error("El título es obligatorio.")
 
+    # --- NUEVA SECCIÓN: GESTIÓN DE ELIMINACIÓN ---
+    st.markdown("---")
+    st.subheader("🗑️ Gestión Rápida (Eliminar de la TV)")
+    st.info("Utiliza estos selectores para dar de baja un Evento o Anuncio inmediatamente. Desaparecerán de la pantalla de TV al instante.")
+    
+    col_del1, col_del2 = st.columns(2)
+    with col_del1:
+        with st.container(border=True):
+            st.markdown("**Borrar Evento TV**")
+            res_ev = supabase.table("eventos_tv").select("id, titulo, fecha_evento").eq("is_active", True).execute().data
+            if res_ev:
+                ev_dict = {f"{e['titulo']} ({e['fecha_evento']})": e['id'] for e in res_ev}
+                ev_sel = st.selectbox("Seleccionar Evento:", ["-- Seleccionar --"] + list(ev_dict.keys()), key="del_ev")
+                if st.button("🚫 Eliminar Evento", use_container_width=True) and ev_sel != "-- Seleccionar --":
+                    supabase.table("eventos_tv").update({"is_active": False}).eq("id", ev_dict[ev_sel]).execute()
+                    st.success("Evento eliminado exitosamente.")
+                    time.sleep(1)
+                    st.rerun()
+            else:
+                st.write("No hay eventos activos creados en TV.")
+                
+    with col_del2:
+        with st.container(border=True):
+            st.markdown("**Borrar Anuncio Urgente**")
+            res_an = supabase.table("anuncios_urgentes").select("id, titulo").eq("is_active", True).execute().data
+            if res_an:
+                an_dict = {a['titulo']: a['id'] for a in res_an}
+                an_sel = st.selectbox("Seleccionar Anuncio:", ["-- Seleccionar --"] + list(an_dict.keys()), key="del_an")
+                if st.button("🚫 Eliminar Anuncio", use_container_width=True) and an_sel != "-- Seleccionar --":
+                    supabase.table("anuncios_urgentes").update({"is_active": False}).eq("id", an_dict[an_sel]).execute()
+                    st.success("Anuncio eliminado exitosamente.")
+                    time.sleep(1)
+                    st.rerun()
+            else:
+                st.write("No hay anuncios urgentes activos.")
+
     # --- SECCIÓN INFERIOR: TABLA DE REGISTROS ---
     st.markdown("---")
-    st.subheader("📋 Registros Actuales (Eventos TV y Enlaces)")
+    st.subheader("📋 Tabla General de Registros")
     
     try:
         hoy_str = dt.date.today().strftime("%Y-%m-%d")
-        res_eventos = supabase.table("eventos_tv").select("id, categoria, titulo, descripcion, fecha_evento, is_active").gte("fecha_evento", hoy_str).execute()
         
+        # 1. Obtenemos Eventos TV Activos
+        res_eventos = supabase.table("eventos_tv").select("id, categoria, titulo, descripcion, fecha_evento, is_active").gte("fecha_evento", hoy_str).eq("is_active", True).execute()
         datos_eventos_raw = res_eventos.data if res_eventos.data else []
         df_eventos = pd.DataFrame(datos_eventos_raw)
         
@@ -2149,6 +2195,7 @@ elif page == "Modo TV":
         else:
             df_eventos = pd.DataFrame(columns=["id", "Categoría", "Título", "Descripción", "Fecha Evento", "Activo", "Origen"])
 
+        # 2. Obtenemos Reservas / Enlaces
         res_enlaces = supabase.table("reservas").select("id, fecha, profesores(nombre), recursos(nombre), cursos(nombre), observaciones").gte("fecha", hoy_str).execute()
         
         datos_enlaces = []
@@ -2177,7 +2224,7 @@ elif page == "Modo TV":
             df_combinado = df_combinado.sort_values(by="Fecha Evento")
             
             st.dataframe(
-                df_combinado[["Origen", "Categoría", "Título", "Descripción", "Fecha Evento", "Activo"]], 
+                df_combinado[["Origen", "Categoría", "Título", "Descripción", "Fecha Evento"]], 
                 use_container_width=True,
                 hide_index=True
             )
