@@ -71,14 +71,12 @@ from streamlit_autorefresh import st_autorefresh
 # ==============================================================================
 if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     
-    # === BOTONES SUPERIORES (VOLVER Y PANTALLA COMPLETA) ===
     col_btn1, col_btn2, _ = st.columns([1.5, 1.5, 5])
     with col_btn1:
         if st.button("🔙 Volver al Login", use_container_width=True):
             st.session_state.ver_pantalla_tv = False
             st.rerun()
     with col_btn2:
-        # Botón HTML Inyectado para forzar Pantalla Completa en el navegador
         components.html(
             """
             <style>
@@ -108,10 +106,8 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             height=40
         )
 
-    # === AUTO-REFRESCO DE 30 SEGUNDOS ===
     st_autorefresh(interval=30000, limit=None, key="tv_refresh_timer")
     
-    # === CARGAR LOGO TV ===
     ruta_logo = "logotv.png"
     logo_src_html = ""
     if os.path.exists(ruta_logo):
@@ -121,7 +117,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     else:
         logo_src_html = "<i class='ph-fill ph-airplane-landing header-logo-fallback'></i>"
 
-    # === LÓGICA DE FECHA EN ESPAÑOL ===
     now_dt = dt_datetime.now()
     hoy_str = now_dt.strftime("%Y-%m-%d")
 
@@ -129,7 +124,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     meses_es = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
     fecha_es_formateada = f"{dias_es[now_dt.weekday()]}, {now_dt.day} de {meses_es[now_dt.month - 1]} de {now_dt.year}"
 
-    # === ESTILOS CSS AESTHETIC ===
     aesthetic_style = """            
     <style>
         @import url('https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css');
@@ -139,7 +133,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         [data-testid="stToolbar"] { display: none; }
         [data-testid="stSidebar"] { display: none; }
         
-        /* CABECERA GRIS CLARO */
         .tv-header-container { 
             background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
             color: #0f172a; padding: 15px 25px 0 25px; border-radius: 20px; 
@@ -156,18 +149,15 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         .header-status { display: flex; align-items: center; color: #475569; }
         .status-icon { margin-right: 8px; font-size: 1.3rem; color: #10b981; }
         
-        /* BARRITA DE PROGRESO DE 30 SEGUNDOS */
         .progress-container { width: 100%; height: 6px; background-color: #cbd5e1; }
         .progress-bar { height: 100%; background-color: #3b82f6; width: 0%; animation: loadBar 30s linear infinite; }
         @keyframes loadBar { 0% { width: 0%; } 100% { width: 100%; } }
         
         .tv-sub-header { color: #1e293b; font-weight: 800; font-size: 1.6rem; margin-top: 5px; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;}
         
-        /* ANIMACIONES DE ENTRADA FIJA Y ORDENADA */
         @keyframes cascadeIn { 0% { opacity: 0; transform: translateY(20px) scale(0.98); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
         @keyframes pulseAlert { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 
-        /* TARJETAS DEL CRONOGRAMA */
         .block-card { padding: 22px; border-radius: 16px; border-left: 8px solid; margin-bottom: 18px; background-color: white; box-shadow: 0 6px 15px rgba(0,0,0,0.05); }
         .block-title { font-weight: 700; color: #0f172a; font-size: 1.35rem; margin-bottom: 8px; text-transform: uppercase;}
         .block-info-row { display: flex; gap: 20px; align-items: center; margin-top: 12px; font-size: 1rem;}
@@ -181,7 +171,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         .icon-hora { color: #60a5fa; margin-right: 7px; font-size: 1.1rem;} 
         .icon-categoria { color: #818cf8; margin-left: 10px; margin-right: 7px;} 
 
-        /* CONTENEDOR Y TARJETAS DE AVISOS */
         .announcements-container { background-color: white; border-radius: 20px; padding: 25px; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.03); height: 100%; }
         .announcement-card { padding: 20px; border-radius: 16px; border: 1px solid #e2e8f0; margin-bottom: 18px; border-left: 6px solid;}
         .announcement-title { font-weight: 700; margin-bottom: 7px; font-size: 1.2rem; text-transform: uppercase;}
@@ -190,7 +179,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     """
     st.markdown(aesthetic_style, unsafe_allow_html=True) 
 
-    # === DIBUJAR CABECERA ===
     st.markdown(f"""
         <div class="tv-header-container">
             <div class="header-content-layout">
@@ -211,7 +199,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     
     col_main, col_ann = st.columns([2.5, 1], gap="large")
     
-    # ================== COLUMNA IZQUIERDA: CRONOGRAMA ==================
     with col_main:
         st.markdown("<div class='tv-sub-header'>⏱️ Cronograma de Hoy</div>", unsafe_allow_html=True)
         
@@ -248,7 +235,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 
                 for i, item in enumerate(events_hoy_list):
                     color_tema = "#6366f1" if item['categoria'] == "Evento" else paleta_colores[i % len(paleta_colores)]
-                    delay = i * 0.15 # Efecto Cascada
+                    delay = i * 0.15 
                     
                     info_row_html = ""
                     if item.get("profesor") or item.get("observaciones"):
@@ -259,11 +246,9 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                             info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-clipboard-text info-icon icon-observaciones'></i> {item['observaciones']}</div>"
                         info_row_html += "</div>"
                     
-                    # Aquí definimos el ícono de la hora correctamente
                     hora_icon_html = "<i class='ph-fill ph-clock icon-hora'></i>" if item['categoria'] != "Evento" else "<i class='ph-fill ph-star icon-hora'></i>"
                     desc_text = item.get('descripcion', '')
                     
-                    # Armamos la tarjeta
                     html_cronograma += (
                         f"<div class='block-card' style='border-left-color: {color_tema}; animation: cascadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; animation-delay: {delay}s; opacity: 0;'>"
                         f"<div class='block-title' style='color: {color_tema};'>{item['titulo']}</div>"
@@ -272,6 +257,58 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                         f"<div class='block-hora-pill'>{hora_icon_html} <span>{item['display_hora']}</span> <i class='ph-fill ph-tag icon-categoria'></i> <span>{item['categoria']}</span></div>"
                         f"</div>"
                     )
+                st.markdown(html_cronograma, unsafe_allow_html=True)
+                
+        except Exception as e:
+            st.error(f"Error técnico al consultar cronograma: {e}")
+    
+    with col_ann:
+        st.markdown("<div class='tv-sub-header'>🚨 Avisos Urgentes</div>", unsafe_allow_html=True)
+        
+        try:
+            now = dt_datetime.now()
+            ann_data = supabase.table("anuncios_urgentes").select("id, titulo, descripcion, prioridad, expiracion").eq("is_active", True).execute().data
+            
+            active_ann = []
+            for ann in ann_data:
+                try:
+                    exp_dt = pd.to_datetime(ann['expiracion']).tz_localize(None)
+                    if exp_dt > now: 
+                        active_ann.append(ann)
+                except Exception as e:
+                    pass
+            
+            active_ann = sorted(active_ann, key=lambda x: x['prioridad'])
+            
+            html_anuncios = '<div class="announcements-container">'
+            
+            if not active_ann:
+                html_anuncios += "<p style='color: #64748b; text-align:center; font-style:italic; margin-top: 10px;'>No hay avisos en este momento.</p>"
+            else:
+                for i, ann in enumerate(active_ann):
+                    delay_ann = i * 0.15 
+                    
+                    if ann['prioridad'] == 1:
+                        bg_color = "#fef2f2"; border_color = "#ef4444"; title_color = "#dc2626"
+                        animacion_extra = "animation: pulseAlert 2s infinite;"
+                    else:
+                        bg_color = "#fffbeb"; border_color = "#f59e0b"; title_color = "#d97706"
+                        animacion_extra = ""
+                    
+                    html_anuncios += (
+                        f"<div class='announcement-card' style='border-left-color: {border_color}; background-color: {bg_color}; {animacion_extra} animation-delay: {delay_ann}s; opacity: 0;'>"
+                        f"<div class='announcement-title' style='color: {title_color};'>{ann['titulo']}</div>"
+                        f"<div class='announcement-desc'>{ann['descripcion']}</div>"
+                        f"</div>"
+                    )
+            
+            html_anuncios += '</div>'
+            st.markdown(html_anuncios, unsafe_allow_html=True)
+            
+        except Exception as e:
+            st.error(f"Error técnico al consultar anuncios: {e}")
+    
+    st.stop()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 0) CONFIGURACIÓN GLOBAL Y ESTILO
