@@ -71,107 +71,115 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         [data-testid="stSidebar"] { display: none; }
         
         /* Title Banners - Colorful Gradient Aesthetic */
-        .tv-header { background: linear-gradient(90deg, #38bdf8 0%, #818cf8 100%); color: white; padding: 25px; border-radius: 15px; text-align: center; margin-bottom: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .tv-header h1 { margin: 0; font-size: 2.5rem; font-weight: 700; }
+        .tv-header { background: linear-gradient(90deg, #38bdf8 0%, #8b5cf6 100%); color: white; padding: 25px; border-radius: 15px; text-align: center; margin-bottom: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .tv-header h1 { margin: 0; font-size: 2.5rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
         .tv-header h3 { margin: 5px 0 0 0; font-weight: 500; font-size: 1.2rem; }
         
-        .tv-sub-header { color: #1e293b; font-weight: 600; font-size: 1.5rem; margin-top: 20px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; }
+        .tv-sub-header { color: #1e293b; font-weight: 700; font-size: 1.5rem; margin-top: 10px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1.5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;}
         
-        /* Schedule Blocks (Rounded Cards in list view for dynamic feel) */
-        .block-card { padding: 18px; border-radius: 12px; border-left: 7px solid; margin-bottom: 12px; background-color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: transform 0.2s; }
-        .block-card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .block-title { font-weight: 600; color: #0f172a; font-size: 1.2rem; margin-bottom: 7px; }
-        .block-info { color: #64748b; font-size: 0.95rem; }
+        /* Animación CASCADA (Efecto Aeropuerto) */
+        @keyframes cascadeIn {
+            0% { opacity: 0; transform: translateY(40px) scale(0.95); }
+            100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
         
-        /* Announcements Section on Right (Sidebar Card) */
-        .announcements-column { background-color: white; border-radius: 15px; padding: 25px; border: 1px solid #e2e8f0; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        /* Animación LATIDO de Emergencia (Anuncios Rojos) */
+        @keyframes pulseAlert {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        /* Schedule Blocks */
+        .block-card { padding: 18px; border-radius: 12px; border-left: 8px solid; margin-bottom: 14px; background-color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .block-title { font-weight: 700; color: #0f172a; font-size: 1.25rem; margin-bottom: 5px; text-transform: uppercase;}
+        .block-info { color: #475569; font-size: 1rem; }
         
-        /* Announcements Cards (Colorful borders based on priority) */
-        .announcement-card { padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 15px; border-left: 5px solid; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        .announcement-title { font-weight: 600; margin-bottom: 5px; font-size: 1.1rem; }
-        .announcement-desc { font-size: 0.95rem; }
+        /* Announcements Section */
+        .announcements-column { background-color: white; border-radius: 15px; padding: 25px; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        .announcement-card { padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 15px; border-left: 6px solid; }
+        .announcement-title { font-weight: 700; margin-bottom: 5px; font-size: 1.15rem; text-transform: uppercase;}
+        .announcement-desc { font-size: 1rem; color: #334155; }
     </style>
     """
-    st.markdown(aesthetic_style, unsafe_allow_html=True) # Apply light theme
+    st.markdown(aesthetic_style, unsafe_allow_html=True) 
 
     # Obtenemos la hora actual y la fecha de hoy
     now_dt = dt_datetime.now()
-    hoy_str = now_dt.strftime("%Y-%m-%d") # Filtro principal
+    hoy_str = now_dt.strftime("%Y-%m-%d") 
     
-    # === NUEVO: AUTO-REFRESCO (cada 60 segundos) ===
-    st.markdown('<meta http-equiv="refresh" content="60">', unsafe_allow_html=True)
+    # === ACTUALIZACIÓN CADA 30 SEGUNDOS ===
+    st.markdown('<meta http-equiv="refresh" content="30">', unsafe_allow_html=True)
     
-    # 1. Header Banner Aesthetic
+    # Header Banner
     st.markdown(f"""
         <div class="tv-header">
-            <h1>📺 ACCESO PÚBLICO - HORARIOS Y RESERVAS DEL DÍA</h1>
-            <h3>{now_dt.strftime("%A, %d de %B, %Y")} | 🔄 Actualizado {now_dt.strftime("%H:%M")} | <a href='/' target='_self' style='color: white; text-decoration: underline;'>Volver</a></h3>
+            <h1>✈️ PANEL DE INFORMACIÓN Y HORARIOS</h1>
+            <h3>{now_dt.strftime("%A, %d de %B, %Y")} | 🔄 Actualizado {now_dt.strftime("%H:%M:%S")} | <a href='/' target='_self' style='color: white; text-decoration: underline;'>Volver al Login</a></h3>
         </div>
     """, unsafe_allow_html=True)
     
     col_main, col_ann = st.columns([2.5, 1], gap="large")
     
     with col_main:
-        # 2. Daily Schedule Section
         st.markdown("<div class='tv-sub-header'>⏱️ Cronograma de Hoy</div>", unsafe_allow_html=True)
         
         try:
-            # === CORRECCIÓN 1: Consulta limpia sin 'asignaturas' ni columnas inexistentes ===
             res_tv_hoy = supabase.table("eventos_tv").select("id, titulo, descripcion, categoria").eq("fecha_evento", hoy_str).eq("is_active", True).execute().data
             res_reservas_hoy = supabase.table("reservas").select("id, profesores(nombre), recursos(nombre), cursos(nombre), observaciones").eq("fecha", hoy_str).execute().data
             
             events_hoy_list = []
             
-            # Procesamos eventos de TV (Salen de primeros)
             for ev in res_tv_hoy:
                 events_hoy_list.append({
                     "hora_sort": "99:99", 
-                    "display_hora": "🗓️ Evento Principal",
+                    "display_hora": "🗓️ TODO EL DÍA",
                     "titulo": ev["titulo"],
                     "descripcion": ev.get("descripcion", ""),
                     "categoria": ev.get("categoria", "Evento")
                 })
                 
-            # Procesamos las reservas de los profesores
             for r in res_reservas_hoy:
-                prof = r.get("profesores", {}).get("nombre", "Docente S/N") if r.get("profesores") else "Docente S/N"
-                rec = r.get("recursos", {}).get("nombre", "Recurso S/N") if r.get("recursos") else "Recurso S/N"
-                curso = r.get("cursos", {}).get("nombre", "Curso S/N") if r.get("cursos") else "Curso S/N"
+                prof = r.get("profesores", {}).get("nombre", "Docente") if r.get("profesores") else "Docente"
+                rec = r.get("recursos", {}).get("nombre", "Recurso") if r.get("recursos") else "Recurso"
+                curso = r.get("cursos", {}).get("nombre", "Curso") if r.get("cursos") else "Curso"
                 obs = r.get("observaciones", "")
                 
-                # Como quitamos la hora específica para evitar errores, lo listamos como Reserva
                 events_hoy_list.append({
-                    "hora_sort": "10:00", # Orden estándar
-                    "display_hora": "⏱️ Reserva",
-                    "titulo": f"{rec} - {curso}",
-                    "descripcion": f"Prof. {prof}. {obs}",
+                    "hora_sort": "10:00", 
+                    "display_hora": "⏱️ RESERVA",
+                    "titulo": f"{rec} ➔ {curso}",
+                    "descripcion": f"👤 Prof. {prof} | 📝 {obs}",
                     "categoria": "Clase / Uso Recurso"
                 })
                 
-            # Combinamos todo
             final_hoy_list = events_hoy_list 
 
             if not final_hoy_list:
-                st.info(f"No hay eventos ni reservas registradas para hoy.")
+                st.info("No hay eventos ni reservas registradas para hoy.")
             else:
-                for item in final_hoy_list:
-                    # Dibujamos las tarjetas con colores según tipo
-                    border_color = "#38bdf8" 
-                    text_style = "color: #38bdf8; font-weight: 500;"
+                # Paleta de colores Aesthetic para ir alternando
+                paleta_colores = ["#0ea5e9", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#14b8a6"]
+                
+                # Enumerate nos da el índice (i) para hacer el retraso de la animación
+                for i, item in enumerate(final_hoy_list):
                     
+                    # Calcular el retraso: cada tarjeta tarda 0.15 segundos más en aparecer que la anterior
+                    delay = i * 0.15 
+                    
+                    # Asignar color dinámico
                     if item['categoria'] == "Evento": 
-                        border_color = "#818cf8" 
-                        text_style = "color: #818cf8; font-weight: 500;"
-                    if item['categoria'] == "Clase / Uso Recurso": 
-                        border_color = "#22c55e" 
-                        text_style = "color: #22c55e; font-weight: 500;"
+                        color_tema = "#6366f1" # Indigo para eventos fijos
+                    else:
+                        # Si es reserva, va rotando por la paleta de colores según su posición
+                        color_tema = paleta_colores[i % len(paleta_colores)]
                     
                     card_html = f"""
-                        <div class="block-card" style="border-left-color: {border_color};">
-                            <div class="block-title">{item['titulo']}</div>
+                        <div class="block-card" style="border-left-color: {color_tema}; animation: cascadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; animation-delay: {delay}s; opacity: 0;">
+                            <div class="block-title" style="color: {color_tema};">{item['titulo']}</div>
                             <div class="block-info">{item.get('descripcion', '')}</div>
-                            <div class="block-info" style="margin-top: 8px; {text_style}">
-                                <span>{item['display_hora']}</span> | <span>🔖 {item['categoria']}</span>
+                            <div class="block-info" style="margin-top: 10px; font-weight: 600; color: #64748b; background: #f1f5f9; display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 0.85rem;">
+                                {item['display_hora']} • {item['categoria']}
                             </div>
                         </div>
                     """
@@ -180,8 +188,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             st.error(f"Error técnico al consultar cronograma de hoy: {e}")
     
     with col_ann:
-        # 3. Urgent Announcements Section
-        st.markdown("<div class='tv-sub-header'>🚨 Anuncios</div>", unsafe_allow_html=True)
+        st.markdown("<div class='tv-sub-header'>🚨 Avisos Urgentes</div>", unsafe_allow_html=True)
         
         try:
             now = dt_datetime.now()
@@ -193,32 +200,41 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     exp_dt = dt_datetime.strptime(ann['expiracion'], "%Y-%m-%d %H:%M:%S")
                     if exp_dt > now: 
                         active_ann.append(ann)
-                except (ValueError, TypeError):
+                except:
                     pass
             
             active_ann = sorted(active_ann, key=lambda x: x['prioridad'])
             
-            # === CORRECCIÓN 2: Uso de HTML nativo en lugar del st.container que fallaba ===
             html_anuncios = '<div class="announcements-column">'
             
             if not active_ann:
-                html_anuncios += "<p style='color: #64748b;'>No hay anuncios urgentes activos en este momento.</p>"
+                html_anuncios += "<p style='color: #64748b; text-align:center; font-style:italic;'>No hay avisos en este momento.</p>"
             else:
-                for ann in active_ann:
-                    bg_color = "#fff8f8" if ann['prioridad'] == 1 else "#fffbeb"
-                    border_color = "#ef4444" if ann['prioridad'] == 1 else "#f59e0b"
-                    title_color = "#b91c1c" if ann['prioridad'] == 1 else "#b45309"
-                    desc_color = "#991b1b" if ann['prioridad'] == 1 else "#a16207"
+                for i, ann in enumerate(active_ann):
+                    delay_ann = i * 0.15
+                    
+                    if ann['prioridad'] == 1:
+                        # Alta prioridad: Rojo con animación de latido
+                        bg_color = "#fef2f2"
+                        border_color = "#ef4444"
+                        title_color = "#dc2626"
+                        animacion_extra = "pulseAlert 2s infinite;"
+                    else:
+                        # Prioridad media: Naranja/Amarillo
+                        bg_color = "#fffbeb"
+                        border_color = "#f59e0b"
+                        title_color = "#d97706"
+                        animacion_extra = ""
                     
                     html_anuncios += f"""
-                        <div class="announcement-card" style="border-left-color: {border_color}; background-color: {bg_color};">
+                        <div class="announcement-card" style="border-left-color: {border_color}; background-color: {bg_color}; animation: cascadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards, {animacion_extra}; animation-delay: {delay_ann}s; opacity: 0;">
                             <div class="announcement-title" style="color: {title_color};">{ann["titulo"]}</div>
-                            <div class="announcement-desc" style="color: {desc_color};">{ann["descripcion"]}</div>
+                            <div class="announcement-desc">{ann["descripcion"]}</div>
                         </div>
                     """
             
-            html_anuncios += '</div>' # Cerramos la columna
-            st.markdown(html_anuncios, unsafe_allow_html=True) # Imprimimos todo de golpe
+            html_anuncios += '</div>'
+            st.markdown(html_anuncios, unsafe_allow_html=True)
             
         except Exception as e:
             st.error(f"Error técnico al consultar anuncios: {e}")
