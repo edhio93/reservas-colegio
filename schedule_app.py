@@ -65,10 +65,18 @@ import pandas as pd
 from streamlit_autorefresh import st_autorefresh
 
 # ==============================================================================
-# 📺 PANTALLA INFORMATIVA PUBLICA (MODO KIOSCO SIN LOGIN)
+# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO SIN LOGIN)
 # ==============================================================================
 if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     
+    # 1. BOTÓN NATIVO PARA VOLVER AL LOGIN (Garantizado que funciona)
+    col_btn, _ = st.columns([1, 6])
+    with col_btn:
+        if st.button("🔙 Volver al Login", use_container_width=True):
+            st.session_state.ver_pantalla_tv = False
+            st.rerun()
+
+    # 2. AUTO-REFRESCO DE 30 SEGUNDOS
     st_autorefresh(interval=30000, limit=None, key="tv_refresh_timer")
     
     # === CARGAR Y CONFIGURAR LOGO TV ===
@@ -93,6 +101,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     nombre_mes = meses_es[now_dt.month - 1]
     fecha_es_formateada = f"{nombre_dia}, {now_dt.day} de {nombre_mes} de {now_dt.year}"
 
+    # === ESTILOS CSS ===
     aesthetic_style = """            
     <style>
         @import url('https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css');
@@ -103,50 +112,70 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         [data-testid="stToolbar"] { display: none; }
         [data-testid="stSidebar"] { display: none; }
         
+        /* CABECERA GRIS CLARO AESTHETIC */
         .tv-header-container { 
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); 
-            color: white; 
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); /* Gris muy clarito y limpio */
+            color: #0f172a; /* Texto oscuro para contrastar */
             padding: 15px 25px 0 25px; 
             border-radius: 20px; 
-            margin-bottom: 30px; 
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1); 
+            margin-bottom: 25px; 
+            border: 1px solid #cbd5e1; /* Borde sutil */
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05); 
             overflow: hidden; 
             display: flex;
             flex-direction: column;
             align-items: center;
         }
 
-        .header-content-layout {
-            display: flex;
-            align-items: center; 
-            justify-content: space-between; 
-            width: 100%;
-            padding-bottom: 15px; 
-        }
+        .header-content-layout { display: flex; align-items: center; justify-content: space-between; width: 100%; padding-bottom: 15px; }
 
         .header-logo-img { height: 85px; width: auto; display: block; }
-        .header-logo-fallback { font-size: 4rem; color: #38bdf8; line-height: 1; display: block; }
+        .header-logo-fallback { font-size: 4rem; color: #64748b; line-height: 1; display: block; }
 
-        .header-info-group { display: flex; align-items: center; gap: 15px; font-size: 1.2rem; font-weight: 500; }
-        .header-divider { opacity: 0.3; font-weight: 300; font-size: 1.5rem; }
-        .header-status { display: flex; align-items: center; color: rgba(255,255,255,0.8); }
-        .status-icon { margin-right: 8px; font-size: 1.3rem; color: #22c55e; }
-        .header-link a { color: white; text-decoration: underline; transition: opacity 0.2s; }
-        .header-link a:hover { opacity: 0.8; }
+        .header-info-group { display: flex; align-items: center; gap: 15px; font-size: 1.2rem; font-weight: 600; color: #1e293b; }
+        .header-divider { opacity: 0.3; font-weight: 300; font-size: 1.5rem; color: #94a3b8; }
+        .header-status { display: flex; align-items: center; color: #475569; }
+        .status-icon { margin-right: 8px; font-size: 1.3rem; color: #10b981; }
         
-        .progress-container { width: 100%; height: 6px; background-color: rgba(255,255,255,0.15); }
-        .progress-bar { height: 100%; background-color: #ffffff; width: 0%; animation: loadBar 30s linear infinite; }
+        /* BARRITA DE PROGRESO DE 30 SEGUNDOS */
+        .progress-container { width: 100%; height: 6px; background-color: #cbd5e1; }
+        .progress-bar { height: 100%; background-color: #3b82f6; width: 0%; animation: loadBar 30s linear infinite; }
         
         @keyframes loadBar { 0% { width: 0%; } 100% { width: 100%; } }
         
-        .tv-sub-header { color: #1e293b; font-weight: 800; font-size: 1.6rem; margin-top: 5px; margin-bottom: 25px; text-transform: uppercase; letter-spacing: 1.5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px;}
+        .tv-sub-header { color: #1e293b; font-weight: 800; font-size: 1.6rem; margin-top: 5px; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;}
         
-        @keyframes cascadeIn { 0% { opacity: 0; transform: translateY(40px) scale(0.95); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+        /* === EFECTO DE SCROLL AEROPUERTO (DINÁMICO) === */
+        .scroll-viewport {
+            height: 60vh; /* Altura de la vista */
+            overflow: hidden; /* Oculta lo que se sale del marco */
+            position: relative;
+            /* Máscara que difumina la parte superior e inferior para que las tarjetas aparezcan suavemente */
+            mask-image: linear-gradient(to bottom, transparent, black 3%, black 97%, transparent);
+            -webkit-mask-image: linear-gradient(to bottom, transparent, black 3%, black 97%, transparent);
+        }
+        
+        .scroll-track {
+            animation: scrollUp 30s linear infinite; /* Sincronizado a los 30s de la barrita */
+            display: flex;
+            flex-direction: column;
+            padding-top: 20px;
+        }
+
+        /* Hace que se pause si alguien pone el mouse encima */
+        .scroll-viewport:hover .scroll-track { animation-play-state: paused; }
+
+        @keyframes scrollUp { 
+            0% { transform: translateY(60vh); } /* Empieza abajo, fuera de vista */
+            100% { transform: translateY(-100%); } /* Termina arriba, fuera de vista */
+        }
+        
+        /* LATIDO PARA ALERTAS ROJAS */
         @keyframes pulseAlert { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 
-        .block-card { padding: 22px; border-radius: 16px; border-left: 8px solid; margin-bottom: 18px; background-color: white; box-shadow: 0 6px 15px rgba(0,0,0,0.03); opacity: 0;}
+        /* TARJETAS DEL CRONOGRAMA AESTHETIC */
+        .block-card { padding: 22px; border-radius: 16px; border-left: 8px solid; margin-bottom: 18px; background-color: white; box-shadow: 0 6px 15px rgba(0,0,0,0.05); }
         .block-title { font-weight: 700; color: #0f172a; font-size: 1.35rem; margin-bottom: 8px; text-transform: uppercase;}
-        
         .block-info-row { display: flex; gap: 20px; align-items: center; margin-top: 12px; font-size: 1rem;}
         .block-info-item { display: flex; align-items: center; color: #64748b; }
         
@@ -158,14 +187,14 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         .icon-hora { color: #60a5fa; margin-right: 7px; font-size: 1.1rem;} 
         .icon-categoria { color: #818cf8; margin-left: 10px; margin-right: 7px;} 
 
-        .announcements-column { background-color: white; border-radius: 20px; padding: 30px; border: 1px solid #e2e8f0; box-shadow: 0 6px 15px rgba(0,0,0,0.03); }
-        .announcement-card { padding: 20px; border-radius: 16px; border: 1px solid #e2e8f0; margin-bottom: 18px; border-left: 6px solid; opacity: 0;}
+        .announcement-card { padding: 20px; border-radius: 16px; border: 1px solid #e2e8f0; margin-bottom: 18px; border-left: 6px solid;}
         .announcement-title { font-weight: 700; margin-bottom: 7px; font-size: 1.2rem; text-transform: uppercase;}
         .announcement-desc { font-size: 1rem; color: #334155; line-height: 1.5; }
     </style>
     """
     st.markdown(aesthetic_style, unsafe_allow_html=True) 
 
+    # === DIBUJAR CABECERA ===
     st.markdown(f"""
         <div class="tv-header-container">
             <div class="header-content-layout">
@@ -178,10 +207,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     <div class="header-status">
                         <i class="ph-fill ph-check-circle status-icon"></i> Actualizando en tiempo real
                     </div>
-                    <div class="header-divider">|</div>
-                    <div class="header-link">
-                        <a href='/' target='_self'>Volver al Login</a>
-                    </div>
                 </div>
             </div>
             <div class="progress-container"><div class="progress-bar"></div></div>
@@ -190,6 +215,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     
     col_main, col_ann = st.columns([2.5, 1], gap="large")
     
+    # ================== COLUMNA IZQUIERDA: CRONOGRAMA ==================
     with col_main:
         st.markdown("<div class='tv-sub-header'>⏱️ Cronograma de Hoy</div>", unsafe_allow_html=True)
         
@@ -223,19 +249,16 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     "categoria": "Clase / Uso Recurso"
                 })
                 
-            final_hoy_list = events_hoy_list 
-
-            if not final_hoy_list:
+            if not events_hoy_list:
                 st.info("No hay eventos ni reservas registradas para hoy.")
             else:
                 paleta_colores = ["#0ea5e9", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#14b8a6"]
                 
-                for i, item in enumerate(final_hoy_list):
-                    delay = i * 0.15 
-                    if item['categoria'] == "Evento": 
-                        color_tema = "#6366f1" 
-                    else:
-                        color_tema = paleta_colores[i % len(paleta_colores)]
+                # INICIO CONTENEDOR DE SCROLL DE AEROPUERTO
+                html_cronograma = '<div class="scroll-viewport"><div class="scroll-track">'
+                
+                for i, item in enumerate(events_hoy_list):
+                    color_tema = "#6366f1" if item['categoria'] == "Evento" else paleta_colores[i % len(paleta_colores)]
                     
                     info_row_html = ""
                     if item.get("profesor") or item.get("observaciones"):
@@ -249,20 +272,22 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     hora_icon_html = "<i class='ph-fill ph-clock icon-hora'></i>" if item['categoria'] != "Evento" else "<i class='ph-fill ph-star icon-hora'></i>"
                     desc_text = item.get('descripcion', '')
                     
-                    # === CORRECCIÓN AQUÍ ===
-                    # Se concatena en una sola línea lógica para que Streamlit no lo interprete como texto Markdown.
-                    card_html = (
-                        f"<div class='block-card' style='border-left-color: {color_tema}; animation: cascadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; animation-delay: {delay}s; opacity: 0;'>"
+                    html_cronograma += (
+                        f"<div class='block-card' style='border-left-color: {color_tema};'>"
                         f"<div class='block-title' style='color: {color_tema};'>{item['titulo']}</div>"
                         f"<div class='block-info' style='color: #475569;'>{desc_text}</div>"
                         f"{info_row_html}"
                         f"<div class='block-hora-pill'>{hora_icon_html} <span>{item['display_hora']}</span> <i class='ph-fill ph-tag icon-categoria'></i> <span>{item['categoria']}</span></div>"
                         f"</div>"
                     )
-                    st.markdown(card_html, unsafe_allow_html=True)
+                
+                html_cronograma += '</div></div>' # Cierra el track y el viewport
+                st.markdown(html_cronograma, unsafe_allow_html=True)
+                
         except Exception as e:
             st.error(f"Error técnico al consultar cronograma: {e}")
     
+    # ================== COLUMNA DERECHA: AVISOS URGENTES ==================
     with col_ann:
         st.markdown("<div class='tv-sub-header'>🚨 Avisos Urgentes</div>", unsafe_allow_html=True)
         
@@ -273,43 +298,39 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             active_ann = []
             for ann in ann_data:
                 try:
-                    exp_dt = dt_datetime.strptime(ann['expiracion'], "%Y-%m-%d %H:%M:%S")
+                    # NUEVO: Pandas to_datetime procesa la fecha sin importar formato, timezone o milisegundos!
+                    exp_dt = pd.to_datetime(ann['expiracion']).tz_localize(None)
                     if exp_dt > now: 
                         active_ann.append(ann)
-                except:
-                    pass
+                except Exception as e:
+                    # En caso de falla extrema, muestra el anuncio igual para no perder información
+                    active_ann.append(ann)
             
             active_ann = sorted(active_ann, key=lambda x: x['prioridad'])
             
-            html_anuncios = '<div class="announcements-column">'
-            
             if not active_ann:
-                html_anuncios += "<p style='color: #64748b; text-align:center; font-style:italic;'>No hay avisos en este momento.</p>"
+                st.markdown("<p style='color: #64748b; text-align:center; font-style:italic; padding-top:20px;'>No hay avisos en este momento.</p>", unsafe_allow_html=True)
             else:
+                # INICIO CONTENEDOR DE SCROLL PARA ANUNCIOS
+                html_anuncios = '<div class="scroll-viewport"><div class="scroll-track">'
+                
                 for i, ann in enumerate(active_ann):
-                    delay_ann = i * 0.15
-                    
                     if ann['prioridad'] == 1:
-                        bg_color = "#fef2f2"
-                        border_color = "#ef4444"
-                        title_color = "#dc2626"
-                        animacion_extra = "pulseAlert 2s infinite;"
+                        bg_color = "#fef2f2"; border_color = "#ef4444"; title_color = "#dc2626"
+                        animacion_extra = "animation: pulseAlert 2s infinite;"
                     else:
-                        bg_color = "#fffbeb"
-                        border_color = "#f59e0b"
-                        title_color = "#d97706"
+                        bg_color = "#fffbeb"; border_color = "#f59e0b"; title_color = "#d97706"
                         animacion_extra = ""
                     
-                    # Lo mismo aquí para los anuncios
                     html_anuncios += (
-                        f"<div class='announcement-card' style='border-left-color: {border_color}; background-color: {bg_color}; animation: cascadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards, {animacion_extra}; animation-delay: {delay_ann}s; opacity: 0;'>"
+                        f"<div class='announcement-card' style='border-left-color: {border_color}; background-color: {bg_color}; {animacion_extra}'>"
                         f"<div class='announcement-title' style='color: {title_color};'>{ann['titulo']}</div>"
                         f"<div class='announcement-desc'>{ann['descripcion']}</div>"
                         f"</div>"
                     )
             
-            html_anuncios += '</div>'
-            st.markdown(html_anuncios, unsafe_allow_html=True)
+                html_anuncios += '</div></div>'
+                st.markdown(html_anuncios, unsafe_allow_html=True)
             
         except Exception as e:
             st.error(f"Error técnico al consultar anuncios: {e}")
