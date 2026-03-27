@@ -25,6 +25,7 @@ from streamlit_autorefresh import st_autorefresh
 import base64
 import os
 
+st.set_page_config(page_title="Sistema de Horarios CAV", page_icon="📅", layout="wide", initial_sidebar_state="expanded")
 
 # --- CONFIGURACIÓN DE GEMINI ---
 # Usamos st.secrets para que no te vuelvan a bloquear la llave
@@ -275,8 +276,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
 # ──────────────────────────────────────────────────────────────────────────────
 # 0) CONFIGURACIÓN GLOBAL Y ESTILO
 # ──────────────────────────────────────────────────────────────────────────────
-st.set_page_config(page_title="Sistema de Horarios CAV", page_icon="📅", layout="wide", initial_sidebar_state="expanded")
-
 st.markdown("""
 <style>
     :root {
