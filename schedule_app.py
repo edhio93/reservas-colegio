@@ -179,7 +179,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     <div class="header-date">{fecha_es_formateada}</div>
                     <div class="header-divider">|</div>
                     <div class="header-status">
-                        <i class="ph-fill ph-check-circle status-icon"></i> Siguiente página en 40s
+                        <i class="ph-fill ph-check-circle status-icon"></i> Siguiente página en 30s
                     </div>
                 </div>
             </div>
