@@ -536,17 +536,20 @@ if page_param == "reporte":
         </style>
     """, unsafe_allow_html=True)
 
-    # 3. ENCABEZADO (He quitado la imagen que causaba el cuadro con el "0")
+    # 3. ENCABEZADO
     st.markdown("<h1 style='text-align: center; font-size: 50px;'>🏫</h1>", unsafe_allow_html=True)
     st.markdown("<h2 style='text-align: center; color: #1E3A8A; font-weight: 800; margin-bottom: 0px;'>🚨 Reportar Falla</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #64748b; font-size: 14px; margin-top: 5px;'>Colegio Antonio Varas - Depto. Enlaces</p>", unsafe_allow_html=True)
     st.write("") 
     
     # 4. LÓGICA DEL REPORTE
-    recurso_id = query_params.get("id", "")
+    recurso_id_str = query_params.get("id", "")
     
-    if recurso_id:
+    if recurso_id_str:
         try:
+            # ¡CLAVE AQUÍ! Convertimos el ID de texto a número entero
+            recurso_id = int(recurso_id_str)
+            
             recurso = supabase.table("recursos").select("nombre").eq("id", recurso_id).execute().data
             if recurso:
                 st.success(f"🛠️ **Equipo Identificado:** {recurso[0]['nombre']}")
@@ -567,21 +570,24 @@ if page_param == "reporte":
                             st.error("⚠️ Faltan datos: Por favor ingresa tu nombre y la descripción.")
                         else:
                             with st.spinner("Enviando reporte a Enlaces..."):
+                                # ¡CORREGIDA LA INDENTACIÓN AQUÍ!
                                 supabase.table("mantenimientos").insert({
-    "recurso_id": recurso_id,
-    "descripcion": descripcion.strip(),
-    "estado": "Reportado (Vía QR)",
-    "reportado_por": nombre_reporta.strip(),
-    "fecha": str(dt.date.today())  # <-- ¡Esta línea soluciona el error!
-}).execute()
+                                    "recurso_id": recurso_id,
+                                    "descripcion": descripcion.strip(),
+                                    "estado": "Reportado (Vía QR)",
+                                    "reportado_por": nombre_reporta.strip(),
+                                    "fecha": str(dt.date.today())  
+                                }).execute()
                                 
                                 st.success("✅ ¡Reporte enviado con éxito! Gracias por avisarnos.")
                                 st.balloons() # 🎈 ¡AQUÍ ESTÁN LOS GLOBOS! 🎈
                                 time.sleep(4) 
             else:
                 st.error("❌ El equipo que intentas reportar no existe o fue dado de baja.")
+        except ValueError:
+            st.error("❌ El enlace del QR es inválido (el ID debe ser un número).")
         except Exception as e:
-            st.error(f"Error de conexión con la base de datos: {e}")
+            st.error(f"Error técnico al guardar: {e}")
     else:
         st.error("❌ Enlace no válido. Falta el identificador del equipo.")
         
