@@ -3,7 +3,7 @@ name: Despertador de Streamlit
 
 on:
   schedule:
-    # Esto usa formato Cron. "0 10 * * *" significa que correrá todos los días a las 10:00 AM UTC (aprox 6:00 AM en Chile)
+    # Esto usa formato Cron. "0 * * * *" significa que correrá todos los días a las 10:00 AM UTC (aprox 6:00 AM en Chile)
     - cron: "0 10 * * *" 
   workflow_dispatch: # Esto te agrega un botón en GitHub para ejecutarlo manualmente cuando quieras
 
