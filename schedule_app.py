@@ -205,7 +205,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     """
     st.markdown(aesthetic_style, unsafe_allow_html=True) 
 
-   st.markdown(f"""
+    st.markdown(f"""
         <div class="tv-header-container">
             <div class="header-content-layout">
                 <div class="header-logo-section">
