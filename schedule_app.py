@@ -204,7 +204,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     </style>
     """
     st.markdown(aesthetic_style, unsafe_allow_html=True) 
-
+    clima_html = obtener_clima_vicuna()
     st.markdown(f"""
         <div class="tv-header-container">
             <div class="header-content-layout">
