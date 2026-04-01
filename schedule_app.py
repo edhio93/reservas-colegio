@@ -25,6 +25,42 @@ from streamlit_autorefresh import st_autorefresh
 import base64
 import os
 
+import requests
+
+@st.cache_data(ttl=1800) # Se actualiza cada 30 minutos para no saturar el servidor
+def obtener_clima_vicuna():
+    try:
+        # Coordenadas exactas de Vicuña, Chile
+        lat = -30.0319
+        lon = -70.7081
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
+        
+        respuesta = requests.get(url, timeout=5).json()
+        temp = respuesta["current_weather"]["temperature"]
+        codigo_clima = respuesta["current_weather"]["weathercode"]
+        
+        # Elegir el ícono Phosphor correcto según el clima
+        if codigo_clima in [0, 1]: # Despejado
+            icon = "ph-sun"
+            color = "#f59e0b" # Naranja sol
+        elif codigo_clima in [2, 3]: # Nublado parcial
+            icon = "ph-cloud-sun"
+            color = "#94a3b8" # Gris azulado
+        elif codigo_clima in [45, 48]: # Niebla
+            icon = "ph-cloud-fog"
+            color = "#cbd5e1"
+        elif codigo_clima in [51, 53, 55, 61, 63, 65, 80, 81, 82]: # Lluvia
+            icon = "ph-cloud-rain"
+            color = "#3b82f6" # Azul agua
+        else: # Otros (tormenta, nieve, etc)
+            icon = "ph-cloud"
+            color = "#64748b"
+
+        # Devolvemos el HTML listo para insertar
+        return f"<i class='ph-fill {icon}' style='color: {color}; font-size: 1.3rem; margin-right: 5px; vertical-align: middle;'></i> <span style='vertical-align: middle;'>{temp}°C</span>"
+    except Exception as e:
+        return "" # Si no hay internet, no mostramos nada para que no salga error
+
 st.set_page_config(page_title="Sistema de Horarios CAV", page_icon="📅", layout="wide", initial_sidebar_state="expanded")
 
 # --- CONFIGURACIÓN DE GEMINI ---
