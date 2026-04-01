@@ -205,27 +205,28 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     """
     st.markdown(aesthetic_style, unsafe_allow_html=True) 
     clima_html = obtener_clima_vicuna()
+
     st.markdown(f"""
-        <div class="tv-header-container">
-            <div class="header-content-layout">
-                <div class="header-logo-section">
-                    {logo_src_html}
-                </div>
-                <div class="header-info-group">
-                    <div class="header-date">{fecha_es_formateada}</div>
-                    
-                    <div class="header-divider">|</div>
-                    <div class="header-weather">
-                        {clima_html}
-                    </div>
-                    <div class="header-divider">|</div>
-                    <div class="header-status">
-                        <i class="ph-fill ph-check-circle status-icon"></i> Siguiente en 30s
-                    </div>
-                </div>
-            </div>
-            <div class="progress-container"><div class="progress-bar"></div></div>
+<div class="tv-header-container">
+    <div class="header-content-layout">
+        <div class="header-logo-section">
+            {logo_src_html}
         </div>
+        <div class="header-info-group">
+            <div class="header-date">{fecha_es_formateada}</div>
+            
+            <div class="header-divider">|</div>
+            <div class="header-weather">
+                {clima_html}
+            </div>
+            <div class="header-divider">|</div>
+            <div class="header-status">
+                <i class="ph-fill ph-check-circle status-icon"></i> Siguiente en 30s
+            </div>
+        </div>
+    </div>
+    <div class="progress-container"><div class="progress-bar"></div></div>
+</div>
     """, unsafe_allow_html=True)
     
     col_main, col_ann = st.columns([2.5, 1], gap="large")
