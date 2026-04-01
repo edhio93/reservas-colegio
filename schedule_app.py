@@ -1940,7 +1940,7 @@ elif page == "Técnicos":
             sel_res = st.selectbox("Selecciona el equipo para generar QR:", sorted(list(res_nombres.keys())))
             
             # URL de tu app (Asegúrate que sea la correcta)
-            base_url = "https://tu-app.streamlit.app/" 
+            base_url = "https://enlaces.streamlit.app/" 
             final_url = f"{base_url}?page=reporte&id={res_nombres[sel_res]}"
             
             qr = qrcode.make(final_url)
