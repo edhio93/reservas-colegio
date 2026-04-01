@@ -129,9 +129,9 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         .header-status {{ display: flex; align-items: center; color: #475569; }}
         .status-icon {{ margin-right: 8px; font-size: calc(1.3rem * var(--tv-scale)); color: #10b981; }}
         
-        /* Barra de progreso 40s */
+        /* Barra de progreso 30s */
         .progress-container {{ width: 100%; height: 6px; background-color: #cbd5e1; }}
-        .progress-bar {{ height: 100%; background-color: #3b82f6; width: 0%; animation: loadBar 40s linear infinite; }}
+        .progress-bar {{ height: 100%; background-color: #3b82f6; width: 0%; animation: loadBar 30s linear infinite; }}
         @keyframes loadBar {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
         
         /* Títulos de sección adaptados para fondo oscuro */
@@ -169,7 +169,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     """
     st.markdown(aesthetic_style, unsafe_allow_html=True) 
 
-    st.markdown(f"""
+   st.markdown(f"""
         <div class="tv-header-container">
             <div class="header-content-layout">
                 <div class="header-logo-section">
@@ -177,9 +177,14 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 </div>
                 <div class="header-info-group">
                     <div class="header-date">{fecha_es_formateada}</div>
+                    
+                    <div class="header-divider">|</div>
+                    <div class="header-weather">
+                        {clima_html}
+                    </div>
                     <div class="header-divider">|</div>
                     <div class="header-status">
-                        <i class="ph-fill ph-check-circle status-icon"></i> Siguiente página en 30s
+                        <i class="ph-fill ph-check-circle status-icon"></i> Siguiente en 40s
                     </div>
                 </div>
             </div>
