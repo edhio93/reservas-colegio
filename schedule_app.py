@@ -2123,21 +2123,21 @@ elif page == "Modo TV":
                         try:
                             # Configurar horas según la selección
                             if tipo_duracion == "☀️ Todo el día":
-                                hora_i_str = "00:00"
-                                hora_f_str = ""
-                            else:
-                                hora_i_str = h_ini_ev.strftime("%H:%M")
-                                hora_f_str = h_fin_ev.strftime("%H:%M")
-
-                            supabase.table("eventos_tv").insert({
-                                "titulo": titulo_ev.strip(), 
-                                "descripcion": desc_ev.strip(), 
-                                "fecha_evento": fecha_ev.isoformat(), 
-                                "categoria": cat_ev, 
-                                "hora_inicio": hora_i_str,
-                                "hora_fin": hora_f_str,
-                                "is_active": True
-                            }).execute()
+                            hora_i_str = "00:00"
+                            hora_f_str = None    # <--- AQUÍ ESTÁ EL CAMBIO MÁGICO (Reemplaza "" por None sin comillas)
+                        else:
+                            hora_i_str = h_ini_ev.strftime("%H:%M")
+                            hora_f_str = h_fin_ev.strftime("%H:%M")
+        
+                        supabase.table("eventos_tv").insert({
+                            "titulo": titulo_ev.strip(),
+                            "descripcion": desc_ev.strip(),
+                            "fecha_evento": fecha_ev.isoformat(),
+                            "categoria": cat_ev,
+                            "hora_inicio": hora_i_str,
+                            "hora_fin": hora_f_str,  # <--- Ahora, si es todo el día, esto enviará un None válido a Supabase
+                            "is_active": True
+                        }).execute()
                             
                             st.success("Evento guardado. Aparecerá en la TV pública.")
                             time.sleep(1)
