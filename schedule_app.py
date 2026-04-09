@@ -286,26 +286,50 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     
     with col_main:
         try:
-            # Extraemos los eventos desde Google Calendar
+            # 1. Cargar datos base
             url_guardada = st.session_state.get('url_calendario_tv', '')
             eventos_calendar = obtener_eventos_google_calendar(url_guardada)
             
-            # Mantenemos las reservas de salas desde Supabase
-            res_reservas_hoy = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute().data
+            # Consultar reservas (enlaces) de hoy
+            res_supabase = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute()
+            res_reservas_hoy = res_supabase.data if res_supabase.data else []
             
-            # Iniciamos la lista maestra con los de Google Calendar
-            events_hoy_list = eventos_calendar
-                
-            # Ordenamos cronológicamente
+            # 2. Inicializar lista de eventos (Todos los perfiles ven el calendario)
+            events_hoy_list = list(eventos_calendar)
+            
+            # 3. LÓGICA DE PERFIL: AGREGAR RESERVAS (ENLACES)
+            # Usamos .strip() y .upper() para evitar errores de espacios o mayúsculas
+            perfil_actual = st.session_state.tv_profile.upper()
+            
+            if "PROFESORES" in perfil_actual or "PIE" in perfil_actual:
+                for r in res_reservas_hoy:
+                    prof = r.get("profesores", {}).get("nombre", "Docente") if r.get("profesores") else "Docente"
+                    rec = r.get("recursos", {}).get("nombre", "Recurso") if r.get("recursos") else "Recurso"
+                    curso = r.get("cursos", {}).get("nombre", "Curso") if r.get("cursos") else "Curso"
+                    obs = r.get("observaciones", "")
+                    
+                    h_ini = str(r.get("hora_inicio", r.get("hora", "00:00")))[:5]
+                    h_fin = str(r.get("hora_fin", ""))[:5]
+                    disp_hora = f"{h_ini} - {h_fin}" if h_fin and h_fin != h_ini else f"{h_ini}"
+                    
+                    events_hoy_list.append({
+                        "hora_sort": h_ini if h_ini and h_ini != "None" else "23:59", 
+                        "display_hora": disp_hora,
+                        "titulo": f"{rec} ➔ {curso}", 
+                        "profesor": prof,
+                        "observaciones": obs, 
+                        "categoria": "Clase / Uso Recurso"
+                    })
+            
+            # 4. Ordenar y Paginar
             events_hoy_list = sorted(events_hoy_list, key=lambda x: str(x.get("hora_sort", "99:99")))
-                
+            
             if not events_hoy_list:
                 st.markdown("<div class='tv-sub-header'>⏱️ Cronograma de Hoy</div>", unsafe_allow_html=True)
-                st.info("No hay eventos ni reservas registradas para hoy.")
+                st.info(f"No hay eventos programados para hoy en el perfil {st.session_state.tv_profile}.")
             else:
                 ITEMS_POR_PAGINA = 3
                 total_paginas = max(1, (len(events_hoy_list) + ITEMS_POR_PAGINA - 1) // ITEMS_POR_PAGINA)
-                
                 pagina_actual = refresh_count % total_paginas 
                 
                 inicio_idx = pagina_actual * ITEMS_POR_PAGINA
@@ -318,37 +342,33 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 html_cronograma = ""
                 
                 for i, item in enumerate(eventos_a_mostrar):
-                    color_tema = "#6366f1" if item['categoria'] == "Evento" else paleta_colores[i % len(paleta_colores)]
+                    color_tema = "#6366f1" if item['categoria'] == "Evento Especial" else paleta_colores[i % len(paleta_colores)]
                     delay = i * 0.15 
                     
                     info_row_html = ""
                     if item.get("profesor") or item.get("observaciones"):
                         info_row_html = "<div class='block-info-row'>"
                         if item.get("profesor"):
-                            info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-user-graduate info-icon icon-profesor'></i> {item['profesor']}</div>"
+                            info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-user-graduate info-icon'></i> {item['profesor']}</div>"
                         if item.get("observaciones"):
-                            info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-clipboard-text info-icon icon-observaciones'></i> {item['observaciones']}</div>"
+                            info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-clipboard-text info-icon'></i> {item['observaciones']}</div>"
                         info_row_html += "</div>"
                     
-                    desc_text = item.get('descripcion', '')
-                    hora_icon = "<i class='ph-fill ph-clock'></i>" if item['categoria'] != "Evento" else "<i class='ph-fill ph-star'></i>"
-                    
-                    # === NUEVO DISEÑO DE TARJETA CON LA HORA EN EL TÍTULO ===
                     html_cronograma += (
-                        f"<div class='block-card' style='border-left-color: {color_tema}; animation: cascadeIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; animation-delay: {delay}s; opacity: 0;'>"
+                        f"<div class='block-card' style='border-left-color: {color_tema}; animation: cascadeIn 0.8s forwards; animation-delay: {delay}s; opacity: 0;'>"
                         f"  <div class='block-title-row'>"
                         f"      <div class='block-title-text' style='color: {color_tema};'>{item['titulo']}</div>"
-                        f"      <div class='block-time-badge'>{hora_icon} {item['display_hora']}</div>"
+                        f"      <div class='block-time-badge'><i class='ph-fill ph-clock'></i> {item['display_hora']}</div>"
                         f"  </div>"
-                        f"  <div class='block-info'>{desc_text}</div>"
+                        f"  <div class='block-info'>{item.get('descripcion', '')}</div>"
                         f"  {info_row_html}"
-                        f"  <div class='block-hora-pill'><i class='ph-fill ph-tag icon-categoria'></i> <span>{item['categoria']}</span></div>"
+                        f"  <div class='block-hora-pill'><i class='ph-fill ph-tag icon-categoria'></i> {item['categoria']}</div>"
                         f"</div>"
                     )
                 st.markdown(html_cronograma, unsafe_allow_html=True)
                 
         except Exception as e:
-            st.error(f"Error técnico al consultar cronograma: {e}")
+            st.error(f"Error al cargar cronograma: {e}")
     
     with col_ann:
         # --- SELECTOR DE PERFILES (FUERA DEL MENÚ PARA QUE SIEMPRE SE VEA) ---
