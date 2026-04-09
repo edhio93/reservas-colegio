@@ -967,8 +967,7 @@ with st.sidebar:
     if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
         for key in st.session_state.keys(): 
             del st.session_state[key]
-        st.rerun()tate.keys(): del st.session_state[key]
-    st.rerun()
+        st.rerun()
 # ==============================================================================
 # 🤖 WIDGET DE CHATBOT (VENTANA FLOTANTE / MODAL)
 # ==============================================================================
