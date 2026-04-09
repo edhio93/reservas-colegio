@@ -2618,27 +2618,28 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         except Exception as e:
             st.error(f"Error técnico al consultar anuncios: {e}")
     
-    st.stop()
+   st.stop()
+
 # ------------------------------------------------------------------
-    # SECCIÓN: MODO TV (Mensajería Interna)
-    # ------------------------------------------------------------------
-    if page == "Modo TV":
-        st.title("📺 Panel de Mensajería Interna")
-        st.markdown("Desde aquí puedes gestionar la pantalla pública del colegio.")
-        
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            if st.button("🚀 Iniciar Pantalla Pública", type="primary", use_container_width=True):
-                st.session_state.ver_pantalla_tv = True
-                st.rerun()
+# SECCIÓN: MODO TV (Mensajería Interna)
+# ------------------------------------------------------------------
+if page == "Modo TV":
+    st.title("📺 Panel de Mensajería Interna")
+    st.markdown("Desde aquí puedes gestionar la pantalla pública del colegio.")
+    
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        if st.button("🚀 Iniciar Pantalla Pública", type="primary", use_container_width=True):
+            st.session_state.ver_pantalla_tv = True
+            st.rerun()
 
-        st.divider()
-        st.subheader("📅 Sincronización con Google Calendar")
-        st.info("Pega aquí el enlace público (.ics) del Google Calendar del colegio. Los eventos del día de hoy aparecerán automáticamente en la pantalla.")
+    st.divider()
+    st.subheader("📅 Sincronización con Google Calendar")
+    st.info("Pega aquí el enlace público (.ics) del Google Calendar del colegio. Los eventos del día de hoy aparecerán automáticamente en la pantalla.")
 
-        url_cal = st.text_input("Enlace iCal (.ics)", value=st.session_state.get('url_calendario_tv', ''))
+    url_cal = st.text_input("Enlace iCal (.ics)", value=st.session_state.get('url_calendario_tv', ''))
 
-        if st.button("Guardar Enlace y Sincronizar", type="primary"):
-            st.session_state['url_calendario_tv'] = url_cal
-            obtener_eventos_google_calendar.clear() 
-            st.success("✅ ¡Calendario sincronizado correctamente! Los cambios se verán en la pantalla.")
+    if st.button("Guardar Enlace y Sincronizar", type="primary"):
+        st.session_state['url_calendario_tv'] = url_cal
+        obtener_eventos_google_calendar.clear() 
+        st.success("✅ ¡Calendario sincronizado correctamente! Los cambios se verán en la pantalla.")
