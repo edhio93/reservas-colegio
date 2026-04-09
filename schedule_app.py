@@ -935,28 +935,39 @@ with st.sidebar:
     components.html(html_reloj, height=85)
     st.markdown("<hr style='margin: 0px 0px 10px 0px; padding: 0;'>", unsafe_allow_html=True)
 
-PAGES_CONFIG = {
-    "Mis Reservas": {"icon": "👤", "roles": ["profesor"]},
-    "Registrar": {"icon": "📝", "roles": ["admin"]},
-    "Base de datos": {"icon": "🗃️", "roles": ["admin"]},
-    "Semana": {"icon": "🗓️", "roles": ["admin", "profesor"]},
-    "Dashboard": {"icon": "📈", "roles": ["admin"]},
-    "Técnicos": {"icon": "🔧", "roles": ["admin"]},
-    "Configuración": {"icon": "⚙️", "roles": ["admin"]},
-    "Modo TV": {"icon": "📺", "roles": ["admin", "mensajeria"]}, # <-- El nuevo rol ahora tiene acceso
-}
+    PAGES_CONFIG = {
+        "Mis Reservas": {"icon": "👤", "roles": ["profesor"]},
+        "Registrar": {"icon": "📝", "roles": ["admin"]},
+        "Base de datos": {"icon": "🗃️", "roles": ["admin"]},
+        "Semana": {"icon": "🗓️", "roles": ["admin", "profesor"]},
+        "Dashboard": {"icon": "📈", "roles": ["admin"]},
+        "Técnicos": {"icon": "🔧", "roles": ["admin"]},
+        "Configuración": {"icon": "⚙️", "roles": ["admin"]},
+        "Modo TV": {"icon": "📺", "roles": ["admin", "mensajeria"]}, # <-- El nuevo rol ahora tiene acceso
+    }
 
-available_pages = [p for p, conf in PAGES_CONFIG.items() if st.session_state.role in conf["roles"]]
-default_page = "Mis Reservas" if st.session_state.role == 'profesor' else "Registrar"
-page = st.sidebar.radio("Navegación", available_pages, index=available_pages.index(default_page), format_func=lambda p: f"{PAGES_CONFIG[p]['icon']} {p}", label_visibility="collapsed")
+    available_pages = [p for p, conf in PAGES_CONFIG.items() if st.session_state.role in conf["roles"]]
+    default_page = "Mis Reservas" if st.session_state.role == 'profesor' else "Registrar"
+    
+    # --- AQUÍ ESTÁ LA SOLUCIÓN ---
+    # Si la página por defecto ("Registrar") no está permitida para este usuario, 
+    # entonces selecciona la primera que sí tenga disponible en su lista.
+    if default_page not in available_pages:
+        default_page = available_pages[0]
+    # -----------------------------
 
-st.sidebar.markdown("---")
+    page = st.sidebar.radio("Navegación", available_pages, index=available_pages.index(default_page), format_func=lambda p: f"{PAGES_CONFIG[p]['icon']} {p}", label_visibility="collapsed")
 
-if st.sidebar.button("🔄 Refrescar Pantalla", use_container_width=True):
-    st.cache_data.clear(); st.rerun()
+    st.sidebar.markdown("---")
 
-if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
-    for key in st.session_state.keys(): del st.session_state[key]
+    if st.sidebar.button("🔄 Refrescar Pantalla", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+    if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
+        for key in st.session_state.keys(): 
+            del st.session_state[key]
+        st.rerun()tate.keys(): del st.session_state[key]
     st.rerun()
 # ==============================================================================
 # 🤖 WIDGET DE CHATBOT (VENTANA FLOTANTE / MODAL)
