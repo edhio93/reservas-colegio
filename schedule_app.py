@@ -26,8 +26,9 @@ import base64
 import os
 
 import requests
-from ics import Calendar
+from icalendar import Calendar
 import pytz
+from datetime import datetime, date
 
 @st.cache_data(ttl=1800) # Se actualiza cada 30 minutos para no saturar el servidor
 def obtener_clima_vicuna():
@@ -73,21 +74,43 @@ def obtener_eventos_google_calendar(url_ics):
     try:
         respuesta = requests.get(url_ics)
         respuesta.raise_for_status()
-        calendario = Calendar(respuesta.text)
+        
+        # Leer el calendario con la nueva librería
+        calendario = Calendar.from_ical(respuesta.text)
         zona_horaria = pytz.timezone('America/Santiago')
         ahora = dt_datetime.now(zona_horaria).date()
         
         eventos_hoy = []
-        for evento in calendario.events:
-            inicio_evento = evento.begin.to('America/Santiago').datetime
-            if inicio_evento.date() == ahora:
+        
+        # Buscar todos los eventos (VEVENT)
+        for componente in calendario.walk('VEVENT'):
+            inicio = componente.get('dtstart').dt
+            
+            # Verificar si es un evento con hora específica
+            if isinstance(inicio, datetime):
+                inicio_dt = inicio.astimezone(zona_horaria)
+                es_hoy = (inicio_dt.date() == ahora)
+                hora_str = inicio_dt.strftime("%H:%M")
+                hora_sort = hora_str
+            # O si es un evento de "Todo el día" (solo fecha)
+            else:
+                es_hoy = (inicio == ahora)
+                hora_str = "TODO EL DÍA"
+                hora_sort = "00:00" # Para que salga primero en la lista
+
+            if es_hoy:
+                titulo = str(componente.get('summary', 'Evento Especial'))
+                descripcion = str(componente.get('description', ''))
+                
                 eventos_hoy.append({
-                    "hora_sort": inicio_evento.strftime("%H:%M"),
-                    "display_hora": inicio_evento.strftime("%H:%M"),
-                    "titulo": evento.name,
-                    "descripcion": evento.description or "",
+                    "hora_sort": hora_sort,
+                    "display_hora": hora_str,
+                    "titulo": titulo,
+                    "descripcion": descripcion,
                     "categoria": "Evento Especial"
                 })
+                
+        # Ordenamos los eventos por hora
         return sorted(eventos_hoy, key=lambda x: x['hora_sort'])
     except Exception as e:
         return []
