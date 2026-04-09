@@ -111,8 +111,8 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     if "tv_scale" not in st.session_state:
         st.session_state.tv_scale = 100
 
-    # Temporizador de recarga de la página: 40000ms = 40 segundos
-    refresh_count = st_autorefresh(interval=40000, limit=None, key="tv_refresh_timer")
+    # Temporizador de recarga de la página: 20000ms = 20 segundos
+    refresh_count = st_autorefresh(interval=20000, limit=None, key="tv_refresh_timer")
     
     ruta_logo = "logotv.png"
     logo_src_html = ""
@@ -165,9 +165,9 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         .header-status {{ display: flex; align-items: center; color: #475569; }}
         .status-icon {{ margin-right: 8px; font-size: calc(1.3rem * var(--tv-scale)); color: #10b981; }}
         
-        /* Barra de progreso 30s */
+        /* Barra de progreso 20s */
         .progress-container {{ width: 100%; height: 6px; background-color: #cbd5e1; }}
-        .progress-bar {{ height: 100%; background-color: #3b82f6; width: 0%; animation: loadBar 30s linear infinite; }}
+        .progress-bar {{ height: 100%; background-color: #3b82f6; width: 0%; animation: loadBar 20s linear infinite; }}
         @keyframes loadBar {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
         
         /* Títulos de sección adaptados para fondo oscuro */
@@ -221,7 +221,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             </div>
             <div class="header-divider">|</div>
             <div class="header-status">
-                <i class="ph-fill ph-check-circle status-icon"></i> Siguiente en 30s
+                <i class="ph-fill ph-check-circle status-icon"></i> Siguiente en 20s
             </div>
         </div>
     </div>
