@@ -396,12 +396,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 height=40
             )
 
-        try:
-            now = dt_datetime.now()
-            # ... [EL RESTO DEL CÓDIGO SIGUE IGUAL HACIA ABAJO] ...
-
-        st.markdown("<div class='tv-sub-header'>🚨 Avisos Urgentes</div>", unsafe_allow_html=True)
-        
+        # --- SECCIÓN DE ANUNCIOS (CON SU TRY Y EXCEPT CORRECTAMENTE ALINEADOS) ---
         try:
             now = dt_datetime.now()
             ann_data = supabase.table("anuncios_urgentes").select("id, titulo, descripcion, prioridad, expiracion").eq("is_active", True).execute().data
@@ -412,26 +407,48 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     exp_dt = pd.to_datetime(ann['expiracion']).tz_localize(None)
                     if exp_dt > now: 
                         active_ann.append(ann)
-                except Exception as e:
+                except:
                     pass
             
             active_ann = sorted(active_ann, key=lambda x: x['prioridad'])
             
+            # Adaptación del panel derecho según perfil
+            if st.session_state.tv_profile == "Apoderados":
+                titulo_panel = "📰 Noticias y Comunicados"
+                texto_vacio = "No hay comunicados vigentes en este momento."
+            else:
+                titulo_panel = "🚨 Avisos Urgentes y Alertas"
+                texto_vacio = "No hay avisos en este momento."
+
             html_anuncios = '<div class="announcements-container">'
             
             if not active_ann:
-                html_anuncios += "<p style='color: #64748b; text-align:center; font-style:italic; margin-top: 10px;'>No hay avisos en este momento.</p>"
+                st.markdown(f"<div class='tv-sub-header'>{titulo_panel}</div>", unsafe_allow_html=True)
+                html_anuncios += f"<p style='color: #64748b; text-align:center; font-style:italic; margin-top: 10px;'>{texto_vacio}</p>"
             else:
-                for i, ann in enumerate(active_ann):
+                ITEMS_POR_PAGINA_ANN = 3
+                total_paginas_ann = max(1, (len(active_ann) + ITEMS_POR_PAGINA_ANN - 1) // ITEMS_POR_PAGINA_ANN)
+                pagina_actual_ann = refresh_count % total_paginas_ann 
+                
+                inicio_idx_ann = pagina_actual_ann * ITEMS_POR_PAGINA_ANN
+                fin_idx_ann = inicio_idx_ann + ITEMS_POR_PAGINA_ANN
+                anuncios_a_mostrar = active_ann[inicio_idx_ann:fin_idx_ann]
+                
+                st.markdown(f"<div class='tv-sub-header'>{titulo_panel} (Pág. {pagina_actual_ann + 1}/{total_paginas_ann})</div>", unsafe_allow_html=True)
+
+                for i, ann in enumerate(anuncios_a_mostrar):
                     delay_ann = i * 0.15 
                     
-                    # Colores originales de fondo claro
-                    if ann['prioridad'] == 1:
-                        bg_color = "#fef2f2"; border_color = "#ef4444"; title_color = "#dc2626"; desc_color = "#334155"
-                        animacion_extra = ", pulseAlert 2s infinite"
+                    if st.session_state.tv_profile == "Apoderados":
+                        bg_color = "#f0f9ff"; border_color = "#38bdf8"; title_color = "#0369a1"; desc_color = "#334155"
+                        animacion_extra = ""
                     else:
-                        bg_color = "#fffbeb"; border_color = "#f59e0b"; title_color = "#d97706"; desc_color = "#334155"
-                        animacion_extra = "" 
+                        if ann['prioridad'] == 1:
+                            bg_color = "#fef2f2"; border_color = "#ef4444"; title_color = "#dc2626"; desc_color = "#334155"
+                            animacion_extra = ", pulseAlert 2s infinite"
+                        else:
+                            bg_color = "#fffbeb"; border_color = "#f59e0b"; title_color = "#d97706"; desc_color = "#334155"
+                            animacion_extra = "" 
                     
                     html_anuncios += (
                         f"<div class='announcement-card' style='border-left-color: {border_color}; background-color: {bg_color}; animation: cascadeIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards{animacion_extra}; animation-delay: {delay_ann}s; opacity: 0;'>"
@@ -443,9 +460,11 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             html_anuncios += '</div>'
             st.markdown(html_anuncios, unsafe_allow_html=True)
             
+        # ¡ESTE ES EL EXCEPT QUE FALTABA!
         except Exception as e:
             st.error(f"Error técnico al consultar anuncios: {e}")
             
+    # El stop va alineado con el "with col_main:" y "with col_ann:"
     st.stop()
 # ──────────────────────────────────────────────────────────────────────────────
 # 0) CONFIGURACIÓN GLOBAL Y ESTILO
