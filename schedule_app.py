@@ -2330,8 +2330,11 @@ elif page == "Modo TV":
 # ==============================================================================
 if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
 
+    # --- INICIALIZACIÓN DE VARIABLES DE PANTALLA ---
     if "tv_scale" not in st.session_state:
         st.session_state.tv_scale = 100
+    if "tv_profile" not in st.session_state:
+        st.session_state.tv_profile = "Profesores / PIE" # Perfil por defecto
 
     # Temporizador actualizado a 20 segundos
     refresh_count = st_autorefresh(interval=20000, limit=None, key="tv_refresh_timer")
@@ -2358,9 +2361,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     <style>
         @import url('https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css');
 
-        :root {{
-            --tv-scale: {escala};
-        }}
+        :root {{ --tv-scale: {escala}; }}
 
         .stApp {{ background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }}
         [data-testid="stHeader"] {{ background: rgba(0,0,0,0); }}
@@ -2383,7 +2384,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         .header-status {{ display: flex; align-items: center; color: #475569; }}
         .status-icon {{ margin-right: 8px; font-size: calc(1.3rem * var(--tv-scale)); color: #10b981; }}
         
-        /* Barra de progreso 30s */
         .progress-container {{ width: 100%; height: 6px; background-color: #cbd5e1; }}
         .progress-bar {{ height: 100%; background-color: #3b82f6; width: 0%; animation: loadBar 20s linear infinite; }}
         @keyframes loadBar {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
@@ -2417,6 +2417,9 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     """
     st.markdown(aesthetic_style, unsafe_allow_html=True) 
 
+    # Titulo de pantalla dinámico según el perfil
+    modo_texto = f"MODO: {st.session_state.tv_profile.upper()}"
+
     st.markdown(f"""
         <div class="tv-header-container">
             <div class="header-content-layout">
@@ -2427,7 +2430,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     <div class="header-date">{fecha_es_formateada}</div>
                     <div class="header-divider">|</div>
                     <div class="header-status">
-                        <i class="ph-fill ph-check-circle status-icon"></i> Siguiente página en 30s
+                        <i class="ph-fill ph-users-three status-icon"></i> {modo_texto}
                     </div>
                 </div>
             </div>
@@ -2439,47 +2442,38 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     
     with col_main:
         try:
-            res_tv_hoy = supabase.table("eventos_tv").select("*").eq("fecha_evento", hoy_str).eq("is_active", True).execute().data
+            url_guardada = st.session_state.get('url_calendario_tv', '')
+            eventos_calendar = obtener_eventos_google_calendar(url_guardada)
             res_reservas_hoy = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute().data
             
-            events_hoy_list = []
+            # TODOS LOS PERFILES VEN LOS EVENTOS DEL CALENDARIO
+            events_hoy_list = list(eventos_calendar)
             
-            for ev in res_tv_hoy:
-                h_ini = str(ev.get("hora_inicio", ev.get("hora", "00:00")))[:5]
-                h_fin = str(ev.get("hora_fin", ""))[:5]
-                disp_hora = f"{h_ini} - {h_fin}" if h_fin and h_fin != h_ini else f"{h_ini}"
-                if not h_ini or h_ini == "None" or h_ini == "00:00": disp_hora = "TODO EL DÍA"
-                
-                events_hoy_list.append({
-                    "hora_sort": h_ini if h_ini and h_ini != "None" and h_ini != "00:00" else "23:59", 
-                    "display_hora": disp_hora,
-                    "titulo": ev.get("titulo", "Evento"), "descripcion": ev.get("descripcion", ""),
-                    "categoria": ev.get("categoria", "Evento")
-                })
-                
-            for r in res_reservas_hoy:
-                prof = r.get("profesores", {}).get("nombre", "Docente") if r.get("profesores") else "Docente"
-                rec = r.get("recursos", {}).get("nombre", "Recurso") if r.get("recursos") else "Recurso"
-                curso = r.get("cursos", {}).get("nombre", "Curso") if r.get("cursos") else "Curso"
-                obs = r.get("observaciones", "")
-                
-                h_ini = str(r.get("hora_inicio", r.get("hora", "00:00")))[:5]
-                h_fin = str(r.get("hora_fin", ""))[:5]
-                disp_hora = f"{h_ini} - {h_fin}" if h_fin and h_fin != h_ini else f"{h_ini}"
-                if not h_ini or h_ini == "None" or h_ini == "00:00": disp_hora = "RESERVA"
-                
-                events_hoy_list.append({
-                    "hora_sort": h_ini if h_ini and h_ini != "None" and h_ini != "00:00" else "23:59", 
-                    "display_hora": disp_hora,
-                    "titulo": f"{rec} ➔ {curso}", "profesor": prof,
-                    "observaciones": obs, "categoria": "Clase / Uso Recurso"
-                })
+            # SOLO EL PERFIL PROFESORES VE LAS HORAS DE ENLACES (Reservas)
+            if st.session_state.tv_profile == "Profesores / PIE":
+                for r in res_reservas_hoy:
+                    prof = r.get("profesores", {}).get("nombre", "Docente") if r.get("profesores") else "Docente"
+                    rec = r.get("recursos", {}).get("nombre", "Recurso") if r.get("recursos") else "Recurso"
+                    curso = r.get("cursos", {}).get("nombre", "Curso") if r.get("cursos") else "Curso"
+                    obs = r.get("observaciones", "")
+                    
+                    h_ini = str(r.get("hora_inicio", r.get("hora", "00:00")))[:5]
+                    h_fin = str(r.get("hora_fin", ""))[:5]
+                    disp_hora = f"{h_ini} - {h_fin}" if h_fin and h_fin != h_ini else f"{h_ini}"
+                    if not h_ini or h_ini == "None" or h_ini == "00:00": disp_hora = "RESERVA"
+                    
+                    events_hoy_list.append({
+                        "hora_sort": h_ini if h_ini and h_ini != "None" and h_ini != "00:00" else "23:59", 
+                        "display_hora": disp_hora,
+                        "titulo": f"{rec} ➔ {curso}", "profesor": prof,
+                        "observaciones": obs, "categoria": "Clase / Uso Recurso"
+                    })
                 
             events_hoy_list = sorted(events_hoy_list, key=lambda x: str(x.get("hora_sort", "99:99")))
                 
             if not events_hoy_list:
                 st.markdown("<div class='tv-sub-header'>⏱️ Cronograma de Hoy</div>", unsafe_allow_html=True)
-                st.info("No hay eventos ni reservas registradas para hoy.")
+                st.info("No hay eventos programados para hoy bajo este perfil.")
             else:
                 ITEMS_POR_PAGINA = 3
                 total_paginas = max(1, (len(events_hoy_list) + ITEMS_POR_PAGINA - 1) // ITEMS_POR_PAGINA)
@@ -2495,7 +2489,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 html_cronograma = ""
                 
                 for i, item in enumerate(eventos_a_mostrar):
-                    color_tema = "#6366f1" if item['categoria'] == "Evento" else paleta_colores[i % len(paleta_colores)]
+                    color_tema = "#6366f1" if item['categoria'] == "Evento Especial" else paleta_colores[i % len(paleta_colores)]
                     delay = i * 0.15 
                     
                     info_row_html = ""
@@ -2508,7 +2502,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                         info_row_html += "</div>"
                     
                     desc_text = item.get('descripcion', '')
-                    hora_icon = "<i class='ph-fill ph-clock'></i>" if item['categoria'] != "Evento" else "<i class='ph-fill ph-star'></i>"
+                    hora_icon = "<i class='ph-fill ph-clock'></i>" if item['categoria'] != "Evento Especial" else "<i class='ph-fill ph-star'></i>"
                     
                     html_cronograma += (
                         f"<div class='block-card' style='border-left-color: {color_tema}; animation: cascadeIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; animation-delay: {delay}s; opacity: 0;'>"
@@ -2528,9 +2522,17 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     
     with col_ann:
         with st.expander("⚙️ Controles de Pantalla", expanded=False):
+            
+            # --- NUEVO SELECTOR DE PERFILES ---
+            st.selectbox(
+                "👁️ Perfil de Visualización", 
+                ["Inspectoría / UTP", "Profesores / PIE", "Apoderados"], 
+                key="tv_profile"
+            )
+            
             st.slider("🔍 Tamaño del texto (%)", min_value=50, max_value=250, value=st.session_state.tv_scale, step=5, key="tv_scale")
             st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
-            if st.button("🔙 Volver al Login", use_container_width=True):
+            if st.button("🔙 Volver al Menú", use_container_width=True):
                 st.session_state.ver_pantalla_tv = False
                 st.rerun()
                 
@@ -2573,18 +2575,25 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     exp_dt = pd.to_datetime(ann['expiracion']).tz_localize(None)
                     if exp_dt > now: 
                         active_ann.append(ann)
-                except Exception as e:
+                except:
                     pass
             
             active_ann = sorted(active_ann, key=lambda x: x['prioridad'])
             
+            # --- ADAPTACIÓN DEL PANEL DERECHO SEGÚN PERFIL ---
+            if st.session_state.tv_profile == "Apoderados":
+                titulo_panel = "📰 Noticias y Comunicados"
+                texto_vacio = "No hay comunicados vigentes en este momento."
+            else:
+                titulo_panel = "🚨 Avisos Urgentes y Alertas"
+                texto_vacio = "No hay avisos en este momento."
+
             html_anuncios = '<div class="announcements-container">'
             
             if not active_ann:
-                st.markdown("<div class='tv-sub-header'>🚨 Avisos Urgentes</div>", unsafe_allow_html=True)
-                html_anuncios += "<p style='color: #64748b; text-align:center; font-style:italic; margin-top: 10px;'>No hay avisos en este momento.</p>"
+                st.markdown(f"<div class='tv-sub-header'>{titulo_panel}</div>", unsafe_allow_html=True)
+                html_anuncios += f"<p style='color: #64748b; text-align:center; font-style:italic; margin-top: 10px;'>{texto_vacio}</p>"
             else:
-                # === NUEVO: PAGINACIÓN DE AVISOS URGENTES ===
                 ITEMS_POR_PAGINA_ANN = 3
                 total_paginas_ann = max(1, (len(active_ann) + ITEMS_POR_PAGINA_ANN - 1) // ITEMS_POR_PAGINA_ANN)
                 pagina_actual_ann = refresh_count % total_paginas_ann 
@@ -2593,17 +2602,22 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 fin_idx_ann = inicio_idx_ann + ITEMS_POR_PAGINA_ANN
                 anuncios_a_mostrar = active_ann[inicio_idx_ann:fin_idx_ann]
                 
-                st.markdown(f"<div class='tv-sub-header'>🚨 Avisos Urgentes (Pág. {pagina_actual_ann + 1}/{total_paginas_ann})</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='tv-sub-header'>{titulo_panel} (Pág. {pagina_actual_ann + 1}/{total_paginas_ann})</div>", unsafe_allow_html=True)
 
                 for i, ann in enumerate(anuncios_a_mostrar):
                     delay_ann = i * 0.15 
                     
-                    if ann['prioridad'] == 1:
-                        bg_color = "#fef2f2"; border_color = "#ef4444"; title_color = "#dc2626"; desc_color = "#334155"
-                        animacion_extra = ", pulseAlert 2s infinite"
+                    # Adaptamos los colores: Si es Apoderados, las alertas rojas cambian a estilo "Noticia" (Azul) para no alarmar.
+                    if st.session_state.tv_profile == "Apoderados":
+                        bg_color = "#f0f9ff"; border_color = "#38bdf8"; title_color = "#0369a1"; desc_color = "#334155"
+                        animacion_extra = ""
                     else:
-                        bg_color = "#fffbeb"; border_color = "#f59e0b"; title_color = "#d97706"; desc_color = "#334155"
-                        animacion_extra = "" 
+                        if ann['prioridad'] == 1:
+                            bg_color = "#fef2f2"; border_color = "#ef4444"; title_color = "#dc2626"; desc_color = "#334155"
+                            animacion_extra = ", pulseAlert 2s infinite"
+                        else:
+                            bg_color = "#fffbeb"; border_color = "#f59e0b"; title_color = "#d97706"; desc_color = "#334155"
+                            animacion_extra = "" 
                     
                     html_anuncios += (
                         f"<div class='announcement-card' style='border-left-color: {border_color}; background-color: {bg_color}; animation: cascadeIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards{animacion_extra}; animation-delay: {delay_ann}s; opacity: 0;'>"
