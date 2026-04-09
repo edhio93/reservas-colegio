@@ -2290,8 +2290,8 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     if "tv_scale" not in st.session_state:
         st.session_state.tv_scale = 100
 
-    # Temporizador actualizado a 30 segundos
-    refresh_count = st_autorefresh(interval=30000, limit=None, key="tv_refresh_timer")
+    # Temporizador actualizado a 20 segundos
+    refresh_count = st_autorefresh(interval=20000, limit=None, key="tv_refresh_timer")
     
     ruta_logo = "logotv.png"
     logo_src_html = ""
@@ -2342,7 +2342,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         
         /* Barra de progreso 30s */
         .progress-container {{ width: 100%; height: 6px; background-color: #cbd5e1; }}
-        .progress-bar {{ height: 100%; background-color: #3b82f6; width: 0%; animation: loadBar 30s linear infinite; }}
+        .progress-bar {{ height: 100%; background-color: #3b82f6; width: 0%; animation: loadBar 20s linear infinite; }}
         @keyframes loadBar {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
         
         .tv-sub-header {{ color: #f8fafc; font-weight: 800; font-size: calc(1.6rem * var(--tv-scale)); margin-top: 5px; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #334155; padding-bottom: 10px;}}
