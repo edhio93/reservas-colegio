@@ -722,7 +722,7 @@ if not st.session_state.logged:
                                 st.rerun()
                             else:
                                 st.error("Acceso denegado")
-                 elif tipo_user == "Mensajería Interna":
+                elif tipo_user == "Mensajería Interna":
                     st.info("💡 Acceso rápido libre para la gestión de las Pantallas Informativas.")
             
                     # Un simple botón que los deja entrar directo sin preguntar nada más
