@@ -2618,7 +2618,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         except Exception as e:
             st.error(f"Error técnico al consultar anuncios: {e}")
     
-   st.stop()
+    st.stop()
 
 # ------------------------------------------------------------------
 # SECCIÓN: MODO TV (Mensajería Interna)
