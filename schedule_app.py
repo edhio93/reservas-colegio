@@ -26,6 +26,8 @@ import base64
 import os
 
 import requests
+from ics import Calendar
+import pytz
 
 @st.cache_data(ttl=1800) # Se actualiza cada 30 minutos para no saturar el servidor
 def obtener_clima_vicuna():
@@ -63,6 +65,33 @@ def obtener_clima_vicuna():
 
 st.set_page_config(page_title="Sistema de Horarios CAV", page_icon="📅", layout="wide", initial_sidebar_state="expanded")
 
+
+@st.cache_data(ttl=1800) # Se actualiza cada 30 minutos
+def obtener_eventos_google_calendar(url_ics):
+    if not url_ics:
+        return []
+    try:
+        respuesta = requests.get(url_ics)
+        respuesta.raise_for_status()
+        calendario = Calendar(respuesta.text)
+        zona_horaria = pytz.timezone('America/Santiago')
+        ahora = dt_datetime.now(zona_horaria).date()
+        
+        eventos_hoy = []
+        for evento in calendario.events:
+            inicio_evento = evento.begin.to('America/Santiago').datetime
+            if inicio_evento.date() == ahora:
+                eventos_hoy.append({
+                    "hora_sort": inicio_evento.strftime("%H:%M"),
+                    "display_hora": inicio_evento.strftime("%H:%M"),
+                    "titulo": evento.name,
+                    "descripcion": evento.description or "",
+                    "categoria": "Evento Especial"
+                })
+        return sorted(eventos_hoy, key=lambda x: x['hora_sort'])
+    except Exception as e:
+        return []
+        
 # --- CONFIGURACIÓN DE GEMINI ---
 # Usamos st.secrets para que no te vuelvan a bloquear la llave
 try:
@@ -234,42 +263,15 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     
     with col_main:
         try:
-            res_tv_hoy = supabase.table("eventos_tv").select("*").eq("fecha_evento", hoy_str).eq("is_active", True).execute().data
+            # Extraemos los eventos desde Google Calendar
+            url_guardada = st.session_state.get('url_calendario_tv', '')
+            eventos_calendar = obtener_eventos_google_calendar(url_guardada)
+            
+            # Mantenemos las reservas de salas desde Supabase
             res_reservas_hoy = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute().data
             
-            events_hoy_list = []
-            
-            # Formatear la hora y guardar en la lista
-            for ev in res_tv_hoy:
-                h_ini = str(ev.get("hora_inicio", ev.get("hora", "00:00")))[:5]
-                h_fin = str(ev.get("hora_fin", ""))[:5]
-                disp_hora = f"{h_ini} - {h_fin}" if h_fin and h_fin != h_ini else f"{h_ini}"
-                if not h_ini or h_ini == "None" or h_ini == "00:00": disp_hora = "TODO EL DÍA"
-                
-                events_hoy_list.append({
-                    "hora_sort": h_ini if h_ini and h_ini != "None" and h_ini != "00:00" else "23:59", 
-                    "display_hora": disp_hora,
-                    "titulo": ev.get("titulo", "Evento"), "descripcion": ev.get("descripcion", ""),
-                    "categoria": ev.get("categoria", "Evento")
-                })
-                
-            for r in res_reservas_hoy:
-                prof = r.get("profesores", {}).get("nombre", "Docente") if r.get("profesores") else "Docente"
-                rec = r.get("recursos", {}).get("nombre", "Recurso") if r.get("recursos") else "Recurso"
-                curso = r.get("cursos", {}).get("nombre", "Curso") if r.get("cursos") else "Curso"
-                obs = r.get("observaciones", "")
-                
-                h_ini = str(r.get("hora_inicio", r.get("hora", "00:00")))[:5]
-                h_fin = str(r.get("hora_fin", ""))[:5]
-                disp_hora = f"{h_ini} - {h_fin}" if h_fin and h_fin != h_ini else f"{h_ini}"
-                if not h_ini or h_ini == "None" or h_ini == "00:00": disp_hora = "RESERVA"
-                
-                events_hoy_list.append({
-                    "hora_sort": h_ini if h_ini and h_ini != "None" and h_ini != "00:00" else "23:59", 
-                    "display_hora": disp_hora,
-                    "titulo": f"{rec} ➔ {curso}", "profesor": prof,
-                    "observaciones": obs, "categoria": "Clase / Uso Recurso"
-                })
+            # Iniciamos la lista maestra con los de Google Calendar
+            events_hoy_list = eventos_calendar
                 
             # Ordenamos cronológicamente
             events_hoy_list = sorted(events_hoy_list, key=lambda x: str(x.get("hora_sort", "99:99")))
@@ -2594,3 +2596,26 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             st.error(f"Error técnico al consultar anuncios: {e}")
     
     st.stop()
+# ------------------------------------------------------------------
+    # SECCIÓN: MODO TV (Mensajería Interna)
+    # ------------------------------------------------------------------
+    if page == "Modo TV":
+        st.title("📺 Panel de Mensajería Interna")
+        st.markdown("Desde aquí puedes gestionar la pantalla pública del colegio.")
+        
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            if st.button("🚀 Iniciar Pantalla Pública", type="primary", use_container_width=True):
+                st.session_state.ver_pantalla_tv = True
+                st.rerun()
+
+        st.divider()
+        st.subheader("📅 Sincronización con Google Calendar")
+        st.info("Pega aquí el enlace público (.ics) del Google Calendar del colegio. Los eventos del día de hoy aparecerán automáticamente en la pantalla.")
+
+        url_cal = st.text_input("Enlace iCal (.ics)", value=st.session_state.get('url_calendario_tv', ''))
+
+        if st.button("Guardar Enlace y Sincronizar", type="primary"):
+            st.session_state['url_calendario_tv'] = url_cal
+            obtener_eventos_google_calendar.clear() 
+            st.success("✅ ¡Calendario sincronizado correctamente! Los cambios se verán en la pantalla.")
