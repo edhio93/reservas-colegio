@@ -722,21 +722,14 @@ if not st.session_state.logged:
                                 st.rerun()
                             else:
                                 st.error("Acceso denegado")
-                elif tipo_user == "Mensajería Interna":
-                     with st.form("mensajeria_form", clear_on_submit=True):
-                        st.info("Acceso exclusivo para gestión de Pantallas Informativas.")
-                        # Aquí puedes poner un usuario general o dejar solo la contraseña
-                        u_msj = st.text_input("Usuario", placeholder="Ej: Recepcion")
-                        p_msj = st.text_input("Contraseña", type="password", placeholder="••••••••")
-                
-                        if st.form_submit_button("INICIAR SESIÓN MENSAJERÍA", use_container_width=True, type="primary"):
-                            # Puedes cambiar 'pantalla123' por la contraseña que quieras darles
-                            if p_msj == "pantalla123": 
-                                st.session_state.logged = True
-                                st.session_state.role = "mensajeria" # <-- Asignamos el nuevo rol interno
-                                st.rerun()
-                            else:
-                                st.error("Credenciales incorrectas")
+                 elif tipo_user == "Mensajería Interna":
+                    st.info("💡 Acceso rápido libre para la gestión de las Pantallas Informativas.")
+            
+                    # Un simple botón que los deja entrar directo sin preguntar nada más
+                    if st.button("ENTRAR AL PANEL DE MENSAJERÍA", use_container_width=True, type="primary"):
+                        st.session_state.logged = True
+                        st.session_state.role = "mensajeria" 
+                        st.rerun() 
                 else:
                     with st.form("profe_form", clear_on_submit=True):
                         u_profe = st.selectbox("Busca tu nombre", PROFESORES, index=None, placeholder="Selecciona...")
