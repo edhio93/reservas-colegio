@@ -351,12 +351,19 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             st.error(f"Error técnico al consultar cronograma: {e}")
     
     with col_ann:
-        with st.expander("⚙️ Controles de Pantalla", expanded=False):
-            
+        # --- SELECTOR DE PERFILES (FUERA DEL MENÚ PARA QUE SIEMPRE SE VEA) ---
+        st.selectbox(
+            "👁️ Perfil de Visualización", 
+            ["Inspectoría / UTP", "Profesores / PIE", "Apoderados"], 
+            key="tv_profile"
+        )
+        st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
+        
+        # --- CONTROLES SECUNDARIOS ---
+        with st.expander("⚙️ Controles Extra", expanded=False):
             st.slider("🔍 Tamaño del texto (%)", min_value=50, max_value=250, value=st.session_state.tv_scale, step=5, key="tv_scale")
             st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
-            
-            if st.button("🔙 Volver al Login", use_container_width=True):
+            if st.button("🔙 Volver al Menú", use_container_width=True):
                 st.session_state.ver_pantalla_tv = False
                 st.rerun()
                 
@@ -388,6 +395,10 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 """,
                 height=40
             )
+
+        try:
+            now = dt_datetime.now()
+            # ... [EL RESTO DEL CÓDIGO SIGUE IGUAL HACIA ABAJO] ...
 
         st.markdown("<div class='tv-sub-header'>🚨 Avisos Urgentes</div>", unsafe_allow_html=True)
         
