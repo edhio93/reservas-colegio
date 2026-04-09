@@ -705,7 +705,7 @@ if not st.session_state.logged:
             st.markdown("<p style='text-align: center; color: gray; font-size: 0.9rem;'>Reserva de Recursos y Espacios</p>", unsafe_allow_html=True)
             
             with st.container(border=True):
-                tipo_user = st.radio("Acceder como:", ["Profesor", "Administrador"], horizontal=True)
+                tipo_user = st.radio("Acceder como:", ["Profesor", "Administrador", "Mensajería Interna"], horizontal=True)
                 st.markdown("---")
                 
                 if tipo_user == "Administrador":
@@ -722,6 +722,21 @@ if not st.session_state.logged:
                                 st.rerun()
                             else:
                                 st.error("Acceso denegado")
+                elif tipo_user == "Mensajería Interna":
+                     with st.form("mensajeria_form", clear_on_submit=True):
+                        st.info("Acceso exclusivo para gestión de Pantallas Informativas.")
+                        # Aquí puedes poner un usuario general o dejar solo la contraseña
+                        u_msj = st.text_input("Usuario", placeholder="Ej: Recepcion")
+                        p_msj = st.text_input("Contraseña", type="password", placeholder="••••••••")
+                
+                        if st.form_submit_button("INICIAR SESIÓN MENSAJERÍA", use_container_width=True, type="primary"):
+                            # Puedes cambiar 'pantalla123' por la contraseña que quieras darles
+                            if p_msj == "pantalla123": 
+                                st.session_state.logged = True
+                                st.session_state.role = "mensajeria" # <-- Asignamos el nuevo rol interno
+                                st.rerun()
+                            else:
+                                st.error("Credenciales incorrectas")
                 else:
                     with st.form("profe_form", clear_on_submit=True):
                         u_profe = st.selectbox("Busca tu nombre", PROFESORES, index=None, placeholder="Selecciona...")
@@ -935,7 +950,7 @@ PAGES_CONFIG = {
     "Dashboard": {"icon": "📈", "roles": ["admin"]},
     "Técnicos": {"icon": "🔧", "roles": ["admin"]},
     "Configuración": {"icon": "⚙️", "roles": ["admin"]},
-    "Modo TV": {"icon": "📺", "roles": ["admin"]},  # <-- AQUÍ AGREGAMOS MODO TV
+    "Modo TV": {"icon": "📺", "roles": ["admin", "mensajeria"]}, # <-- El nuevo rol ahora tiene acceso
 }
 
 available_pages = [p for p, conf in PAGES_CONFIG.items() if st.session_state.role in conf["roles"]]
