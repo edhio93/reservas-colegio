@@ -2224,6 +2224,20 @@ if page == "Configuración":
 elif page == "Modo TV":
     st.title("📺 Panel de Mensajería y Pantalla TV")
     st.markdown("Desde aquí puedes gestionar la pantalla pública del colegio, sincronizar calendarios y crear anuncios.")
+    # --- BOTONES DE PRUEBA DE SONIDO ---
+    with st.expander("🔊 Probar Sonidos del Sistema"):
+        st.write("Haz clic para verificar que tu navegador reproduce los sonidos correctamente.")
+        col_s1, col_s2 = st.columns(2)
+        
+        sonido_aviso_test = "https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg"
+        sonido_evento_test = "https://actions.google.com/sounds/v1/ui/pop_up_on.ogg"
+        
+        with col_s1:
+            if st.button("🔔 Probar Sonido Evento (Suave)", use_container_width=True):
+                components.html(f'<audio autoplay><source src="{sonido_evento_test}" type="audio/ogg"></audio>', height=0, width=0)
+        with col_s2:
+            if st.button("🚨 Probar Sonido Aviso (Alarma)", use_container_width=True):
+                components.html(f'<audio autoplay><source src="{sonido_aviso_test}" type="audio/ogg"></audio>', height=0, width=0)
 
     # --- SECCIÓN 1: LANZADOR Y GOOGLE CALENDAR ---
     with st.container(border=True):
