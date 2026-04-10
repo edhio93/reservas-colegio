@@ -2723,6 +2723,48 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             
         except Exception as e:
             st.error(f"Error técnico al consultar anuncios: {e}")
+        # ====================================================================
+        # 🔔 GESTOR DE SONIDOS (NOTIFICACIONES DE NUEVOS EVENTOS/AVISOS)
+        # ====================================================================
+        try:
+            # 1. Capturamos los identificadores de lo que hay actualmente en pantalla
+            ids_eventos_actuales = set([f"{e.get('titulo', '')}_{e.get('display_hora', '')}" for e in events_hoy_list])
+            ids_avisos_actuales = set([str(a.get('id', '')) for a in active_ann])
+
+            # 2. Si es la primera vez que arranca la TV, solo guardamos la memoria en silencio
+            if "tv_inicializada" not in st.session_state:
+                st.session_state.tv_inicializada = True
+                st.session_state.memorias_eventos = ids_eventos_actuales
+                st.session_state.memorias_avisos = ids_avisos_actuales
+            else:
+                # 3. Comparamos lo actual con la memoria anterior para buscar "Nuevos"
+                nuevos_eventos = ids_eventos_actuales - st.session_state.memorias_eventos
+                nuevos_avisos = ids_avisos_actuales - st.session_state.memorias_avisos
+
+                html_reproductor = ""
+
+                # 4. Configurar Sonidos (URLs públicas y seguras)
+                # Sonido de Alarma para Avisos Urgentes
+                sonido_aviso = "https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" 
+                # Sonido Suave para Nuevos Eventos / Enlaces
+                sonido_evento = "https://actions.google.com/sounds/v1/ui/pop_up_on.ogg"
+
+                # 5. Lógica de prioridad: Si hay aviso suena la alarma, si solo hay evento suena la campana suave
+                if nuevos_avisos:
+                    html_reproductor = f'<audio autoplay><source src="{sonido_aviso}" type="audio/ogg"></audio>'
+                elif nuevos_eventos:
+                    html_reproductor = f'<audio autoplay><source src="{sonido_evento}" type="audio/ogg"></audio>'
+
+                # 6. Reproducimos el sonido de forma invisible
+                if html_reproductor:
+                    components.html(html_reproductor, height=0, width=0)
+
+                # 7. Actualizamos la memoria para los próximos 20 segundos
+                st.session_state.memorias_eventos = ids_eventos_actuales
+                st.session_state.memorias_avisos = ids_avisos_actuales
+
+        except Exception as e:
+            pass # Si el módulo de sonido falla por internet, la pantalla seguirá funcionando            
 
     # Este frena el resto del archivo cuando se ve la pantalla
     st.stop()
