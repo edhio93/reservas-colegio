@@ -282,12 +282,12 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
 """
     st.markdown(html_cabecera, unsafe_allow_html=True)
     
-         col_main, col_ann = st.columns([2.5, 1], gap="large")
+        col_main, col_ann = st.columns([2.5, 1], gap="large")
     
         # ==========================================
         # COLUMNA IZQUIERDA (CRONOGRAMA DE EVENTOS)
         # ==========================================
-         with col_main:
+        with col_main:
             try:
                 # Capturamos la hora y minuto actual en formato HH:MM (Ej: "14:30")
                 hora_actual = dt_datetime.now().strftime("%H:%M")
