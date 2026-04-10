@@ -521,7 +521,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 st.error(f"Error técnico al consultar anuncios: {e}")
 
         # MUY IMPORTANTE: Este stop() frena que se dibuje el resto del menú cuando estamos en modo TV
-        st.stop()
+    st.stop()
 # ──────────────────────────────────────────────────────────────────────────────
 # 0) CONFIGURACIÓN GLOBAL Y ESTILO
 # ──────────────────────────────────────────────────────────────────────────────
