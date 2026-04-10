@@ -166,7 +166,7 @@ archivo_alerta = "alerta_tv.json"
 if os.path.exists(archivo_alerta):
     try:
        with open(archivo_alerta, "r") as f:
-                alerta_data = json.load(f)
+           alerta_data = json.load(f)
 
             # Convertimos el texto de vuelta a fecha/hora
             expiracion_alerta = dt_datetime.strptime(alerta_data["expiracion"], "%Y-%m-%d %H:%M:%S")
