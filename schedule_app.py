@@ -155,12 +155,12 @@ import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 
 # ==========================================================
-        # 🚨 SISTEMA DE ALERTA CENTRALIZADA A PANTALLA COMPLETA
-        # ==========================================================
-        import json
-        import os
-        from datetime import datetime as dt_datetime # Aseguramos la importación
-        import datetime as dt
+# 🚨 SISTEMA DE ALERTA CENTRALIZADA A PANTALLA COMPLETA
+# =========================================================
+import json
+import os
+from datetime import datetime as dt_datetime # Aseguramos la importación
+import datetime as dt
 
         archivo_alerta = "alerta_tv.json"
 
