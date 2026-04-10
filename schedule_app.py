@@ -2353,55 +2353,7 @@ elif page == "Modo TV":
                 st.success("✅ ¡Calendario sincronizado!")
 
     st.divider()
-    # ==========================================================
-    # 🚨 PANEL DE EMISIÓN DE ALERTA CENTRALIZADA
-    # ==========================================================
-    st.divider()
-    st.subheader("🚨 Mensaje Centralizado a Pantalla Completa")
-    st.markdown("Usa esta función para **interrumpir la pantalla pública** con un aviso urgente (suspensión de clases, evacuación, aviso general).")
-
-    with st.container(border=True):
-        mensaje_alerta = st.text_area("Texto del mensaje:", placeholder="Ej: SE SUSPENDEN LAS CLASES DEL TURNO TARDE POR CORTE DE AGUA.", height=100)
-
-        col_dur1, col_dur2 = st.columns(2)
-        with col_dur1:
-            tipo_duracion = st.radio("Definir duración por:", ["Minutos (Rápido)", "Fecha/Hora Exacta"], horizontal=True)
-
-        with col_dur2:
-            import datetime as dt # Para cálculos de tiempo
-            if tipo_duracion == "Minutos (Rápido)":
-                minutos = st.number_input("¿Cuántos minutos durará en pantalla?", min_value=1, value=5, step=1)
-                expiracion = dt_datetime.now() + dt.timedelta(minutes=minutos)
-                st.caption(f"Terminará aprox a las: {expiracion.strftime('%H:%M:%S')}")
-            else:
-                f_alerta = st.date_input("Fecha límite:")
-                h_alerta = st.time_input("Hora límite:")
-                expiracion = dt_datetime.combine(f_alerta, h_alerta)
-
-        col_b1, col_b2 = st.columns(2)
-        with col_b1:
-            if st.button("🔴 LANZAR ALERTA EN PANTALLA AHORA", type="primary", use_container_width=True):
-                if not mensaje_alerta.strip():
-                    st.warning("Debes escribir un mensaje primero.")
-                else:
-                    import json
-                    alerta_data = {
-                        "mensaje": mensaje_alerta.strip(),
-                        "expiracion": expiracion.strftime("%Y-%m-%d %H:%M:%S")
-                    }
-                    with open("alerta_tv.json", "w") as f:
-                        json.dump(alerta_data, f)
-                    st.success("¡Alerta enviada! Aparecerá en la pantalla en menos de 20 segundos.")
-
-        with col_b2:
-            if st.button("🛑 Cancelar Alerta / Limpiar Pantalla", use_container_width=True):
-                import os
-                if os.path.exists("alerta_tv.json"):
-                    os.remove("alerta_tv.json")
-                    st.info("Alerta cancelada. La pantalla volverá a la normalidad en unos segundos.")
-                else:
-                    st.write("No hay ninguna alerta activa en este momento.")
-
+   
     # --- SECCIÓN 2: FORMULARIOS DE CREACIÓN ---
     st.header("📝 Gestión de Contenido Interno")
     st.info("Utiliza estos formularios para agregar información manualmente a la pantalla.")
@@ -2912,6 +2864,56 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
 
         except Exception as e:
             pass
+
+             # ==========================================================
+    # 🚨 PANEL DE EMISIÓN DE ALERTA CENTRALIZADA
+    # ==========================================================
+    st.divider()
+    st.subheader("🚨 Mensaje Centralizado a Pantalla Completa")
+    st.markdown("Usa esta función para **interrumpir la pantalla pública** con un aviso urgente (suspensión de clases, evacuación, aviso general).")
+
+    with st.container(border=True):
+        mensaje_alerta = st.text_area("Texto del mensaje:", placeholder="Ej: SE SUSPENDEN LAS CLASES DEL TURNO TARDE POR CORTE DE AGUA.", height=100)
+
+        col_dur1, col_dur2 = st.columns(2)
+        with col_dur1:
+            tipo_duracion = st.radio("Definir duración por:", ["Minutos (Rápido)", "Fecha/Hora Exacta"], horizontal=True)
+
+        with col_dur2:
+            import datetime as dt # Para cálculos de tiempo
+            if tipo_duracion == "Minutos (Rápido)":
+                minutos = st.number_input("¿Cuántos minutos durará en pantalla?", min_value=1, value=5, step=1)
+                expiracion = dt_datetime.now() + dt.timedelta(minutes=minutos)
+                st.caption(f"Terminará aprox a las: {expiracion.strftime('%H:%M:%S')}")
+            else:
+                f_alerta = st.date_input("Fecha límite:")
+                h_alerta = st.time_input("Hora límite:")
+                expiracion = dt_datetime.combine(f_alerta, h_alerta)
+
+        col_b1, col_b2 = st.columns(2)
+        with col_b1:
+            if st.button("🔴 LANZAR ALERTA EN PANTALLA AHORA", type="primary", use_container_width=True):
+                if not mensaje_alerta.strip():
+                    st.warning("Debes escribir un mensaje primero.")
+                else:
+                    import json
+                    alerta_data = {
+                        "mensaje": mensaje_alerta.strip(),
+                        "expiracion": expiracion.strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    with open("alerta_tv.json", "w") as f:
+                        json.dump(alerta_data, f)
+                    st.success("¡Alerta enviada! Aparecerá en la pantalla en menos de 20 segundos.")
+
+        with col_b2:
+            if st.button("🛑 Cancelar Alerta / Limpiar Pantalla", use_container_width=True):
+                import os
+                if os.path.exists("alerta_tv.json"):
+                    os.remove("alerta_tv.json")
+                    st.info("Alerta cancelada. La pantalla volverá a la normalidad en unos segundos.")
+                else:
+                    st.write("No hay ninguna alerta activa en este momento.")
+
             
     # Este frena el resto del archivo cuando se ve la pantalla
     st.stop()
