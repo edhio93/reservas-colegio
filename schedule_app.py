@@ -153,20 +153,19 @@ import os
 import pandas as pd
 import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
-
 # ==========================================================
-    # 🚨 SISTEMA DE ALERTA CENTRALIZADA A PANTALLA COMPLETA
-    # ==========================================================
-    import json
-    import os
-    from datetime import datetime as dt_datetime
-    import datetime as dt
+# 🚨 SISTEMA DE ALERTA CENTRALIZADA A PANTALLA COMPLETA
+# ==========================================================
+import json
+import os
+from datetime import datetime as dt_datetime
+import datetime as dt
 
-    archivo_alerta = "alerta_tv.json"
+archivo_alerta = "alerta_tv.json"
 
-    if os.path.exists(archivo_alerta):
-        try:
-            with open(archivo_alerta, "r") as f:
+if os.path.exists(archivo_alerta):
+    try:
+       with open(archivo_alerta, "r") as f:
                 alerta_data = json.load(f)
 
             # Convertimos el texto de vuelta a fecha/hora
@@ -241,6 +240,8 @@ from streamlit_autorefresh import st_autorefresh
                 os.remove(archivo_alerta)
         except Exception as e:
             st.error(f"Error leyendo alerta: {e}")
+
+
 # ==============================================================================
 # 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO SIN LOGIN)
 # ==============================================================================
