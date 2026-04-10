@@ -2225,23 +2225,21 @@ elif page == "Modo TV":
     st.title("📺 Panel de Mensajería y Pantalla TV")
     st.markdown("Desde aquí puedes gestionar la pantalla pública del colegio, sincronizar calendarios y crear anuncios.")
   
-  # --- BOTONES DE PRUEBA DE SONIDO (VERSIÓN NATIVA) ---
+  # --- BOTONES DE PRUEBA DE SONIDO (MÉTODO INFALIBLE) ---
     with st.expander("🔊 Probar Sonidos del Sistema", expanded=True):
-        st.write("Haz clic para verificar los sonidos. Esta vez inyectamos el audio directo a la página principal.")
-        col_s1, col_s2 = st.columns(2)
+        st.warning("Si al presionar estos botones no escuchas nada, revisa el volumen de tu computadora o los altavoces.")
         
-        # Sonidos súper fuertes
-        sonido_evento_test = "https://upload.wikimedia.org/wikipedia/commons/b/b5/Radio_programe_jingle.ogg"
-        sonido_aviso_test = "https://upload.wikimedia.org/wikipedia/commons/1/15/Buzzer.ogg"
-        
-        with col_s1:
-            if st.button("🔔 Probar Sonido Evento", use_container_width=True):
-                # Usamos st.markdown para saltarnos la restricción del iframe
-                st.markdown(f'<audio autoplay><source src="{sonido_evento_test}" type="audio/ogg"></audio>', unsafe_allow_html=True)
-                
-        with col_s2:
-            if st.button("🚨 Probar Sonido Alarma", use_container_width=True):
-                st.markdown(f'<audio autoplay><source src="{sonido_aviso_test}" type="audio/ogg"></audio>', unsafe_allow_html=True)
+        html_botones = """
+        <div style="display: flex; gap: 15px; margin-bottom: 20px; justify-content: center;">
+            <button onclick="new Audio('https://upload.wikimedia.org/wikipedia/commons/b/b5/Radio_programe_jingle.ogg').play()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background-color: #e0f7fa; border: 1px solid #00acc1; border-radius: 8px;">
+                🔔 Probar Sonido Evento
+            </button>
+            <button onclick="new Audio('https://upload.wikimedia.org/wikipedia/commons/1/15/Buzzer.ogg').play()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background-color: #ffebee; border: 1px solid #e53935; border-radius: 8px;">
+                🚨 Probar Sonido Alarma
+            </button>
+        </div>
+        """
+        st.markdown(html_botones, unsafe_allow_html=True)
                 
     # --- SECCIÓN 1: LANZADOR Y GOOGLE CALENDAR ---
     with st.container(border=True):
@@ -2742,7 +2740,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         except Exception as e:
             st.error(f"Error técnico al consultar anuncios: {e}")
        # ====================================================================
-        # 🔔 GESTOR DE SONIDOS (VERSIÓN INYECCIÓN DIRECTA)
+        # 🔔 GESTOR DE SONIDOS (VERSIÓN NATIVA STREAMLIT)
         # ====================================================================
         try:
             ids_eventos_actuales = set([f"{e.get('titulo', '')}_{e.get('display_hora', '')}" for e in events_hoy_list])
@@ -2758,16 +2756,20 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
 
                 sonido_aviso = "https://upload.wikimedia.org/wikipedia/commons/1/15/Buzzer.ogg" 
                 sonido_evento = "https://upload.wikimedia.org/wikipedia/commons/b/b5/Radio_programe_jingle.ogg"
-                url_a_reproducir = ""
 
+                # Usamos el st.audio oficial de Streamlit con autoplay
                 if nuevos_avisos:
-                    url_a_reproducir = sonido_aviso
+                    st.audio(sonido_aviso, format="audio/ogg", autoplay=True)
                 elif nuevos_eventos:
-                    url_a_reproducir = sonido_evento
+                    st.audio(sonido_evento, format="audio/ogg", autoplay=True)
 
-                if url_a_reproducir:
-                    # Inyectamos el audio directamente en el HTML nativo de la app
-                    st.markdown(f'<audio autoplay><source src="{url_a_reproducir}" type="audio/ogg"></audio>', unsafe_allow_html=True)
+                # Ocultamos TODOS los reproductores de audio de la pantalla TV usando CSS
+                if nuevos_avisos or nuevos_eventos:
+                    st.markdown("""
+                        <style>
+                            audio { display: none !important; }
+                        </style>
+                    """, unsafe_allow_html=True)
 
                 st.session_state.memorias_eventos = ids_eventos_actuales
                 st.session_state.memorias_avisos = ids_avisos_actuales
