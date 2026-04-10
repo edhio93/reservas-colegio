@@ -2225,19 +2225,25 @@ elif page == "Modo TV":
     st.title("📺 Panel de Mensajería y Pantalla TV")
     st.markdown("Desde aquí puedes gestionar la pantalla pública del colegio, sincronizar calendarios y crear anuncios.")
   
-  # --- REPRODUCTORES DE PRUEBA DE SONIDO ---
+ # --- REPRODUCTORES DE PRUEBA (ARCHIVOS LOCALES) ---
     with st.expander("🔊 Probar Sonidos del Sistema", expanded=True):
-        st.info("Haz clic en el botón de 'Play' (▶️) de cada reproductor para comprobar que tu equipo tiene volumen.")
+        st.info("Asegúrate de haber guardado 'evento.mp3' y 'alarma.mp3' en la misma carpeta que tu código.")
         
         col_s1, col_s2 = st.columns(2)
         
         with col_s1:
             st.write("🔔 **Sonido Evento**")
-            st.audio("https://upload.wikimedia.org/wikipedia/commons/b/b5/Radio_programe_jingle.ogg", format="audio/ogg")
-            
+            try:
+                st.audio("evento.mp3", format="audio/mp3")
+            except:
+                st.error("No se encontró 'evento.mp3' en la carpeta.")
+                
         with col_s2:
             st.write("🚨 **Sonido Alarma**")
-            st.audio("https://upload.wikimedia.org/wikipedia/commons/1/15/Buzzer.ogg", format="audio/ogg")
+            try:
+                st.audio("alarma.mp3", format="audio/mp3")
+            except:
+                st.error("No se encontró 'alarma.mp3' en la carpeta.")
                 
     # --- SECCIÓN 1: LANZADOR Y GOOGLE CALENDAR ---
     with st.container(border=True):
@@ -2738,7 +2744,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         except Exception as e:
             st.error(f"Error técnico al consultar anuncios: {e}")
        # ====================================================================
-        # 🔔 GESTOR DE SONIDOS (VERSIÓN NATIVA STREAMLIT)
+        # 🔔 GESTOR DE SONIDOS (VERSIÓN ARCHIVOS LOCALES DEFINITIVA)
         # ====================================================================
         try:
             ids_eventos_actuales = set([f"{e.get('titulo', '')}_{e.get('display_hora', '')}" for e in events_hoy_list])
@@ -2752,16 +2758,13 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 nuevos_eventos = ids_eventos_actuales - st.session_state.memorias_eventos
                 nuevos_avisos = ids_avisos_actuales - st.session_state.memorias_avisos
 
-                sonido_aviso = "https://upload.wikimedia.org/wikipedia/commons/1/15/Buzzer.ogg" 
-                sonido_evento = "https://upload.wikimedia.org/wikipedia/commons/b/b5/Radio_programe_jingle.ogg"
-
-                # Usamos el st.audio oficial de Streamlit con autoplay
+                # Reproducimos el archivo local correspondiente con autoplay
                 if nuevos_avisos:
-                    st.audio(sonido_aviso, format="audio/ogg", autoplay=True)
+                    st.audio("alarma.mp3", format="audio/mp3", autoplay=True)
                 elif nuevos_eventos:
-                    st.audio(sonido_evento, format="audio/ogg", autoplay=True)
+                    st.audio("evento.mp3", format="audio/mp3", autoplay=True)
 
-                # Ocultamos TODOS los reproductores de audio de la pantalla TV usando CSS
+                # Ocultamos el reproductor de la vista pública para que la pantalla siga viéndose limpia
                 if nuevos_avisos or nuevos_eventos:
                     st.markdown("""
                         <style>
@@ -2774,7 +2777,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
 
         except Exception as e:
             pass
-
+            
     # Este frena el resto del archivo cuando se ve la pantalla
     st.stop()
 
