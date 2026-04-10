@@ -287,7 +287,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         # ==========================================
         # COLUMNA IZQUIERDA (CRONOGRAMA DE EVENTOS)
         # ==========================================
-        with col_main:
+    with col_main:
             try:
                 # Capturamos la hora y minuto actual en formato HH:MM (Ej: "14:30")
                 hora_actual = dt_datetime.now().strftime("%H:%M")
@@ -408,7 +408,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         # ==========================================
         # COLUMNA DERECHA (ANUNCIOS Y CONTROLES)
         # ==========================================
-        with col_ann:
+    with col_ann:
             # --- SELECTOR DE PERFILES ---
             st.selectbox(
                 "👁️ Perfil de Visualización", 
