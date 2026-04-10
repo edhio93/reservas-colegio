@@ -153,94 +153,92 @@ import os
 import pandas as pd
 import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
-# ==========================================================
-# 🚨 SISTEMA DE ALERTA CENTRALIZADA A PANTALLA COMPLETA
-# ==========================================================
 import json
-import os
 from datetime import datetime as dt_datetime
 import datetime as dt
 
+# ==========================================================
+# 🚨 SISTEMA DE ALERTA CENTRALIZADA A PANTALLA COMPLETA
+# ==========================================================
 archivo_alerta = "alerta_tv.json"
 
 if os.path.exists(archivo_alerta):
     try:
-       with open(archivo_alerta, "r") as f:
-           alerta_data = json.load(f)
+        with open(archivo_alerta, "r") as f:
+            alerta_data = json.load(f)
 
-            # Convertimos el texto de vuelta a fecha/hora
-       expiracion_alerta = dt_datetime.strptime(alerta_data["expiracion"], "%Y-%m-%d %H:%M:%S")
+        # Convertimos el texto de vuelta a fecha/hora
+        expiracion_alerta = dt_datetime.strptime(alerta_data["expiracion"], "%Y-%m-%d %H:%M:%S")
 
-            # Comprobamos si la alerta sigue vigente
-       if dt_datetime.now() < expiracion_alerta:
+        # Comprobamos si la alerta sigue vigente
+        if dt_datetime.now() < expiracion_alerta:
+            
+            # 1. Dibujamos la pantalla roja gigante encima de todo
+            st.markdown("""
+                <style>
+                .alerta-fullscreen {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100vw;
+                    height: 100vh;
+                    background-color: rgba(220, 38, 38, 0.95); /* Fondo Rojo Emergencia */
+                    color: white;
+                    z-index: 999999;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    text-align: center;
+                    padding: 50px;
+                    backdrop-filter: blur(15px);
+                }
+                .alerta-fullscreen h1 {
+                    font-size: 5rem !important;
+                    font-weight: 900;
+                    margin-bottom: 20px;
+                    text-transform: uppercase;
+                    color: white;
+                }
+                .alerta-fullscreen p {
+                    font-size: 3rem;
+                    font-weight: 500;
+                    color: white;
+                    line-height: 1.2;
+                }
+                /* Esconde la barra superior y los márgenes de Streamlit */
+                header {visibility: hidden;}
+                .stApp {overflow: hidden;}
+                </style>
+            """, unsafe_allow_html=True)
+
+            html_alerta = f"""
+                <div class="alerta-fullscreen">
+                    <h1>⚠️ AVISO IMPORTANTE ⚠️</h1>
+                    <p>{alerta_data['mensaje']}</p>
+                </div>
+            """
+            st.markdown(html_alerta, unsafe_allow_html=True)
+
+            # 2. Hacemos sonar la alarma (SOLO UNA VEZ)
+            id_unica_alerta = alerta_data["expiracion"] 
+            if st.session_state.get("ultima_alerta_sonada") != id_unica_alerta:
+                # Sonido de alarma de reloj clásica y potente de Google
+                sonido_alarma = "https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg"
+                st.audio(sonido_alarma, format="audio/ogg", autoplay=True)
                 
-                # 1. Dibujamos la pantalla roja gigante encima de todo
-                st.markdown("""
-                    <style>
-                    .alerta-fullscreen {
-                        position: fixed;
-                        top: 0;
-                        left: 0;
-                        width: 100vw;
-                        height: 100vh;
-                        background-color: rgba(220, 38, 38, 0.95); /* Fondo Rojo Emergencia */
-                        color: white;
-                        z-index: 999999;
-                        display: flex;
-                        flex-direction: column;
-                        justify-content: center;
-                        align-items: center;
-                        text-align: center;
-                        padding: 50px;
-                        backdrop-filter: blur(15px);
-                    }
-                    .alerta-fullscreen h1 {
-                        font-size: 5rem !important;
-                        font-weight: 900;
-                        margin-bottom: 20px;
-                        text-transform: uppercase;
-                        color: white;
-                    }
-                    .alerta-fullscreen p {
-                        font-size: 3rem;
-                        font-weight: 500;
-                        color: white;
-                        line-height: 1.2;
-                    }
-                    /* Esconde la barra superior y los márgenes de Streamlit */
-                    header {visibility: hidden;}
-                    .stApp {overflow: hidden;}
-                    </style>
-                """, unsafe_allow_html=True)
+                # Guardamos en memoria que ya sonó para que no vuelva a sonar en 20 segundos
+                st.session_state["ultima_alerta_sonada"] = id_unica_alerta
+                
+                st.markdown("<style>audio { display: none !important; }</style>", unsafe_allow_html=True)
 
-                html_alerta = f"""
-                    <div class="alerta-fullscreen">
-                        <h1>⚠️ AVISO IMPORTANTE ⚠️</h1>
-                        <p>{alerta_data['mensaje']}</p>
-                    </div>
-                """
-                st.markdown(html_alerta, unsafe_allow_html=True)
-
-                # 2. Hacemos sonar la alarma (SOLO UNA VEZ)
-                id_unica_alerta = alerta_data["expiracion"] 
-                if st.session_state.get("ultima_alerta_sonada") != id_unica_alerta:
-                    # Sonido de alarma de reloj clásica y potente de Google
-                    sonido_alarma = "https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg"
-                    st.audio(sonido_alarma, format="audio/ogg", autoplay=True)
-                    
-                    # Guardamos en memoria que ya sonó para que no vuelva a sonar en 20 segundos
-                    st.session_state["ultima_alerta_sonada"] = id_unica_alerta
-                    
-                    st.markdown("<style>audio { display: none !important; }</style>", unsafe_allow_html=True)
-
-                # 3. Frenamos el código aquí para que no dibuje el resto del colegio de fondo
-                st.stop() 
-    else:
-                # Si ya pasó la hora límite, la borramos automáticamente
-                os.remove(archivo_alerta)
-except Exception as e:
-            st.error(f"Error leyendo alerta: {e}")
-
+            # 3. Frenamos el código aquí para que no dibuje el resto del colegio de fondo
+            st.stop() 
+        else:
+            # Si ya pasó la hora límite, la borramos automáticamente
+            os.remove(archivo_alerta)
+    except Exception as e:
+        st.error(f"Error leyendo alerta: {e}")
 
 # ==============================================================================
 # 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO SIN LOGIN)
