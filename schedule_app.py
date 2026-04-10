@@ -2219,11 +2219,37 @@ if page == "Configuración":
                         except Exception as e: st.error("No se puede eliminar porque tiene reservas o reportes de mantenimiento asociados.")
 
 # ==============================================================================
-# 📺 PÁGINA: GESTIÓN DE TV (SOLO FORMULARIOS INTERNOS Y TABLA)
+# 📺 PÁGINA: GESTIÓN DE TV Y MENSAJERÍA
 # ==============================================================================
 elif page == "Modo TV":
-    st.header("📝 Gestión de Pantalla TV")
-    st.info("Utiliza estos formularios para agregar información y visualiza los registros actuales.")
+    st.title("📺 Panel de Mensajería y Pantalla TV")
+    st.markdown("Desde aquí puedes gestionar la pantalla pública del colegio, sincronizar calendarios y crear anuncios.")
+
+    # --- SECCIÓN 1: LANZADOR Y GOOGLE CALENDAR ---
+    with st.container(border=True):
+        col_launch1, col_launch2 = st.columns([1, 2])
+        
+        with col_launch1:
+            st.subheader("🖥️ Proyección")
+            st.write("Inicia el modo kiosco para proyectar en la TV.")
+            if st.button("🚀 Iniciar Pantalla Pública", type="primary", use_container_width=True):
+                st.session_state.ver_pantalla_tv = True
+                st.rerun()
+                
+        with col_launch2:
+            st.subheader("📅 Sincronización Google Calendar")
+            st.write("Pega el enlace público (.ics) para sumar eventos automáticos.")
+            url_cal = st.text_input("Enlace iCal (.ics)", value=st.session_state.get('url_calendario_tv', ''), label_visibility="collapsed")
+            if st.button("Guardar Enlace y Sincronizar", type="secondary"):
+                st.session_state['url_calendario_tv'] = url_cal
+                obtener_eventos_google_calendar.clear() 
+                st.success("✅ ¡Calendario sincronizado!")
+
+    st.divider()
+
+    # --- SECCIÓN 2: FORMULARIOS DE CREACIÓN ---
+    st.header("📝 Gestión de Contenido Interno")
+    st.info("Utiliza estos formularios para agregar información manualmente a la pantalla.")
     
     col_form1, col_form2 = st.columns(2)
     
@@ -2238,7 +2264,6 @@ elif page == "Modo TV":
                 cat_ev = st.selectbox("Categoría", ["Evento", "Enlace", "Reunión", "Examen", "Efeméride", "Taller", "Otro"])
                 fecha_ev = st.date_input("Fecha del Evento", min_value=dt.date.today())
                 
-                # NUEVO: Selector de Horario
                 tipo_duracion = st.radio("Duración del Evento", ["☀️ Todo el día", "⏱️ Horario específico"])
                 st.caption("Si eliges 'Horario específico', ajusta las horas abajo:")
                 col_h1, col_h2 = st.columns(2)
@@ -2250,10 +2275,9 @@ elif page == "Modo TV":
                 if st.form_submit_button("Guardar Evento", use_container_width=True):
                     if titulo_ev.strip():
                         try:
-                            # Configurar horas según la selección
                             if tipo_duracion == "☀️ Todo el día":
                                 hora_i_str = "00:00"
-                                hora_f_str = None    # <--- AQUÍ ESTÁ EL CAMBIO MÁGICO (Reemplaza "" por None sin comillas)
+                                hora_f_str = None
                             else:
                                 hora_i_str = h_ini_ev.strftime("%H:%M")
                                 hora_f_str = h_fin_ev.strftime("%H:%M")
@@ -2264,7 +2288,7 @@ elif page == "Modo TV":
                                 "fecha_evento": fecha_ev.isoformat(),
                                 "categoria": cat_ev,
                                 "hora_inicio": hora_i_str,
-                                "hora_fin": hora_f_str,  # <--- Ahora, si es todo el día, esto enviará un None válido a Supabase
+                                "hora_fin": hora_f_str, 
                                 "is_active": True
                             }).execute()
                             
@@ -2286,11 +2310,7 @@ elif page == "Modo TV":
                 prio_an = st.radio("Prioridad visual", [("🚨 Alta (Rojo)", 1), ("⚠️ Media (Amarillo)", 2)], format_func=lambda x: x[0])
                 
                 st.markdown("**⏳ Tiempo Límite del Anuncio**")
-                
-                tipo_limite = st.radio(
-                    "¿Cómo quieres definir el límite?", 
-                    ["⏱️ Duración rápida (Minutos)", "📅 Fecha y hora exacta"]
-                )
+                tipo_limite = st.radio("¿Cómo quieres definir el límite?", ["⏱️ Duración rápida (Minutos)", "📅 Fecha y hora exacta"])
                 
                 st.caption("Si elegiste 'Duración rápida', usa este campo:")
                 minutos_an = st.number_input("¿Cuántos minutos estará visible?", min_value=1, max_value=1440, value=30, step=5)
@@ -2305,7 +2325,6 @@ elif page == "Modo TV":
                 if st.form_submit_button("Publicar Anuncio", type="primary", use_container_width=True):
                     if titulo_an.strip():
                         import datetime 
-                        
                         try:
                             if tipo_limite == "⏱️ Duración rápida (Minutos)":
                                 tiempo_final = dt_datetime.now() + datetime.timedelta(minutes=minutos_an)
@@ -2329,7 +2348,7 @@ elif page == "Modo TV":
                     else:
                         st.error("El título es obligatorio.")
 
-    # --- SECCIÓN: GESTIÓN DE ELIMINACIÓN ---
+    # --- SECCIÓN 3: GESTIÓN DE ELIMINACIÓN ---
     st.markdown("---")
     st.subheader("🗑️ Gestión Rápida (Eliminar de la TV)")
     st.info("Utiliza estos selectores para dar de baja un Evento o Anuncio inmediatamente.")
@@ -2365,7 +2384,7 @@ elif page == "Modo TV":
             else:
                 st.write("No hay anuncios urgentes activos.")
 
-    # --- SECCIÓN INFERIOR: TABLA DE REGISTROS ---
+    # --- SECCIÓN 4: TABLA DE REGISTROS ---
     st.markdown("---")
     st.subheader("📋 Tabla General de Registros")
     
@@ -2416,13 +2435,11 @@ elif page == "Modo TV":
 # ==============================================================================
 if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
 
-    # --- INICIALIZACIÓN DE VARIABLES DE PANTALLA ---
     if "tv_scale" not in st.session_state:
         st.session_state.tv_scale = 100
     if "tv_profile" not in st.session_state:
         st.session_state.tv_profile = "Profesores / PIE" # Perfil por defecto
 
-    # Temporizador actualizado a 20 segundos
     refresh_count = st_autorefresh(interval=20000, limit=None, key="tv_refresh_timer")
     
     ruta_logo = "logotv.png"
@@ -2436,6 +2453,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
 
     now_dt = dt_datetime.now()
     hoy_str = now_dt.strftime("%Y-%m-%d")
+    hora_actual = now_dt.strftime("%H:%M") # Hora actual para filtrar eventos
 
     dias_es = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
     meses_es = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -2443,28 +2461,20 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
 
     escala = st.session_state.tv_scale / 100.0
 
+    # === ESTILO CSS ===
     aesthetic_style = f"""            
     <style>
         @import url('https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css');
-
         :root {{ --tv-scale: {escala}; }}
-
         .stApp {{ background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }}
         [data-testid="stHeader"] {{ background: rgba(0,0,0,0); }}
         [data-testid="stToolbar"] {{ display: none; }}
         [data-testid="stSidebar"] {{ display: none; }}
         
-        .tv-header-container {{ 
-            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-            color: #0f172a; padding: 15px 25px 0 25px; border-radius: 20px; 
-            margin-bottom: 25px; border: 1px solid #cbd5e1; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.15); overflow: hidden; 
-            display: flex; flex-direction: column; align-items: center;
-        }}
+        .tv-header-container {{ background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); color: #0f172a; padding: 15px 25px 0 25px; border-radius: 20px; margin-bottom: 25px; border: 1px solid #cbd5e1; box-shadow: 0 4px 15px rgba(0,0,0,0.15); display: flex; flex-direction: column; align-items: center; }}
         .header-content-layout {{ display: flex; align-items: center; justify-content: space-between; width: 100%; padding-bottom: 15px; }}
         .header-logo-img {{ height: calc(85px * var(--tv-scale)); width: auto; display: block; }}
         .header-logo-fallback {{ font-size: calc(4rem * var(--tv-scale)); color: #64748b; line-height: 1; display: block; }}
-
         .header-info-group {{ display: flex; align-items: center; gap: 15px; font-size: calc(1.2rem * var(--tv-scale)); font-weight: 600; color: #1e293b; }}
         .header-divider {{ opacity: 0.3; font-weight: 300; font-size: calc(1.5rem * var(--tv-scale)); color: #94a3b8; }}
         .header-status {{ display: flex; align-items: center; color: #475569; }}
@@ -2483,15 +2493,12 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         .block-title-row {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; width: 100%; }}
         .block-title-text {{ font-weight: 700; font-size: calc(1.35rem * var(--tv-scale)); text-transform: uppercase; }}
         .block-time-badge {{ display: flex; align-items: center; gap: 6px; background-color: #f1f5f9; color: #475569; padding: 6px 12px; border-radius: 8px; font-weight: 700; font-size: calc(1.1rem * var(--tv-scale)); border: 1px solid #e2e8f0; }}
-        
         .block-info {{ font-size: calc(1.05rem * var(--tv-scale)); color: #475569; }}
         .block-info-row {{ display: flex; gap: 20px; align-items: center; margin-top: 12px; font-size: calc(1rem * var(--tv-scale));}}
         .block-info-item {{ display: flex; align-items: center; color: #64748b; }}
-        
         .info-icon {{ font-size: calc(1.25rem * var(--tv-scale)); margin-right: 8px; }}
         .icon-profesor {{ color: #4ade80; }} 
         .icon-observaciones {{ color: #fbbf24; }} 
-        
         .block-hora-pill {{ margin-top: 15px; font-weight: 600; color: #64748b; background: #f8fafc; display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 10px; font-size: calc(0.9rem * var(--tv-scale)); border: 1px solid #e2e8f0;}}
         .icon-categoria {{ color: #818cf8; margin-right: 7px; font-size: calc(1.1rem * var(--tv-scale));}} 
 
@@ -2503,21 +2510,19 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     """
     st.markdown(aesthetic_style, unsafe_allow_html=True) 
 
-    # Titulo de pantalla dinámico según el perfil
     modo_texto = f"MODO: {st.session_state.tv_profile.upper()}"
+    clima_html = obtener_clima_vicuna()
 
     st.markdown(f"""
         <div class="tv-header-container">
             <div class="header-content-layout">
-                <div class="header-logo-section">
-                    {logo_src_html}
-                </div>
+                <div class="header-logo-section">{logo_src_html}</div>
                 <div class="header-info-group">
                     <div class="header-date">{fecha_es_formateada}</div>
                     <div class="header-divider">|</div>
-                    <div class="header-status">
-                        <i class="ph-fill ph-users-three status-icon"></i> {modo_texto}
-                    </div>
+                    <div class="header-weather">{clima_html}</div>
+                    <div class="header-divider">|</div>
+                    <div class="header-status"><i class="ph-fill ph-users-three status-icon"></i> {modo_texto}</div>
                 </div>
             </div>
             <div class="progress-container"><div class="progress-bar"></div></div>
@@ -2526,31 +2531,29 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     
     col_main, col_ann = st.columns([2.5, 1], gap="large")
     
-   with col_main:
+    # ==========================================
+    # COLUMNA IZQUIERDA (CRONOGRAMA DE EVENTOS)
+    # ==========================================
+    with col_main:
         try:
-            # Capturamos la hora y minuto actual en formato HH:MM (Ej: "14:30")
-            hora_actual = dt_datetime.now().strftime("%H:%M")
             perfil_actual = st.session_state.tv_profile.upper()
-            
-            # 1. Inicializar lista maestra
             events_hoy_list = []
             
-            # 2. Cargar Google Calendar (Todos los perfiles)
+            # 1. Google Calendar (Todos los perfiles)
             url_guardada = st.session_state.get('url_calendario_tv', '')
             eventos_calendar = obtener_eventos_google_calendar(url_guardada)
             events_hoy_list.extend(eventos_calendar) 
             
-            # 3. Cargar Eventos TV de Supabase (Todos los perfiles) -> ¡AQUÍ ESTÁ LA SOLUCIÓN!
+            # 2. Eventos TV de Supabase (Todos los perfiles)
             res_tv = supabase.table("eventos_tv").select("*").eq("fecha_evento", hoy_str).eq("is_active", True).execute()
             res_tv_hoy = res_tv.data if res_tv.data else []
             
             for ev in res_tv_hoy:
                 h_ini = str(ev.get("hora_inicio", ev.get("hora", "00:00")))[:5]
                 h_fin = str(ev.get("hora_fin", "23:59"))[:5]
-                if not h_fin or h_fin == "None" or h_fin.strip() == "": 
-                    h_fin = "23:59" # Si no tiene hora de fin, dura todo el día
+                if not h_fin or h_fin == "None" or h_fin.strip() == "": h_fin = "23:59"
                 
-                # ⏳ FILTRO DE EXPIRACIÓN: Si ya pasó la hora de término, lo ocultamos
+                # Expiración: Ocultar si ya terminó
                 if hora_actual > h_fin and h_fin != "23:59":
                     continue
                     
@@ -2560,12 +2563,11 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 events_hoy_list.append({
                     "hora_sort": h_ini if h_ini and h_ini != "None" and h_ini != "00:00" else "00:00", 
                     "display_hora": disp_hora,
-                    "titulo": ev.get("titulo", "Evento"), 
-                    "descripcion": ev.get("descripcion", ""),
-                    "categoria": ev.get("categoria", "Evento")
+                    "titulo": ev.get("titulo", "Evento"), "descripcion": ev.get("descripcion", ""),
+                    "categoria": ev.get("categoria", "Evento General")
                 })
                 
-            # 4. Cargar Reservas de Enlaces (SOLO Perfil Profesores/PIE)
+            # 3. Reservas de Enlaces (SOLO Profesores / PIE)
             if "PROFESORES" in perfil_actual or "PIE" in perfil_actual:
                 res_supabase = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute()
                 res_reservas_hoy = res_supabase.data if res_supabase.data else []
@@ -2573,10 +2575,8 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 for r in res_reservas_hoy:
                     h_ini = str(r.get("hora_inicio", r.get("hora", "00:00")))[:5]
                     h_fin = str(r.get("hora_fin", "23:59"))[:5]
-                    if not h_fin or h_fin == "None" or h_fin.strip() == "": 
-                        h_fin = "23:59"
+                    if not h_fin or h_fin == "None" or h_fin.strip() == "": h_fin = "23:59"
                     
-                    # ⏳ FILTRO DE EXPIRACIÓN: Si ya pasó la hora de término, lo ocultamos
                     if hora_actual > h_fin and h_fin != "23:59":
                         continue
                         
@@ -2586,18 +2586,15 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     prof = r.get("profesores", {}).get("nombre", "Docente") if r.get("profesores") else "Docente"
                     rec = r.get("recursos", {}).get("nombre", "Recurso") if r.get("recursos") else "Recurso"
                     curso = r.get("cursos", {}).get("nombre", "Curso") if r.get("cursos") else "Curso"
-                    obs = r.get("observaciones", "")
                     
                     events_hoy_list.append({
                         "hora_sort": h_ini if h_ini and h_ini != "None" and h_ini != "00:00" else "23:59", 
                         "display_hora": disp_hora,
-                        "titulo": f"{rec} ➔ {curso}", 
-                        "profesor": prof,
-                        "observaciones": obs, 
-                        "categoria": "Clase / Uso Recurso"
+                        "titulo": f"{rec} ➔ {curso}", "profesor": prof,
+                        "observaciones": r.get("observaciones", ""), "categoria": "Uso Recurso / Sala"
                     })
             
-            # 5. Ordenar cronológicamente
+            # Ordenar cronológicamente
             events_hoy_list = sorted(events_hoy_list, key=lambda x: str(x.get("hora_sort", "99:99")))
             
             if not events_hoy_list:
@@ -2625,9 +2622,9 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     if item.get("profesor") or item.get("observaciones"):
                         info_row_html = "<div class='block-info-row'>"
                         if item.get("profesor"):
-                            info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-user-graduate info-icon'></i> {item['profesor']}</div>"
+                            info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-user-graduate info-icon icon-profesor'></i> {item['profesor']}</div>"
                         if item.get("observaciones"):
-                            info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-clipboard-text info-icon'></i> {item['observaciones']}</div>"
+                            info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-clipboard-text info-icon icon-observaciones'></i> {item['observaciones']}</div>"
                         info_row_html += "</div>"
                     
                     html_cronograma += (
@@ -2645,68 +2642,44 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 
         except Exception as e:
             st.error(f"Error al cargar cronograma: {e}")
-    
+
+    # ==========================================
+    # COLUMNA DERECHA (ANUNCIOS Y CONTROLES)
+    # ==========================================
     with col_ann:
-        with st.expander("⚙️ Controles de Pantalla", expanded=False):
-            
-            # --- NUEVO SELECTOR DE PERFILES ---
-            st.selectbox(
-                "👁️ Perfil de Visualización", 
-                ["Inspectoría / UTP", "Profesores / PIE", "Apoderados"], 
-                key="tv_profile"
-            )
-            
+        st.selectbox("👁️ Perfil de Visualización", ["Inspectoría / UTP", "Profesores / PIE", "Apoderados"], key="tv_profile")
+        st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
+        
+        with st.expander("⚙️ Controles Extra", expanded=False):
             st.slider("🔍 Tamaño del texto (%)", min_value=50, max_value=250, value=st.session_state.tv_scale, step=5, key="tv_scale")
             st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
             if st.button("🔙 Volver al Menú", use_container_width=True):
                 st.session_state.ver_pantalla_tv = False
                 st.rerun()
                 
-            components.html(
-                """
+            components.html("""
                 <style>
                     body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
-                    button {
-                        width: 100%; height: 38px; background-color: #ffffff;
-                        border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a;
-                        font-size: 14px; font-weight: 500; cursor: pointer;
-                        display: flex; align-items: center; justify-content: center; gap: 8px;
-                        transition: all 0.2s;
-                    }
+                    button { width: 100%; height: 38px; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s; }
                     button:hover { border-color: #94a3b8; background-color: #f8fafc; }
                 </style>
-                <button onclick="
-                    const doc = window.parent.document;
-                    if (!doc.fullscreenElement) {
-                        doc.documentElement.requestFullscreen();
-                        this.innerHTML = '🗗 Salir Pantalla Completa';
-                    } else {
-                        doc.exitFullscreen();
-                        this.innerHTML = '🔲 Pantalla Completa';
-                    }
-                ">
+                <button onclick="const doc = window.parent.document; if (!doc.fullscreenElement) { doc.documentElement.requestFullscreen(); this.innerHTML = '🗗 Salir Pantalla Completa'; } else { doc.exitFullscreen(); this.innerHTML = '🔲 Pantalla Completa'; }">
                     🔲 Pantalla Completa
                 </button>
-                """,
-                height=40
-            )
+            """, height=40)
 
         try:
-            now = dt_datetime.now()
-            ann_data = supabase.table("anuncios_urgentes").select("id, titulo, descripcion, prioridad, expiracion").eq("is_active", True).execute().data
-            
+            ann_data = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).execute().data
             active_ann = []
             for ann in ann_data:
                 try:
                     exp_dt = pd.to_datetime(ann['expiracion']).tz_localize(None)
-                    if exp_dt > now: 
-                        active_ann.append(ann)
+                    if exp_dt > now_dt: active_ann.append(ann)
                 except:
                     pass
             
             active_ann = sorted(active_ann, key=lambda x: x['prioridad'])
             
-            # --- ADAPTACIÓN DEL PANEL DERECHO SEGÚN PERFIL ---
             if st.session_state.tv_profile == "Apoderados":
                 titulo_panel = "📰 Noticias y Comunicados"
                 texto_vacio = "No hay comunicados vigentes en este momento."
@@ -2715,7 +2688,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 texto_vacio = "No hay avisos en este momento."
 
             html_anuncios = '<div class="announcements-container">'
-            
             if not active_ann:
                 st.markdown(f"<div class='tv-sub-header'>{titulo_panel}</div>", unsafe_allow_html=True)
                 html_anuncios += f"<p style='color: #64748b; text-align:center; font-style:italic; margin-top: 10px;'>{texto_vacio}</p>"
@@ -2732,18 +2704,13 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
 
                 for i, ann in enumerate(anuncios_a_mostrar):
                     delay_ann = i * 0.15 
-                    
-                    # Adaptamos los colores: Si es Apoderados, las alertas rojas cambian a estilo "Noticia" (Azul) para no alarmar.
                     if st.session_state.tv_profile == "Apoderados":
-                        bg_color = "#f0f9ff"; border_color = "#38bdf8"; title_color = "#0369a1"; desc_color = "#334155"
-                        animacion_extra = ""
+                        bg_color, border_color, title_color, desc_color, animacion_extra = "#f0f9ff", "#38bdf8", "#0369a1", "#334155", ""
                     else:
                         if ann['prioridad'] == 1:
-                            bg_color = "#fef2f2"; border_color = "#ef4444"; title_color = "#dc2626"; desc_color = "#334155"
-                            animacion_extra = ", pulseAlert 2s infinite"
+                            bg_color, border_color, title_color, desc_color, animacion_extra = "#fef2f2", "#ef4444", "#dc2626", "#334155", ", pulseAlert 2s infinite"
                         else:
-                            bg_color = "#fffbeb"; border_color = "#f59e0b"; title_color = "#d97706"; desc_color = "#334155"
-                            animacion_extra = "" 
+                            bg_color, border_color, title_color, desc_color, animacion_extra = "#fffbeb", "#f59e0b", "#d97706", "#334155", ""
                     
                     html_anuncios += (
                         f"<div class='announcement-card' style='border-left-color: {border_color}; background-color: {bg_color}; animation: cascadeIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards{animacion_extra}; animation-delay: {delay_ann}s; opacity: 0;'>"
@@ -2751,35 +2718,12 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                         f"<div class='announcement-desc' style='color: {desc_color};'>{ann['descripcion']}</div>"
                         f"</div>"
                     )
-            
             html_anuncios += '</div>'
             st.markdown(html_anuncios, unsafe_allow_html=True)
             
         except Exception as e:
             st.error(f"Error técnico al consultar anuncios: {e}")
-    
+
+    # Este frena el resto del archivo cuando se ve la pantalla
     st.stop()
 
-# ------------------------------------------------------------------
-# SECCIÓN: MODO TV (Mensajería Interna)
-# ------------------------------------------------------------------
-if page == "Modo TV":
-    st.title("📺 Panel de Mensajería Interna")
-    st.markdown("Desde aquí puedes gestionar la pantalla pública del colegio.")
-    
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        if st.button("🚀 Iniciar Pantalla Pública", type="primary", use_container_width=True):
-            st.session_state.ver_pantalla_tv = True
-            st.rerun()
-
-    st.divider()
-    st.subheader("📅 Sincronización con Google Calendar")
-    st.info("Pega aquí el enlace público (.ics) del Google Calendar del colegio. Los eventos del día de hoy aparecerán automáticamente en la pantalla.")
-
-    url_cal = st.text_input("Enlace iCal (.ics)", value=st.session_state.get('url_calendario_tv', ''))
-
-    if st.button("Guardar Enlace y Sincronizar", type="primary"):
-        st.session_state['url_calendario_tv'] = url_cal
-        obtener_eventos_google_calendar.clear() 
-        st.success("✅ ¡Calendario sincronizado correctamente! Los cambios se verán en la pantalla.")
