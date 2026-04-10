@@ -2225,21 +2225,19 @@ elif page == "Modo TV":
     st.title("📺 Panel de Mensajería y Pantalla TV")
     st.markdown("Desde aquí puedes gestionar la pantalla pública del colegio, sincronizar calendarios y crear anuncios.")
   
-  # --- BOTONES DE PRUEBA DE SONIDO (MÉTODO INFALIBLE) ---
+  # --- REPRODUCTORES DE PRUEBA DE SONIDO ---
     with st.expander("🔊 Probar Sonidos del Sistema", expanded=True):
-        st.warning("Si al presionar estos botones no escuchas nada, revisa el volumen de tu computadora o los altavoces.")
+        st.info("Haz clic en el botón de 'Play' (▶️) de cada reproductor para comprobar que tu equipo tiene volumen.")
         
-        html_botones = """
-        <div style="display: flex; gap: 15px; margin-bottom: 20px; justify-content: center;">
-            <button onclick="new Audio('https://upload.wikimedia.org/wikipedia/commons/b/b5/Radio_programe_jingle.ogg').play()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background-color: #e0f7fa; border: 1px solid #00acc1; border-radius: 8px;">
-                🔔 Probar Sonido Evento
-            </button>
-            <button onclick="new Audio('https://upload.wikimedia.org/wikipedia/commons/1/15/Buzzer.ogg').play()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background-color: #ffebee; border: 1px solid #e53935; border-radius: 8px;">
-                🚨 Probar Sonido Alarma
-            </button>
-        </div>
-        """
-        st.markdown(html_botones, unsafe_allow_html=True)
+        col_s1, col_s2 = st.columns(2)
+        
+        with col_s1:
+            st.write("🔔 **Sonido Evento**")
+            st.audio("https://upload.wikimedia.org/wikipedia/commons/b/b5/Radio_programe_jingle.ogg", format="audio/ogg")
+            
+        with col_s2:
+            st.write("🚨 **Sonido Alarma**")
+            st.audio("https://upload.wikimedia.org/wikipedia/commons/1/15/Buzzer.ogg", format="audio/ogg")
                 
     # --- SECCIÓN 1: LANZADOR Y GOOGLE CALENDAR ---
     with st.container(border=True):
