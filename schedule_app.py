@@ -2225,29 +2225,24 @@ elif page == "Modo TV":
     st.title("📺 Panel de Mensajería y Pantalla TV")
     st.markdown("Desde aquí puedes gestionar la pantalla pública del colegio, sincronizar calendarios y crear anuncios.")
   
-   # --- BOTONES DE PRUEBA DE SONIDO (VERSIÓN FORZADA JS) ---
+  # --- BOTONES DE PRUEBA DE SONIDO (VERSIÓN NATIVA) ---
     with st.expander("🔊 Probar Sonidos del Sistema", expanded=True):
-        st.write("Haz clic para verificar que tu navegador reproduce los sonidos al 100% de volumen.")
+        st.write("Haz clic para verificar los sonidos. Esta vez inyectamos el audio directo a la página principal.")
         col_s1, col_s2 = st.columns(2)
         
-        # Sonidos súper fuertes (Campana clara y Chicharra de emergencia)
+        # Sonidos súper fuertes
         sonido_evento_test = "https://upload.wikimedia.org/wikipedia/commons/b/b5/Radio_programe_jingle.ogg"
         sonido_aviso_test = "https://upload.wikimedia.org/wikipedia/commons/1/15/Buzzer.ogg"
         
-        reproductor_js = """
-        <script>
-            const audio = new window.parent.Audio("{url}");
-            audio.volume = 1.0;
-            audio.play().catch(e => alert("⚠️ Tu navegador bloqueó el audio. Haz clic en el ícono del candado junto a la URL arriba y asegúrate de permitir 'Sonido'."));
-        </script>
-        """
-        
         with col_s1:
             if st.button("🔔 Probar Sonido Evento", use_container_width=True):
-                components.html(reproductor_js.replace("{url}", sonido_evento_test), height=0, width=0)
+                # Usamos st.markdown para saltarnos la restricción del iframe
+                st.markdown(f'<audio autoplay><source src="{sonido_evento_test}" type="audio/ogg"></audio>', unsafe_allow_html=True)
+                
         with col_s2:
             if st.button("🚨 Probar Sonido Alarma", use_container_width=True):
-                components.html(reproductor_js.replace("{url}", sonido_aviso_test), height=0, width=0)
+                st.markdown(f'<audio autoplay><source src="{sonido_aviso_test}" type="audio/ogg"></audio>', unsafe_allow_html=True)
+                
     # --- SECCIÓN 1: LANZADOR Y GOOGLE CALENDAR ---
     with st.container(border=True):
         col_launch1, col_launch2 = st.columns([1, 2])
@@ -2747,7 +2742,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
         except Exception as e:
             st.error(f"Error técnico al consultar anuncios: {e}")
        # ====================================================================
-        # 🔔 GESTOR DE SONIDOS (VERSIÓN JAVASCRIPT SIN BLOQUEOS)
+        # 🔔 GESTOR DE SONIDOS (VERSIÓN INYECCIÓN DIRECTA)
         # ====================================================================
         try:
             ids_eventos_actuales = set([f"{e.get('titulo', '')}_{e.get('display_hora', '')}" for e in events_hoy_list])
@@ -2761,7 +2756,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 nuevos_eventos = ids_eventos_actuales - st.session_state.memorias_eventos
                 nuevos_avisos = ids_avisos_actuales - st.session_state.memorias_avisos
 
-                # Los mismos sonidos fuertes de la prueba
                 sonido_aviso = "https://upload.wikimedia.org/wikipedia/commons/1/15/Buzzer.ogg" 
                 sonido_evento = "https://upload.wikimedia.org/wikipedia/commons/b/b5/Radio_programe_jingle.ogg"
                 url_a_reproducir = ""
@@ -2772,21 +2766,14 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     url_a_reproducir = sonido_evento
 
                 if url_a_reproducir:
-                    # Inyectamos el JS en la ventana principal (parent) a volumen máximo
-                    js_reproductor = f"""
-                    <script>
-                        var audio = new window.parent.Audio("{url_a_reproducir}");
-                        audio.volume = 1.0;
-                        audio.play().catch(e => console.log("Bloqueo de navegador:", e));
-                    </script>
-                    """
-                    components.html(js_reproductor, height=0, width=0)
+                    # Inyectamos el audio directamente en el HTML nativo de la app
+                    st.markdown(f'<audio autoplay><source src="{url_a_reproducir}" type="audio/ogg"></audio>', unsafe_allow_html=True)
 
                 st.session_state.memorias_eventos = ids_eventos_actuales
                 st.session_state.memorias_avisos = ids_avisos_actuales
 
         except Exception as e:
-            pass         
+            pass
 
     # Este frena el resto del archivo cuando se ve la pantalla
     st.stop()
