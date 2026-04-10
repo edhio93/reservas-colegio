@@ -2490,40 +2490,83 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     
     col_main, col_ann = st.columns([2.5, 1], gap="large")
     
-    with col_main:
+   with col_main:
         try:
+            # Capturamos la hora y minuto actual en formato HH:MM (Ej: "14:30")
+            hora_actual = dt_datetime.now().strftime("%H:%M")
+            perfil_actual = st.session_state.tv_profile.upper()
+            
+            # 1. Inicializar lista maestra
+            events_hoy_list = []
+            
+            # 2. Cargar Google Calendar (Todos los perfiles)
             url_guardada = st.session_state.get('url_calendario_tv', '')
             eventos_calendar = obtener_eventos_google_calendar(url_guardada)
-            res_reservas_hoy = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute().data
+            events_hoy_list.extend(eventos_calendar) 
             
-            # TODOS LOS PERFILES VEN LOS EVENTOS DEL CALENDARIO
-            events_hoy_list = list(eventos_calendar)
+            # 3. Cargar Eventos TV de Supabase (Todos los perfiles) -> ¡AQUÍ ESTÁ LA SOLUCIÓN!
+            res_tv = supabase.table("eventos_tv").select("*").eq("fecha_evento", hoy_str).eq("is_active", True).execute()
+            res_tv_hoy = res_tv.data if res_tv.data else []
             
-            # SOLO EL PERFIL PROFESORES VE LAS HORAS DE ENLACES (Reservas)
-            if st.session_state.tv_profile == "Profesores / PIE":
+            for ev in res_tv_hoy:
+                h_ini = str(ev.get("hora_inicio", ev.get("hora", "00:00")))[:5]
+                h_fin = str(ev.get("hora_fin", "23:59"))[:5]
+                if not h_fin or h_fin == "None" or h_fin.strip() == "": 
+                    h_fin = "23:59" # Si no tiene hora de fin, dura todo el día
+                
+                # ⏳ FILTRO DE EXPIRACIÓN: Si ya pasó la hora de término, lo ocultamos
+                if hora_actual > h_fin and h_fin != "23:59":
+                    continue
+                    
+                disp_hora = f"{h_ini} - {h_fin}" if h_fin and h_fin != h_ini and h_fin != "23:59" else f"{h_ini}"
+                if not h_ini or h_ini == "None" or h_ini == "00:00": disp_hora = "TODO EL DÍA"
+                
+                events_hoy_list.append({
+                    "hora_sort": h_ini if h_ini and h_ini != "None" and h_ini != "00:00" else "00:00", 
+                    "display_hora": disp_hora,
+                    "titulo": ev.get("titulo", "Evento"), 
+                    "descripcion": ev.get("descripcion", ""),
+                    "categoria": ev.get("categoria", "Evento")
+                })
+                
+            # 4. Cargar Reservas de Enlaces (SOLO Perfil Profesores/PIE)
+            if "PROFESORES" in perfil_actual or "PIE" in perfil_actual:
+                res_supabase = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute()
+                res_reservas_hoy = res_supabase.data if res_supabase.data else []
+                
                 for r in res_reservas_hoy:
+                    h_ini = str(r.get("hora_inicio", r.get("hora", "00:00")))[:5]
+                    h_fin = str(r.get("hora_fin", "23:59"))[:5]
+                    if not h_fin or h_fin == "None" or h_fin.strip() == "": 
+                        h_fin = "23:59"
+                    
+                    # ⏳ FILTRO DE EXPIRACIÓN: Si ya pasó la hora de término, lo ocultamos
+                    if hora_actual > h_fin and h_fin != "23:59":
+                        continue
+                        
+                    disp_hora = f"{h_ini} - {h_fin}" if h_fin and h_fin != h_ini and h_fin != "23:59" else f"{h_ini}"
+                    if not h_ini or h_ini == "None" or h_ini == "00:00": disp_hora = "RESERVA"
+                    
                     prof = r.get("profesores", {}).get("nombre", "Docente") if r.get("profesores") else "Docente"
                     rec = r.get("recursos", {}).get("nombre", "Recurso") if r.get("recursos") else "Recurso"
                     curso = r.get("cursos", {}).get("nombre", "Curso") if r.get("cursos") else "Curso"
                     obs = r.get("observaciones", "")
                     
-                    h_ini = str(r.get("hora_inicio", r.get("hora", "00:00")))[:5]
-                    h_fin = str(r.get("hora_fin", ""))[:5]
-                    disp_hora = f"{h_ini} - {h_fin}" if h_fin and h_fin != h_ini else f"{h_ini}"
-                    if not h_ini or h_ini == "None" or h_ini == "00:00": disp_hora = "RESERVA"
-                    
                     events_hoy_list.append({
                         "hora_sort": h_ini if h_ini and h_ini != "None" and h_ini != "00:00" else "23:59", 
                         "display_hora": disp_hora,
-                        "titulo": f"{rec} ➔ {curso}", "profesor": prof,
-                        "observaciones": obs, "categoria": "Clase / Uso Recurso"
+                        "titulo": f"{rec} ➔ {curso}", 
+                        "profesor": prof,
+                        "observaciones": obs, 
+                        "categoria": "Clase / Uso Recurso"
                     })
-                
+            
+            # 5. Ordenar cronológicamente
             events_hoy_list = sorted(events_hoy_list, key=lambda x: str(x.get("hora_sort", "99:99")))
-                
+            
             if not events_hoy_list:
                 st.markdown("<div class='tv-sub-header'>⏱️ Cronograma de Hoy</div>", unsafe_allow_html=True)
-                st.info("No hay eventos programados para hoy bajo este perfil.")
+                st.info(f"No hay eventos activos para el resto del día en este perfil.")
             else:
                 ITEMS_POR_PAGINA = 3
                 total_paginas = max(1, (len(events_hoy_list) + ITEMS_POR_PAGINA - 1) // ITEMS_POR_PAGINA)
@@ -2546,29 +2589,26 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                     if item.get("profesor") or item.get("observaciones"):
                         info_row_html = "<div class='block-info-row'>"
                         if item.get("profesor"):
-                            info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-user-graduate info-icon icon-profesor'></i> {item['profesor']}</div>"
+                            info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-user-graduate info-icon'></i> {item['profesor']}</div>"
                         if item.get("observaciones"):
-                            info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-clipboard-text info-icon icon-observaciones'></i> {item['observaciones']}</div>"
+                            info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-clipboard-text info-icon'></i> {item['observaciones']}</div>"
                         info_row_html += "</div>"
                     
-                    desc_text = item.get('descripcion', '')
-                    hora_icon = "<i class='ph-fill ph-clock'></i>" if item['categoria'] != "Evento Especial" else "<i class='ph-fill ph-star'></i>"
-                    
                     html_cronograma += (
-                        f"<div class='block-card' style='border-left-color: {color_tema}; animation: cascadeIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; animation-delay: {delay}s; opacity: 0;'>"
+                        f"<div class='block-card' style='border-left-color: {color_tema}; animation: cascadeIn 0.8s forwards; animation-delay: {delay}s; opacity: 0;'>"
                         f"  <div class='block-title-row'>"
                         f"      <div class='block-title-text' style='color: {color_tema};'>{item['titulo']}</div>"
-                        f"      <div class='block-time-badge'>{hora_icon} {item['display_hora']}</div>"
+                        f"      <div class='block-time-badge'><i class='ph-fill ph-clock'></i> {item['display_hora']}</div>"
                         f"  </div>"
-                        f"  <div class='block-info'>{desc_text}</div>"
+                        f"  <div class='block-info'>{item.get('descripcion', '')}</div>"
                         f"  {info_row_html}"
-                        f"  <div class='block-hora-pill'><i class='ph-fill ph-tag icon-categoria'></i> <span>{item['categoria']}</span></div>"
+                        f"  <div class='block-hora-pill'><i class='ph-fill ph-tag icon-categoria'></i> {item['categoria']}</div>"
                         f"</div>"
                     )
                 st.markdown(html_cronograma, unsafe_allow_html=True)
                 
         except Exception as e:
-            st.error(f"Error técnico al consultar cronograma: {e}")
+            st.error(f"Error al cargar cronograma: {e}")
     
     with col_ann:
         with st.expander("⚙️ Controles de Pantalla", expanded=False):
