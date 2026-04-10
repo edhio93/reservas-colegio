@@ -2759,9 +2759,9 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
 
                 # 4. Configurar Sonidos (URLs públicas y seguras)
                 # Sonido de Alarma para Avisos Urgentes
-                sonido_aviso = "https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" 
+                sonido_aviso = "https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.ogg" 
                 # Sonido Suave para Nuevos Eventos / Enlaces
-                sonido_evento = "https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.ogg"
+                sonido_evento = "https://actions.google.com/sounds/v1/doors/doorbell_chime.ogg"
 
                 # 5. Lógica de prioridad: Si hay aviso suena la alarma, si solo hay evento suena la campana suave
                 if nuevos_avisos:
