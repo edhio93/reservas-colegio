@@ -2242,7 +2242,7 @@ elif page == "Modo TV":
                     pass
                 st.success("✅ ¡Calendario sincronizado!")
 
-    # --- SECCIÓN 2: ALERTA ROJA CENTRALIZADA ---
+    # --- SECCIÓN 2: ALERTA ROJA CENTRALIZADA (AHORA CON SUPABASE) ---
     st.divider()
     st.subheader("🚨 Mensaje Centralizado a Pantalla Completa")
     st.markdown("Usa esta función para **interrumpir la pantalla pública** con un aviso urgente.")
@@ -2271,23 +2271,27 @@ elif page == "Modo TV":
                 if not mensaje_alerta.strip():
                     st.warning("Debes escribir un mensaje primero.")
                 else:
-                    import json
-                    alerta_data = {
-                        "mensaje": mensaje_alerta.strip(),
-                        "expiracion": expiracion_alerta_roja.strftime("%Y-%m-%d %H:%M:%S")
-                    }
-                    with open("alerta_tv.json", "w") as f:
-                        json.dump(alerta_data, f)
-                    st.success("¡Alerta enviada! Aparecerá en la pantalla en menos de 20 segundos.")
+                    try:
+                        # Guardamos la alerta en Supabase con el código secreto 'prioridad 999'
+                        supabase.table("anuncios_urgentes").insert({
+                            "titulo": "🚨 ALERTA ROJA",
+                            "descripcion": mensaje_alerta.strip(),
+                            "prioridad": 999, 
+                            "expiracion": expiracion_alerta_roja.isoformat(),
+                            "is_active": True
+                        }).execute()
+                        st.success("¡Alerta enviada a la base de datos! Aparecerá en la pantalla pronto.")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
 
         with col_b2:
             if st.button("🛑 Cancelar Alerta / Limpiar Pantalla", use_container_width=True):
-                import os
-                if os.path.exists("alerta_tv.json"):
-                    os.remove("alerta_tv.json")
+                try:
+                    # Desactivamos todas las alertas rojas en la base de datos
+                    supabase.table("anuncios_urgentes").update({"is_active": False}).eq("prioridad", 999).execute()
                     st.info("Alerta cancelada. La pantalla volverá a la normalidad en unos segundos.")
-                else:
-                    st.write("No hay ninguna alerta activa en este momento.")
+                except:
+                    pass
 
     st.divider()
 
@@ -2374,7 +2378,8 @@ elif page == "Modo TV":
                 st.success("Evento eliminado."); time.sleep(1); st.rerun()
                 
     with col_del2:
-        res_an = supabase.table("anuncios_urgentes").select("id, titulo").eq("is_active", True).execute().data
+        # Aquí ignoramos los 999 para no borrar alertas rojas desde este selector normal
+        res_an = supabase.table("anuncios_urgentes").select("id, titulo").eq("is_active", True).neq("prioridad", 999).execute().data
         if res_an:
             an_dict = {a['titulo']: a['id'] for a in res_an}
             an_sel = st.selectbox("Borrar Anuncio:", ["-- Seleccionar --"] + list(an_dict.keys()), key="del_an")
@@ -2405,7 +2410,7 @@ elif page == "Modo TV":
 
 
 # ==============================================================================
-# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO SIN LOGIN - AQUÍ SÍ VA LA ALERTA)
+# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO SIN LOGIN)
 # ==============================================================================
 if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
 
@@ -2415,42 +2420,50 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     from datetime import datetime as dt_datetime
     from streamlit_autorefresh import st_autorefresh
     import base64
+    import pandas as pd
 
-    # 🚨 RECEPTOR DE ALERTA: SOLO ACTÚA EN LA TV (NO BLOQUEA EL PANEL NI LOGIN)
-    archivo_alerta = "alerta_tv.json"
-    if os.path.exists(archivo_alerta):
-        try:
-            with open(archivo_alerta, "r") as f:
-                alerta_data = json.load(f)
+    now_dt = dt_datetime.now()
 
-            expiracion_alerta = dt_datetime.strptime(alerta_data["expiracion"], "%Y-%m-%d %H:%M:%S")
+    # ==========================================================
+    # 🚨 RECEPTOR DE ALERTA ROJA (VÍA SUPABASE)
+    # ==========================================================
+    try:
+        alertas_rojas = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).eq("prioridad", 999).execute().data
+        alerta_activa = None
+        
+        for al in alertas_rojas:
+            try:
+                exp_dt = pd.to_datetime(al['expiracion']).tz_localize(None)
+                if exp_dt > now_dt:
+                    alerta_activa = al
+                    break
+            except:
+                pass
 
-            if dt_datetime.now() < expiracion_alerta:
-                st.markdown(f"""
-                    <style>
-                    .alerta-fullscreen {{ position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(220, 38, 38, 0.95); color: white; z-index: 999999; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 50px; backdrop-filter: blur(15px); }}
-                    .alerta-fullscreen h1 {{ font-size: 5rem !important; font-weight: 900; margin-bottom: 20px; text-transform: uppercase; color: white; }}
-                    .alerta-fullscreen p {{ font-size: 3rem; font-weight: 500; color: white; line-height: 1.2; }}
-                    header {{visibility: hidden;}} .stApp {{overflow: hidden;}}
-                    </style>
-                    <div class="alerta-fullscreen">
-                        <h1>⚠️ AVISO IMPORTANTE ⚠️</h1>
-                        <p>{alerta_data['mensaje']}</p>
-                    </div>
-                """, unsafe_allow_html=True)
+        if alerta_activa:
+            st.markdown(f"""
+                <style>
+                .alerta-fullscreen {{ position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(220, 38, 38, 0.95); color: white; z-index: 999999; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 50px; backdrop-filter: blur(15px); }}
+                .alerta-fullscreen h1 {{ font-size: 5rem !important; font-weight: 900; margin-bottom: 20px; text-transform: uppercase; color: white; }}
+                .alerta-fullscreen p {{ font-size: 3rem; font-weight: 500; color: white; line-height: 1.2; }}
+                header {{visibility: hidden;}} .stApp {{overflow: hidden;}}
+                </style>
+                <div class="alerta-fullscreen">
+                    <h1>⚠️ AVISO IMPORTANTE ⚠️</h1>
+                    <p>{alerta_activa['descripcion']}</p>
+                </div>
+            """, unsafe_allow_html=True)
 
-                id_unica_alerta = alerta_data["expiracion"] 
-                if st.session_state.get("ultima_alerta_sonada") != id_unica_alerta:
-                    st.audio("alarma.mp3", format="audio/mp3", autoplay=True)
-                    st.session_state["ultima_alerta_sonada"] = id_unica_alerta
-                    st.markdown("<style>audio { display: none !important; }</style>", unsafe_allow_html=True)
+            id_unica_alerta = str(alerta_activa["id"])
+            if st.session_state.get("ultima_alerta_sonada") != id_unica_alerta:
+                st.audio("alarma.mp3", format="audio/mp3", autoplay=True)
+                st.session_state["ultima_alerta_sonada"] = id_unica_alerta
+                st.markdown("<style>audio { display: none !important; }</style>", unsafe_allow_html=True)
 
-                # Frenamos la ejecución solo para la pantalla de TV
-                st.stop() 
-            else:
-                os.remove(archivo_alerta)
-        except Exception as e:
-            pass
+            # Frenamos la ejecución solo para la pantalla de TV
+            st.stop() 
+    except Exception as e:
+        pass
 
     # ==========================================================
     # 📺 CÓDIGO NORMAL DE LA TV (Si no hay emergencias)
@@ -2469,7 +2482,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     else:
         logo_src_html = "<i class='ph-fill ph-airplane-landing header-logo-fallback'></i>"
 
-    now_dt = dt_datetime.now()
     hoy_str = now_dt.strftime("%Y-%m-%d")
     hora_actual = now_dt.strftime("%H:%M")
 
@@ -2624,9 +2636,11 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             components.html("""<style>body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; } button { width: 100%; height: 38px; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s; } button:hover { border-color: #94a3b8; background-color: #f8fafc; }</style><button onclick="const doc = window.parent.document; if (!doc.fullscreenElement) { doc.documentElement.requestFullscreen(); this.innerHTML = '🗗 Salir Pantalla Completa'; } else { doc.exitFullscreen(); this.innerHTML = '🔲 Pantalla Completa'; }">🔲 Pantalla Completa</button>""", height=40)
 
         try:
+            # Aquí omitimos las alertas 999 para que no salgan en la lista lateral
             ann_data = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).execute().data
             active_ann = []
             for ann in ann_data:
+                if ann.get('prioridad') == 999: continue
                 try:
                     exp_dt = pd.to_datetime(ann['expiracion']).tz_localize(None)
                     if exp_dt > now_dt: active_ann.append(ann)
