@@ -235,10 +235,10 @@ if os.path.exists(archivo_alerta):
 
                 # 3. Frenamos el código aquí para que no dibuje el resto del colegio de fondo
                 st.stop() 
-         else:
+    else:
                 # Si ya pasó la hora límite, la borramos automáticamente
                 os.remove(archivo_alerta)
-        except Exception as e:
+except Exception as e:
             st.error(f"Error leyendo alerta: {e}")
 
 
