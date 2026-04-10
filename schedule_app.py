@@ -2234,16 +2234,16 @@ elif page == "Modo TV":
         with col_s1:
             st.write("🔔 **Sonido Evento**")
             try:
-                st.audio("evento.mp3", format="audio/mp3")
+                st.audio("alerta evento.mp3", format="audio/mp3")
             except:
-                st.error("No se encontró 'evento.mp3' en la carpeta.")
+                st.error("No se encontró 'alerta evento.mp3' en la carpeta.")
                 
         with col_s2:
             st.write("🚨 **Sonido Alarma**")
             try:
-                st.audio("alarma.mp3", format="audio/mp3")
+                st.audio("alerta aviso.mp3", format="audio/mp3")
             except:
-                st.error("No se encontró 'alarma.mp3' en la carpeta.")
+                st.error("No se encontró 'alerta aviso.mp3' en la carpeta.")
                 
     # --- SECCIÓN 1: LANZADOR Y GOOGLE CALENDAR ---
     with st.container(border=True):
