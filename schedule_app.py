@@ -169,10 +169,10 @@ if os.path.exists(archivo_alerta):
            alerta_data = json.load(f)
 
             # Convertimos el texto de vuelta a fecha/hora
-            expiracion_alerta = dt_datetime.strptime(alerta_data["expiracion"], "%Y-%m-%d %H:%M:%S")
+       expiracion_alerta = dt_datetime.strptime(alerta_data["expiracion"], "%Y-%m-%d %H:%M:%S")
 
             # Comprobamos si la alerta sigue vigente
-            if dt_datetime.now() < expiracion_alerta:
+       if dt_datetime.now() < expiracion_alerta:
                 
                 # 1. Dibujamos la pantalla roja gigante encima de todo
                 st.markdown("""
