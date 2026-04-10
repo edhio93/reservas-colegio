@@ -2309,232 +2309,63 @@ if page == "Configuración":
 # ==============================================================================
 elif page == "Modo TV":
     st.title("📺 Panel de Mensajería y Pantalla TV")
-    st.markdown("Desde aquí puedes gestionar la pantalla pública del colegio, sincronizar calendarios y crear anuncios.")
-  
- # --- REPRODUCTORES DE PRUEBA (ARCHIVOS LOCALES) ---
-    with st.expander("🔊 Probar Sonidos del Sistema", expanded=True):
-        st.info("Asegúrate de haber guardado 'evento.mp3' y 'alarma.mp3' en la misma carpeta que tu código.")
-        
-        col_s1, col_s2 = st.columns(2)
-        
-        with col_s1:
-            st.write("🔔 **Sonido Evento**")
-            try:
-                st.audio("alerta evento.mp3", format="audio/mp3")
-            except:
-                st.error("No se encontró 'alerta evento.mp3' en la carpeta.")
-                
-        with col_s2:
-            st.write("🚨 **Sonido Alarma**")
-            try:
-                st.audio("alerta aviso.mp3", format="audio/mp3")
-            except:
-                st.error("No se encontró 'alerta aviso.mp3' en la carpeta.")
-                
-    # --- SECCIÓN 1: LANZADOR Y GOOGLE CALENDAR ---
-    with st.container(border=True):
-        col_launch1, col_launch2 = st.columns([1, 2])
-        
-        with col_launch1:
-            st.subheader("🖥️ Proyección")
-            st.write("Inicia el modo kiosco para proyectar en la TV.")
-            if st.button("🚀 Iniciar Pantalla Pública", type="primary", use_container_width=True):
-                st.session_state.ver_pantalla_tv = True
-                st.rerun()
-                
-        with col_launch2:
-            st.subheader("📅 Sincronización Google Calendar")
-            st.write("Pega el enlace público (.ics) para sumar eventos automáticos.")
-            url_cal = st.text_input("Enlace iCal (.ics)", value=st.session_state.get('url_calendario_tv', ''), label_visibility="collapsed")
-            if st.button("Guardar Enlace y Sincronizar", type="secondary"):
-                st.session_state['url_calendario_tv'] = url_cal
-                obtener_eventos_google_calendar.clear() 
-                st.success("✅ ¡Calendario sincronizado!")
+    st.markdown("Desde aquí puedes gestionar la pantalla pública del colegio...")
 
+    # [Aquí van tus botones de "Iniciar Pantalla" y "Sincronizar Google Calendar"]
+
+    # ==========================================================
+    # 🚨 PANEL DE EMISIÓN DE ALERTA CENTRALIZADA (EL BOTÓN ROJO)
+    # ==========================================================
     st.divider()
-   
-    # --- SECCIÓN 2: FORMULARIOS DE CREACIÓN ---
-    st.header("📝 Gestión de Contenido Interno")
-    st.info("Utiliza estos formularios para agregar información manualmente a la pantalla.")
-    
-    col_form1, col_form2 = st.columns(2)
-    
-    # --- COLUMNA 1: NUEVO EVENTO ---
-    with col_form1:
-        with st.container(border=True):
-            st.subheader("🗓️ Registrar Nuevo Evento")
-            with st.form("form_evento_tv"):
-                titulo_ev = st.text_input("Título del Evento", max_chars=50)
-                desc_ev = st.text_area("Descripción corta (opcional)", max_chars=200)
-                
-                cat_ev = st.selectbox("Categoría", ["Evento", "Enlace", "Reunión", "Examen", "Efeméride", "Taller", "Otro"])
-                fecha_ev = st.date_input("Fecha del Evento", min_value=dt.date.today())
-                
-                tipo_duracion = st.radio("Duración del Evento", ["☀️ Todo el día", "⏱️ Horario específico"])
-                st.caption("Si eliges 'Horario específico', ajusta las horas abajo:")
-                col_h1, col_h2 = st.columns(2)
-                with col_h1:
-                    h_ini_ev = st.time_input("Hora de inicio", value=dt.time(8, 0))
-                with col_h2:
-                    h_fin_ev = st.time_input("Hora de fin", value=dt.time(9, 30))
-                
-                if st.form_submit_button("Guardar Evento", use_container_width=True):
-                    if titulo_ev.strip():
-                        try:
-                            if tipo_duracion == "☀️ Todo el día":
-                                hora_i_str = "00:00"
-                                hora_f_str = None
-                            else:
-                                hora_i_str = h_ini_ev.strftime("%H:%M")
-                                hora_f_str = h_fin_ev.strftime("%H:%M")
-            
-                            supabase.table("eventos_tv").insert({
-                                "titulo": titulo_ev.strip(),
-                                "descripcion": desc_ev.strip(),
-                                "fecha_evento": fecha_ev.isoformat(),
-                                "categoria": cat_ev,
-                                "hora_inicio": hora_i_str,
-                                "hora_fin": hora_f_str, 
-                                "is_active": True
-                            }).execute()
-                            
-                            st.success("Evento guardado. Aparecerá en la TV pública.")
-                            time.sleep(1)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error al guardar en la base de datos: {e}")
-                    else:
-                        st.error("El título es obligatorio.")
+    st.subheader("🚨 Mensaje Centralizado a Pantalla Completa")
+    st.markdown("Usa esta función para **interrumpir la pantalla pública** con un aviso urgente (suspensión de clases, evacuación, aviso general).")
 
-    # --- COLUMNA 2: ANUNCIO URGENTE ---
-    with col_form2:
-        with st.container(border=True):
-            st.subheader("🚨 Registrar Anuncio Urgente")
-            with st.form("form_anuncio_tv"):
-                titulo_an = st.text_input("Título del Anuncio", max_chars=50)
-                desc_an = st.text_area("Detalles del anuncio")
-                prio_an = st.radio("Prioridad visual", [("🚨 Alta (Rojo)", 1), ("⚠️ Media (Amarillo)", 2)], format_func=lambda x: x[0])
-                
-                st.markdown("**⏳ Tiempo Límite del Anuncio**")
-                tipo_limite = st.radio("¿Cómo quieres definir el límite?", ["⏱️ Duración rápida (Minutos)", "📅 Fecha y hora exacta"])
-                
-                st.caption("Si elegiste 'Duración rápida', usa este campo:")
-                minutos_an = st.number_input("¿Cuántos minutos estará visible?", min_value=1, max_value=1440, value=30, step=5)
-                
-                st.caption("Si elegiste 'Fecha y hora', usa estos campos:")
-                col_fecha, col_hora = st.columns(2)
-                with col_fecha:
-                    expira_fecha = st.date_input("Válido hasta", min_value=dt.date.today())
-                with col_hora:
-                    expira_hora = st.time_input("Hora de borrado", value=dt.time(23, 59))
-                
-                if st.form_submit_button("Publicar Anuncio", type="primary", use_container_width=True):
-                    if titulo_an.strip():
-                        import datetime 
-                        try:
-                            if tipo_limite == "⏱️ Duración rápida (Minutos)":
-                                tiempo_final = dt_datetime.now() + datetime.timedelta(minutes=minutos_an)
-                                exp_dt_full = tiempo_final.isoformat()
-                            else:
-                                exp_dt_full = dt_datetime.combine(expira_fecha, expira_hora).isoformat()
-                                
-                            supabase.table("anuncios_urgentes").insert({
-                                "titulo": titulo_an.strip(), 
-                                "descripcion": desc_an.strip(), 
-                                "prioridad": int(prio_an[1]), 
-                                "expiracion": exp_dt_full, 
-                                "is_active": True
-                            }).execute()
-                            
-                            st.success("Anuncio publicado en la TV.")
-                            time.sleep(1)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error al guardar el anuncio: {e}")
-                    else:
-                        st.error("El título es obligatorio.")
+    with st.container(border=True):
+        mensaje_alerta = st.text_area("Texto del mensaje:", placeholder="Ej: SE SUSPENDEN LAS CLASES DEL TURNO TARDE POR CORTE DE AGUA.", height=100)
 
-    # --- SECCIÓN 3: GESTIÓN DE ELIMINACIÓN ---
-    st.markdown("---")
-    st.subheader("🗑️ Gestión Rápida (Eliminar de la TV)")
-    st.info("Utiliza estos selectores para dar de baja un Evento o Anuncio inmediatamente.")
-    
-    col_del1, col_del2 = st.columns(2)
-    with col_del1:
-        with st.container(border=True):
-            st.markdown("**Borrar Evento TV**")
-            res_ev = supabase.table("eventos_tv").select("id, titulo, fecha_evento").eq("is_active", True).execute().data
-            if res_ev:
-                ev_dict = {f"{e['titulo']} ({e['fecha_evento']})": e['id'] for e in res_ev}
-                ev_sel = st.selectbox("Seleccionar Evento:", ["-- Seleccionar --"] + list(ev_dict.keys()), key="del_ev")
-                if st.button("🚫 Eliminar Evento", use_container_width=True) and ev_sel != "-- Seleccionar --":
-                    supabase.table("eventos_tv").update({"is_active": False}).eq("id", ev_dict[ev_sel]).execute()
-                    st.success("Evento eliminado exitosamente.")
-                    time.sleep(1)
-                    st.rerun()
+        col_dur1, col_dur2 = st.columns(2)
+        with col_dur1:
+            tipo_duracion = st.radio("Definir duración por:", ["Minutos (Rápido)", "Fecha/Hora Exacta"], horizontal=True)
+
+        with col_dur2:
+            import datetime as dt # Para cálculos de tiempo
+            from datetime import datetime as dt_datetime
+            if tipo_duracion == "Minutos (Rápido)":
+                minutos = st.number_input("¿Cuántos minutos durará en pantalla?", min_value=1, value=5, step=1)
+                expiracion = dt_datetime.now() + dt.timedelta(minutes=minutos)
+                st.caption(f"Terminará aprox a las: {expiracion.strftime('%H:%M:%S')}")
             else:
-                st.write("No hay eventos activos creados en TV.")
-                
-    with col_del2:
-        with st.container(border=True):
-            st.markdown("**Borrar Anuncio Urgente**")
-            res_an = supabase.table("anuncios_urgentes").select("id, titulo").eq("is_active", True).execute().data
-            if res_an:
-                an_dict = {a['titulo']: a['id'] for a in res_an}
-                an_sel = st.selectbox("Seleccionar Anuncio:", ["-- Seleccionar --"] + list(an_dict.keys()), key="del_an")
-                if st.button("🚫 Eliminar Anuncio", use_container_width=True) and an_sel != "-- Seleccionar --":
-                    supabase.table("anuncios_urgentes").update({"is_active": False}).eq("id", an_dict[an_sel]).execute()
-                    st.success("Anuncio eliminado exitosamente.")
-                    time.sleep(1)
-                    st.rerun()
-            else:
-                st.write("No hay anuncios urgentes activos.")
+                f_alerta = st.date_input("Fecha límite:")
+                h_alerta = st.time_input("Hora límite:")
+                expiracion = dt_datetime.combine(f_alerta, h_alerta)
 
-    # --- SECCIÓN 4: TABLA DE REGISTROS ---
-    st.markdown("---")
-    st.subheader("📋 Tabla General de Registros")
+        col_b1, col_b2 = st.columns(2)
+        with col_b1:
+            if st.button("🔴 LANZAR ALERTA EN PANTALLA AHORA", type="primary", use_container_width=True):
+                if not mensaje_alerta.strip():
+                    st.warning("Debes escribir un mensaje primero.")
+                else:
+                    import json
+                    alerta_data = {
+                        "mensaje": mensaje_alerta.strip(),
+                        "expiracion": expiracion.strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    with open("alerta_tv.json", "w") as f:
+                        json.dump(alerta_data, f)
+                    st.success("¡Alerta enviada! Aparecerá en la pantalla en menos de 20 segundos.")
+
+        with col_b2:
+            if st.button("🛑 Cancelar Alerta / Limpiar Pantalla", use_container_width=True):
+                import os
+                if os.path.exists("alerta_tv.json"):
+                    os.remove("alerta_tv.json")
+                    st.info("Alerta cancelada. La pantalla volverá a la normalidad en unos segundos.")
+                else:
+                    st.write("No hay ninguna alerta activa en este momento.")
+                    
+    st.divider()
     
-    try:
-        hoy_str = dt.date.today().strftime("%Y-%m-%d")
-        res_eventos = supabase.table("eventos_tv").select("id, categoria, titulo, descripcion, fecha_evento, is_active").gte("fecha_evento", hoy_str).eq("is_active", True).execute()
-        datos_eventos_raw = res_eventos.data if res_eventos.data else []
-        df_eventos = pd.DataFrame(datos_eventos_raw)
-        
-        if not df_eventos.empty:
-            df_eventos.rename(columns={
-                "categoria": "Categoría", "titulo": "Título", "descripcion": "Descripción", "fecha_evento": "Fecha Evento", "is_active": "Activo"
-            }, inplace=True)
-            df_eventos["Origen"] = "🖥️ Creado en TV"
-        else:
-            df_eventos = pd.DataFrame(columns=["id", "Categoría", "Título", "Descripción", "Fecha Evento", "Activo", "Origen"])
-
-        res_enlaces = supabase.table("reservas").select("id, fecha, profesores(nombre), recursos(nombre), cursos(nombre), observaciones").gte("fecha", hoy_str).execute()
-        
-        datos_enlaces = []
-        if res_enlaces.data:
-            for r in res_enlaces.data:
-                prof = r.get("profesores", {}).get("nombre", "Sin Profesor") if r.get("profesores") else "Sin Profesor"
-                rec = r.get("recursos", {}).get("nombre", "Sin Recurso") if r.get("recursos") else "Sin Recurso"
-                curso = r.get("cursos", {}).get("nombre", "Sin Curso") if r.get("cursos") else "Sin Curso"
-                
-                datos_enlaces.append({
-                    "id": r["id"], "Categoría": "Reserva / Enlace", "Título": f"Reserva de {prof}",
-                    "Descripción": f"Uso de {rec} para {curso}. {r.get('observaciones', '')}",
-                    "Fecha Evento": r["fecha"], "Activo": True, "Origen": "📅 Sistema Reservas"
-                })
-        
-        df_enlaces = pd.DataFrame(datos_enlaces) if datos_enlaces else pd.DataFrame(columns=df_eventos.columns)
-        frames = [df for df in [df_eventos, df_enlaces] if not df.empty]
-        
-        if frames:
-            df_combinado = pd.concat(frames, ignore_index=True)
-            df_combinado = df_combinado.sort_values(by="Fecha Evento")
-            st.dataframe(df_combinado[["Origen", "Categoría", "Título", "Descripción", "Fecha Evento"]], use_container_width=True, hide_index=True)
-        else:
-            st.info("No hay eventos ni reservas próximas registradas.")
-            
-    except Exception as e:
-        st.error(f"Error al cargar la tabla de registros: {e}")
+    # [AQUÍ SIGUE TU CÓDIGO NORMAL CON LOS FORMULARIOS DE NUEVO EVENTO, ANUNCIO, ETC]
 
 # ==============================================================================
 # 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO SIN LOGIN)
