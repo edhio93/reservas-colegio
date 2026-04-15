@@ -2428,9 +2428,11 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
     # 🚨 RECEPTOR DE ALERTA ROJA (VÍA SUPABASE)
     # ==========================================================
     try:
+        # 1. Buscamos en Supabase la alerta con prioridad 999
         alertas_rojas = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).eq("prioridad", 999).execute().data
         alerta_activa = None
         
+        # 2. Verificamos que no haya expirado
         for al in alertas_rojas:
             try:
                 exp_dt = pd.to_datetime(al['expiracion']).tz_localize(None)
@@ -2440,6 +2442,7 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             except:
                 pass
 
+        # 3. Si hay una alerta activa, pintamos la pantalla roja
         if alerta_activa:
             st.markdown(f"""
                 <style>
@@ -2454,13 +2457,14 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
                 </div>
             """, unsafe_allow_html=True)
 
+            # 4. Hacemos sonar la alarma una sola vez
             id_unica_alerta = str(alerta_activa["id"])
             if st.session_state.get("ultima_alerta_sonada") != id_unica_alerta:
                 st.audio("alarma.mp3", format="audio/mp3", autoplay=True)
                 st.session_state["ultima_alerta_sonada"] = id_unica_alerta
                 st.markdown("<style>audio { display: none !important; }</style>", unsafe_allow_html=True)
 
-            # Frenamos la ejecución solo para la pantalla de TV
+            # 5. Frenamos la ejecución para ocultar el resto del colegio
             st.stop() 
     except Exception as e:
         pass
