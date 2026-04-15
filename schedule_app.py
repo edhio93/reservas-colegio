@@ -2409,22 +2409,7 @@ elif page == "Modo TV":
         pass
 
 
-# ==============================================================================
-# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO SIN LOGIN)
-# ==============================================================================
-if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
-
-    import json
-    import os
-    import datetime as dt
-    from datetime import datetime as dt_datetime
-    from streamlit_autorefresh import st_autorefresh
-    import base64
-    import pandas as pd
-
-    now_dt = dt_datetime.now()
-
-    # ==========================================================
+# ==========================================================
     # 🚨 RECEPTOR DE ALERTA ROJA (VÍA SUPABASE)
     # ==========================================================
     try:
@@ -2468,7 +2453,6 @@ if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
             st.stop() 
     except Exception as e:
         pass
-
     # ==========================================================
     # 📺 CÓDIGO NORMAL DE LA TV (Si no hay emergencias)
     # ==========================================================
