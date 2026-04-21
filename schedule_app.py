@@ -2413,22 +2413,15 @@ elif page == "Modo TV":
     # 🚨 RECEPTOR DE ALERTA ROJA (VÍA SUPABASE)
     # ==========================================================
     try:
-        # 1. Buscamos en Supabase la alerta con prioridad 999
+        # ATENCIÓN AQUÍ: Si cambiaste el 999 por un 1, asegúrate de cambiar esta línea a:
+        # .eq("titulo", "🚨 ALERTA ROJA") en lugar de .eq("prioridad", 999)
         alertas_rojas = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).eq("prioridad", 999).execute().data
-        alerta_activa = None
         
-        # 2. Verificamos que no haya expirado
-        for al in alertas_rojas:
-            try:
-                exp_dt = pd.to_datetime(al['expiracion']).tz_localize(None)
-                if exp_dt > now_dt:
-                    alerta_activa = al
-                    break
-            except:
-                pass
-
-        # 3. Si hay una alerta activa, pintamos la pantalla roja
-        if alerta_activa:
+        # Eliminamos la comprobación de zonas horarias. 
+        # Si la base de datos dice que está activa (True) y es prioridad 999, la lanzamos sin preguntar.
+        if alertas_rojas and len(alertas_rojas) > 0:
+            alerta_activa = alertas_rojas[0] # Tomamos la primera que encuentre
+            
             st.markdown(f"""
                 <style>
                 .alerta-fullscreen {{ position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(220, 38, 38, 0.95); color: white; z-index: 999999; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 50px; backdrop-filter: blur(15px); }}
@@ -2442,17 +2435,18 @@ elif page == "Modo TV":
                 </div>
             """, unsafe_allow_html=True)
 
-            # 4. Hacemos sonar la alarma una sola vez
+            # Sonido
             id_unica_alerta = str(alerta_activa["id"])
             if st.session_state.get("ultima_alerta_sonada") != id_unica_alerta:
                 st.audio("alarma.mp3", format="audio/mp3", autoplay=True)
                 st.session_state["ultima_alerta_sonada"] = id_unica_alerta
                 st.markdown("<style>audio { display: none !important; }</style>", unsafe_allow_html=True)
 
-            # 5. Frenamos la ejecución para ocultar el resto del colegio
-            st.stop() 
+            st.stop() # Congela el resto de la página
+            
     except Exception as e:
-        pass
+        # Si algo falla, ahora nos mostrará un mensaje de texto sutil en la TV para saber qué pasó
+        st.error(f"Error interno leyendo alerta: {e}")
     # ==========================================================
     # 📺 CÓDIGO NORMAL DE LA TV (Si no hay emergencias)
     # ==========================================================
