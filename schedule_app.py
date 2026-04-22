@@ -2521,9 +2521,46 @@ elif page == "Modo TV":
                 except: pass
                 st.success("✅ ¡Calendario sincronizado!")
 
+    # --- SECCIÓN 2: ALERTA ROJA CENTRALIZADA (AHORA CON SUPABASE) ---
     st.divider()
     st.subheader("🚨 Mensaje Centralizado a Pantalla Completa")
     st.markdown("Usa esta función para **interrumpir la pantalla pública** con un aviso urgente.")
+
+    # ====== 🔴 MAGIA: LA PANTALLA ROJA GIGANTE EN TU PROPIO PANEL ======
+    if st.session_state.get("alerta_lanzada_panel", False):
+        st.markdown("""
+            <style>
+            /* Tiñe todo el fondo de Streamlit de rojo emergencia */
+            .stApp { background-color: rgba(220, 38, 38, 0.95) !important; background-image: none !important; }
+            /* Oculta las barras laterales y menús para un efecto inmersivo */
+            header { visibility: hidden; }
+            [data-testid="stSidebar"] { display: none !important; }
+            .texto-alerta { text-align: center; color: white; }
+            </style>
+        """, unsafe_allow_html=True)
+        
+        # Textos gigantes de alerta
+        st.markdown("<h1 class='texto-alerta' style='font-size: 5rem; margin-top: 15vh; font-weight: 900;'>⚠️ AVISO IMPORTANTE ⚠️</h1>", unsafe_allow_html=True)
+        st.markdown(f"<p class='texto-alerta' style='font-size: 3rem; margin-bottom: 50px;'>{st.session_state.get('mensaje_alerta_temporal', '')}</p>", unsafe_allow_html=True)
+        
+        # Botón para escapar de la pantalla roja sin recargar la página a la fuerza
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("🛑 APAGAR ALERTA Y VOLVER AL PANEL NORMAL", use_container_width=True):
+                st.session_state.alerta_lanzada_panel = False
+                try:
+                    # Apaga la alerta en la base de datos para que la TV del pasillo también vuelva a la normalidad
+                    supabase.table("anuncios_urgentes").update({"is_active": False}).eq("prioridad", 999).execute()
+                except:
+                    pass
+                st.rerun()
+                
+        # Reproducir sonido de alarma en tu panel
+        st.audio("alarma.mp3", format="audio/mp3", autoplay=True)
+        st.markdown("<style>audio { display: none !important; }</style>", unsafe_allow_html=True)
+        
+        st.stop() # Frena todo el resto del sistema para que solo se vea la alerta
+    # ====================================================================
 
     with st.container(border=True):
         mensaje_alerta = st.text_area("Texto del mensaje:", placeholder="Ej: SE SUSPENDEN LAS CLASES DEL TURNO TARDE POR CORTE DE AGUA.", height=100)
@@ -2550,118 +2587,27 @@ elif page == "Modo TV":
                     st.warning("Debes escribir un mensaje primero.")
                 else:
                     try:
-                        # Asegúrate de usar 999 o 1 dependiendo de tu Supabase
+                        # Mandamos la alerta a Supabase (para que las TV de todo el colegio la reciban)
                         supabase.table("anuncios_urgentes").insert({
-                            "titulo": "🚨 ALERTA ROJA", "descripcion": mensaje_alerta.strip(), "prioridad": 999, "expiracion": expiracion_alerta_roja.isoformat(), "is_active": True
+                            "titulo": "🚨 ALERTA ROJA", 
+                            "descripcion": mensaje_alerta.strip(), 
+                            "prioridad": 999, 
+                            "expiracion": expiracion_alerta_roja.isoformat(), 
+                            "is_active": True
                         }).execute()
-                        st.success("¡Alerta enviada a la base de datos! Aparecerá en la pantalla pronto.")
+                        
+                        # === ACTIVAMOS LA PANTALLA ROJA EN TU PANEL ===
+                        st.session_state.alerta_lanzada_panel = True
+                        st.session_state.mensaje_alerta_temporal = mensaje_alerta.strip()
+                        st.rerun() # Recargamos al instante para que la pantalla explote en rojo
+                        
                     except Exception as e:
                         st.error(f"Error: {e}")
 
         with col_b2:
             if st.button("🛑 Cancelar Alerta / Limpiar Pantalla", use_container_width=True):
                 try:
-                    # Asegúrate de usar 999 o 1 dependiendo de tu Supabase
                     supabase.table("anuncios_urgentes").update({"is_active": False}).eq("prioridad", 999).execute()
-                    st.info("Alerta cancelada. La pantalla volverá a la normalidad en unos segundos.")
-                except: pass
-
-    st.divider()
-    st.header("📝 Gestión de Contenido Interno")
-    col_form1, col_form2 = st.columns(2)
-    
-    with col_form1:
-        with st.container(border=True):
-            st.subheader("🗓️ Registrar Nuevo Evento")
-            with st.form("form_evento_tv"):
-                import datetime as dt 
-                titulo_ev = st.text_input("Título del Evento", max_chars=50)
-                desc_ev = st.text_area("Descripción corta (opcional)", max_chars=200)
-                cat_ev = st.selectbox("Categoría", ["Evento", "Enlace", "Reunión", "Examen", "Efeméride", "Taller", "Otro"])
-                fecha_ev = st.date_input("Fecha del Evento", min_value=dt.date.today())
-                tipo_duracion_ev = st.radio("Duración del Evento", ["☀️ Todo el día", "⏱️ Horario específico"])
-                col_h1, col_h2 = st.columns(2)
-                with col_h1: h_ini_ev = st.time_input("Hora de inicio", value=dt.time(8, 0))
-                with col_h2: h_fin_ev = st.time_input("Hora de fin", value=dt.time(9, 30))
-                
-                if st.form_submit_button("Guardar Evento", use_container_width=True):
-                    if titulo_ev.strip():
-                        try:
-                            if tipo_duracion_ev == "☀️ Todo el día": hora_i_str, hora_f_str = "00:00", None
-                            else: hora_i_str, hora_f_str = h_ini_ev.strftime("%H:%M"), h_fin_ev.strftime("%H:%M")
-                            supabase.table("eventos_tv").insert({
-                                "titulo": titulo_ev.strip(), "descripcion": desc_ev.strip(), "fecha_evento": fecha_ev.isoformat(), "categoria": cat_ev, "hora_inicio": hora_i_str, "hora_fin": hora_f_str, "is_active": True
-                            }).execute()
-                            st.success("Evento guardado."); import time; time.sleep(1); st.rerun()
-                        except Exception as e: st.error(f"Error: {e}")
-                    else: st.error("El título es obligatorio.")
-
-    with col_form2:
-        with st.container(border=True):
-            st.subheader("🚨 Registrar Anuncio Normal")
-            with st.form("form_anuncio_tv"):
-                import datetime as dt 
-                from datetime import datetime as dt_datetime
-                titulo_an = st.text_input("Título del Anuncio", max_chars=50)
-                desc_an = st.text_area("Detalles del anuncio")
-                prio_an = st.radio("Prioridad visual", [("🚨 Alta (Rojo)", 1), ("⚠️ Media (Amarillo)", 2)], format_func=lambda x: x[0])
-                tipo_limite_an = st.radio("¿Cómo quieres definir el límite?", ["⏱️ Duración rápida (Minutos)", "📅 Fecha y hora exacta"], key="limite_anuncio")
-                minutos_an = st.number_input("¿Cuántos minutos estará visible?", min_value=1, max_value=1440, value=30, step=5)
-                col_fecha_an, col_hora_an = st.columns(2)
-                with col_fecha_an: expira_fecha_an = st.date_input("Válido hasta", min_value=dt.date.today(), key="fecha_an")
-                with col_hora_an: expira_hora_an = st.time_input("Hora de borrado", value=dt.time(23, 59), key="hora_an")
-                
-                if st.form_submit_button("Publicar Anuncio", type="primary", use_container_width=True):
-                    if titulo_an.strip():
-                        try:
-                            if tipo_limite_an == "⏱️ Duración rápida (Minutos)": exp_dt_full = (dt_datetime.now() + dt.timedelta(minutes=minutos_an)).isoformat()
-                            else: exp_dt_full = dt_datetime.combine(expira_fecha_an, expira_hora_an).isoformat()
-                            supabase.table("anuncios_urgentes").insert({
-                                "titulo": titulo_an.strip(), "descripcion": desc_an.strip(), "prioridad": int(prio_an[1]), "expiracion": exp_dt_full, "is_active": True
-                            }).execute()
-                            st.success("Anuncio publicado."); import time; time.sleep(1); st.rerun()
-                        except Exception as e: st.error(f"Error: {e}")
-                    else: st.error("El título es obligatorio.")
-
-    st.markdown("---")
-    col_del1, col_del2 = st.columns(2)
-    with col_del1:
-        res_ev = supabase.table("eventos_tv").select("id, titulo, fecha_evento").eq("is_active", True).execute().data
-        if res_ev:
-            ev_dict = {f"{e['titulo']} ({e['fecha_evento']})": e['id'] for e in res_ev}
-            ev_sel = st.selectbox("Borrar Evento TV:", ["-- Seleccionar --"] + list(ev_dict.keys()), key="del_ev")
-            if st.button("🚫 Eliminar Evento", use_container_width=True) and ev_sel != "-- Seleccionar --":
-                supabase.table("eventos_tv").update({"is_active": False}).eq("id", ev_dict[ev_sel]).execute()
-                st.success("Evento eliminado."); import time; time.sleep(1); st.rerun()
-                
-    with col_del2:
-        res_an = supabase.table("anuncios_urgentes").select("id, titulo").eq("is_active", True).neq("prioridad", 999).execute().data
-        if res_an:
-            an_dict = {a['titulo']: a['id'] for a in res_an}
-            an_sel = st.selectbox("Borrar Anuncio:", ["-- Seleccionar --"] + list(an_dict.keys()), key="del_an")
-            if st.button("🚫 Eliminar Anuncio", use_container_width=True) and an_sel != "-- Seleccionar --":
-                supabase.table("anuncios_urgentes").update({"is_active": False}).eq("id", an_dict[an_sel]).execute()
-                st.success("Anuncio eliminado."); import time; time.sleep(1); st.rerun()
-
-    try:
-        import pandas as pd
-        import datetime as dt
-        hoy_str = dt.date.today().strftime("%Y-%m-%d")
-        res_eventos = supabase.table("eventos_tv").select("id, categoria, titulo, descripcion, fecha_evento, is_active").gte("fecha_evento", hoy_str).eq("is_active", True).execute()
-        df_eventos = pd.DataFrame(res_eventos.data if res_eventos.data else [])
-        if not df_eventos.empty:
-            df_eventos.rename(columns={"categoria": "Categoría", "titulo": "Título", "descripcion": "Descripción", "fecha_evento": "Fecha Evento", "is_active": "Activo"}, inplace=True)
-            df_eventos["Origen"] = "🖥️ Creado en TV"
-        else:
-            df_eventos = pd.DataFrame(columns=["id", "Categoría", "Título", "Descripción", "Fecha Evento", "Activo", "Origen"])
-
-        res_enlaces = supabase.table("reservas").select("id, fecha, profesores(nombre), recursos(nombre), cursos(nombre), observaciones").gte("fecha", hoy_str).execute()
-        datos_enlaces = [{"id": r["id"], "Categoría": "Reserva / Enlace", "Título": f"Reserva de {r.get('profesores', {}).get('nombre', '')}", "Descripción": f"Uso de {r.get('recursos', {}).get('nombre', '')} para {r.get('cursos', {}).get('nombre', '')}.", "Fecha Evento": r["fecha"], "Activo": True, "Origen": "📅 Sistema Reservas"} for r in res_enlaces.data] if res_enlaces.data else []
-        df_enlaces = pd.DataFrame(datos_enlaces) if datos_enlaces else pd.DataFrame(columns=df_eventos.columns)
-        
-        frames = [df for df in [df_eventos, df_enlaces] if not df.empty]
-        if frames:
-            df_combinado = pd.concat(frames, ignore_index=True).sort_values(by="Fecha Evento")
-            st.dataframe(df_combinado[["Origen", "Categoría", "Título", "Descripción", "Fecha Evento"]], use_container_width=True, hide_index=True)
-    except Exception as e:
-        pass
+                    st.info("Alerta cancelada. La pantalla de TV volverá a la normalidad en unos segundos.")
+                except: 
+                    pass
