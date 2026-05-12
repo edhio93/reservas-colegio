@@ -154,32 +154,52 @@ supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 # ==============================================================================
 if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
 
-    # Inicializamos el zoom en el session state si no existe
+    # 1. REVISAR SI HAY ALERTA ROJA ACTIVA EN LA BASE DE DATOS
+    try:
+        ahora_utc = dt_datetime.now()
+        alerta_db = supabase.table("anuncios_urgentes")\
+            .select("*")\
+            .eq("is_active", True)\
+            .eq("prioridad", 999)\
+            .execute()
+        
+        if alerta_db.data:
+            alerta = alerta_db.data[0]
+            # Verificar si no ha expirado
+            exp_dt = pd.to_datetime(alerta['expiracion']).tz_localize(None)
+            if exp_dt > ahora_utc:
+                # 🔴 PANTALLA ROJA TOTAL
+                st.markdown(f"""
+                    <style>
+                    .stApp {{ background-color: #ff0000 !important; }}
+                    header, footer {{ visibility: hidden; }}
+                    .emergencia-full {{
+                        display: flex; flex-direction: column; justify-content: center;
+                        align-items: center; height: 90vh; text-align: center; color: white;
+                    }}
+                    .aviso-txt {{ font-size: 100px; font-weight: 900; margin-bottom: 20px; }}
+                    .msg-txt {{ font-size: 60px; line-height: 1.2; padding: 0 40px; }}
+                    </style>
+                    <div class="emergencia-full">
+                        <div class="aviso-txt">⚠️ AVISO URGENTE ⚠️</div>
+                        <div class="msg-txt">{alerta['descripcion']}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                # Sonido de alarma
+                st.audio("alarma.mp3", format="audio/mp3", autoplay=True)
+                
+                # Auto-refresh corto para revisar cuando se apague la alerta
+                st_autorefresh(interval=10000, key="refresh_alerta_roja")
+                st.stop() # Detiene el resto de la carga de la TV normal
+    except Exception as e:
+        pass # Si falla la conexión, continúa con la TV normal
+
+    # --- SI NO HAY ALERTA, CONTINÚA EL CÓDIGO NORMAL QUE YA TENÍAS ---
     if "tv_scale" not in st.session_state:
         st.session_state.tv_scale = 100
-
-    # Temporizador de recarga de la página: 20000ms = 20 segundos
-    refresh_count = st_autorefresh(interval=20000, limit=None, key="tv_refresh_timer")
+    # ... resto de tu código (refresh, logos, estilos, etc)
     
-    ruta_logo = "logotv.png"
-    logo_src_html = ""
-    if os.path.exists(ruta_logo):
-        with open(ruta_logo, "rb") as image_file:
-            encoded_string = base64.b64encode(image_file.read()).decode()
-            logo_src_html = f"<img src='data:image/png;base64,{encoded_string}' class='header-logo-img'/>"
-    else:
-        logo_src_html = "<i class='ph-fill ph-airplane-landing header-logo-fallback'></i>"
-
-    now_dt = dt_datetime.now()
-    hoy_str = now_dt.strftime("%Y-%m-%d")
-
-    dias_es = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-    meses_es = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-    fecha_es_formateada = f"{dias_es[now_dt.weekday()]}, {now_dt.day} de {meses_es[now_dt.month - 1]} de {now_dt.year}"
-
-    # Calculamos el multiplicador de escala
-    escala = st.session_state.tv_scale / 100.0
-
     # === ESTILO: FONDO OSCURO, TARJETAS BLANCAS ===
     aesthetic_style = f"""            
     <style>
