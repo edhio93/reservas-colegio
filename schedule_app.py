@@ -2101,7 +2101,7 @@ elif page == "Modo TV":
                 avisos = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).neq("prioridad", 999).execute().data or []
                 avisos_vivos = [a for a in avisos if pd.to_datetime(a['expiracion']).tz_localize(None) > now_dt]
                 
-                if no avisos_vivos:
+                if not avisos_vivos:
                     st.info("No hay avisos en este momento.")
                 else:
                     for a in avisos_vivos[:3]:
