@@ -802,7 +802,7 @@ with st.sidebar:
         "Dashboard": {"icon": "📈", "roles": ["admin"]},
         "Técnicos": {"icon": "🔧", "roles": ["admin"]},
         "Configuración": {"icon": "⚙️", "roles": ["admin"]},
-        "Modo TV": {"icon": "📺", "roles": ["admin", "mensajeria"]}, # <-- El nuevo rol ahora tiene acceso
+        "Modo TV": {"icon": "📺", "roles": ["mensajeria"]}, # <-- El nuevo rol ahora tiene acceso
     }
 
     available_pages = [p for p, conf in PAGES_CONFIG.items() if st.session_state.role in conf["roles"]]
