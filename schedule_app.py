@@ -2070,31 +2070,50 @@ elif page == "Modo TV":
                     st.markdown(f"<div class='{clase}'><div style='display:flex;justify-content:space-between;'><div class='evento-titulo'>{it['titulo']}</div><div style='font-weight:bold; background:#e2e8f0; padding:5px 10px; border-radius:5px;'>{it['hora']}</div></div><div style='margin-top:5px;opacity:0.8;'>{it['desc']}</div></div>", unsafe_allow_html=True)
 
         with col_der:
-            # === CONTROLES DE LA TV RESTAURADOS ===
+            # === CONTROLES DE LA TV (SIEMPRE VISIBLES) ===
+            st.markdown("<h3 style='color:white; margin-top:0;'>⚙️ Controles</h3>", unsafe_allow_html=True)
+            
+            # 1. Selector de Perfil
             st.selectbox("👁️ Perfil Visual", ["Inspectoría / UTP", "Profesores / PIE", "Apoderados"], key="tv_profile")
             
-            with st.expander("⚙️ Controles Extra", expanded=False):
-                st.slider("🔍 Tamaño del texto (%)", min_value=50, max_value=200, value=st.session_state.tv_scale, step=5, key="tv_scale")
-                st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
-                if st.button("🔙 Volver al Menú Principal", use_container_width=True):
+            # 2. Ajuste de tamaño de texto
+            if "tv_scale" not in st.session_state:
+                st.session_state.tv_scale = 100
+            st.slider("🔍 Tamaño del texto (%)", min_value=50, max_value=200, step=5, key="tv_scale")
+            
+            # 3. Botones de Acción (Volver al menú y Pantalla Completa)
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                if st.button("🔙 Volver al Menú", use_container_width=True):
                     st.session_state.ver_pantalla_tv = False
                     st.rerun()
-                
-                # Botón de pantalla completa
+            with col_btn2:
                 components.html("""
                     <style>button { width: 100%; height: 38px; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a; font-family: sans-serif; font-weight: bold; cursor: pointer; }</style>
-                    <button onclick="const doc=window.parent.document; if(!doc.fullscreenElement){doc.documentElement.requestFullscreen(); this.innerHTML='🗗 Salir Fullscreen';}else{doc.exitFullscreen(); this.innerHTML='🔲 Pantalla Completa';}">🔲 Pantalla Completa</button>
+                    <button onclick="const doc=window.parent.document; if(!doc.fullscreenElement){doc.documentElement.requestFullscreen(); this.innerHTML='🗗 Salir Fullscreen';}else{doc.exitFullscreen(); this.innerHTML='🔲 Pantalla Completa';}">🔲 Fullscreen</button>
                 """, height=40)
             
+            st.markdown("<hr style='border-color: #334155; margin: 15px 0;'>", unsafe_allow_html=True)
+            
             # === AVISOS LATERALES ===
-            st.markdown("<h2 style='color:white; margin-top:20px;'>🚨 Avisos</h2>", unsafe_allow_html=True)
+            st.markdown("<h2 style='color:white; margin-top:0;'>🚨 Avisos</h2>", unsafe_allow_html=True)
             try:
                 avisos = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).neq("prioridad", 999).execute().data or []
                 avisos_vivos = [a for a in avisos if pd.to_datetime(a['expiracion']).tz_localize(None) > now_dt]
-                for a in avisos_vivos[:3]:
-                    color = "#ef4444" if a['prioridad'] == 1 else "#f59e0b"
-                    st.markdown(f"<div style='background:white;padding:15px;border-radius:12px;border-left:6px solid {color};margin-bottom:12px;color:#1e293b;'><div style='font-weight:900;color:{color};'>{a['titulo']}</div><div style='font-size:0.9rem;'>{a['descripcion']}</div></div>", unsafe_allow_html=True)
-            except: pass
+                
+                if no avisos_vivos:
+                    st.info("No hay avisos en este momento.")
+                else:
+                    for a in avisos_vivos[:3]:
+                        color = "#ef4444" if a['prioridad'] == 1 else "#f59e0b"
+                        st.markdown(f"""
+                        <div style='background:white;padding:15px;border-radius:12px;border-left:6px solid {color};margin-bottom:12px;color:#1e293b;'>
+                            <div style='font-weight:900;color:{color};'>{a['titulo']}</div>
+                            <div style='font-size:0.9rem;'>{a['descripcion']}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+            except: 
+                pass
         
         st.stop() # Fin de la pantalla pública
 
