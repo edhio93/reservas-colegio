@@ -1980,8 +1980,9 @@ elif page == "Modo TV":
         # Refresco automático cada 20 segundos
         refresh_count = st_autorefresh(interval=20000, key="tv_refresh_timer")
         
-        # Parámetros de escala y tiempo
-        escala = st.session_state.get("tv_scale", 100) / 100.0
+        if "tv_scale" not in st.session_state: st.session_state.tv_scale = 100
+        escala = st.session_state.tv_scale / 100.0
+        
         now_dt = dt_datetime.now()
         hoy_str = now_dt.strftime("%Y-%m-%d")
         hora_actual = now_dt.strftime("%H:%M")
@@ -1996,32 +1997,30 @@ elif page == "Modo TV":
                         <style>
                         .stApp {{ background-color: #ff0000 !important; }}
                         header, [data-testid="stSidebar"] {{ display: none !important; }}
-                        .alerta-total {{ display: flex; flex-direction: column; align-items: center; justify-content: center; height: 95vh; color: white; text-align: center; font-family: 'Inter', sans-serif; }}
+                        .alerta-total {{ display: flex; flex-direction: column; align-items: center; justify-content: center; height: 95vh; color: white; text-align: center; }}
                         .at-titulo {{ font-size: calc(90px * {escala}); font-weight: 900; animation: blink 1s infinite; }}
-                        .at-msg {{ font-size: calc(50px * {escala}); margin-top: 30px; font-weight: 600; padding: 0 50px; line-height: 1.1; }}
                         @keyframes blink {{ 0% {{ opacity: 1; }} 50% {{ opacity: 0.3; }} 100% {{ opacity: 1; }} }}
                         </style>
                         <div class="alerta-total">
                             <div class="at-titulo">⚠️ AVISO URGENTE ⚠️</div>
-                            <div class="at-msg">{alerta['descripcion']}</div>
+                            <div style="font-size: calc(50px * {escala}); margin-top:20px; font-weight:bold;">{alerta['descripcion']}</div>
                         </div>
                     """, unsafe_allow_html=True)
+                    st.audio("alarma.mp3", format="audio/mp3", autoplay=True)
                     st.stop()
         except: pass
 
         # --- 📺 ESTILOS Y ESTRUCTURA TV ---
+        # Removimos el fondo oscuro forzado de .stApp para no ocultar los selectores de Streamlit.
         st.markdown(f"""
         <style>
             @import url('https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css');
-            :root {{ --tv-scale: {escala}; }}
-            .stApp {{ background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }}
             [data-testid="stHeader"], [data-testid="stSidebar"] {{ display: none !important; }}
-            .tv-header {{ background: white; color: #0f172a; padding: 15px 30px; border-radius: 20px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; }}
-            .header-info {{ display: flex; gap: 20px; font-size: calc(1.3rem * var(--tv-scale)); font-weight: 800; }}
-            .card-evento {{ background: white; padding: 25px; border-radius: 15px; border-left: 10px solid #3b82f6; margin-bottom: 20px; color: #1e293b; }}
+            .tv-header {{ background: #f8fafc; color: #0f172a; padding: 15px 30px; border-radius: 20px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
+            .card-evento {{ background: #f8fafc; padding: 25px; border-radius: 15px; border-left: 10px solid #3b82f6; margin-bottom: 20px; color: #1e293b; border: 1px solid #e2e8f0; }}
             .card-reserva {{ border-left-color: #10b981; }}
-            .evento-titulo {{ font-weight: 800; font-size: calc(1.5rem * var(--tv-scale)); color: #1e40af; }}
-            .progress-bar {{ height: 6px; background: #3b82f6; width: 0%; animation: load 20s linear infinite; border-radius: 10px; }}
+            .evento-titulo {{ font-weight: 800; font-size: calc(1.5rem * {escala}); color: #1e40af; }}
+            .progress-bar {{ height: 6px; background: #3b82f6; width: 0%; animation: load 20s linear infinite; border-radius: 10px; margin-bottom:20px; }}
             @keyframes load {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
         </style>
         """, unsafe_allow_html=True)
@@ -2029,10 +2028,8 @@ elif page == "Modo TV":
         clima = obtener_clima_vicuna()
         st.markdown(f"""
             <div class="tv-header">
-                <div style="font-size: 2rem; font-weight: 900; color: #1e40af;"><i class="ph-fill ph-monitor-play"></i> COLEGIO TV</div>
-                <div class="header-info">
-                    <div>{now_dt.strftime("%d/%m/%Y")}</div> | <div>{clima}</div> | <div style="color:#3b82f6;">{hora_actual}</div>
-                </div>
+                <div style="font-size: calc(2rem * {escala}); font-weight: 900; color: #1e40af;"><i class="ph-fill ph-monitor-play"></i> COLEGIO TV</div>
+                <div style="font-size: calc(1.3rem * {escala}); font-weight: 700;">{now_dt.strftime("%d/%m/%Y")} | {clima} | <span style="color:#3b82f6;">{hora_actual}</span></div>
             </div><div class="progress-bar"></div>
         """, unsafe_allow_html=True)
 
@@ -2048,7 +2045,6 @@ elif page == "Modo TV":
                     if hora_actual <= str(e.get("hora_fin", "23:59")):
                         eventos_hoy.append({"hora": str(e.get("hora_inicio", "00:00"))[:5], "titulo": e['titulo'], "desc": e.get("descripcion", ""), "tipo": "evento"})
                 
-                # Perfil Profesores: Mostrar reservas
                 if "PROFESOR" in st.session_state.get("tv_profile", "").upper():
                     res_data = supabase.table("reservas").select("*, recursos(nombre), cursos(nombre), profesores(nombre)").eq("fecha", hoy_str).execute().data or []
                     for r in res_data:
@@ -2064,52 +2060,49 @@ elif page == "Modo TV":
                 total_pag = max(1, (len(eventos_hoy) + PAG_SIZE - 1) // PAG_SIZE)
                 p_act = refresh_count % total_pag
                 items = eventos_hoy[p_act*PAG_SIZE : (p_act+1)*PAG_SIZE]
-                st.markdown(f"<h2 style='color:white'>📅 Actividades ({p_act+1}/{total_pag})</h2>", unsafe_allow_html=True)
+                st.markdown(f"<h2>📅 Actividades ({p_act+1}/{total_pag})</h2>", unsafe_allow_html=True)
                 for it in items:
                     clase = "card-evento card-reserva" if it['tipo'] == "reserva" else "card-evento"
-                    st.markdown(f"<div class='{clase}'><div style='display:flex;justify-content:space-between;'><div class='evento-titulo'>{it['titulo']}</div><div style='font-weight:bold; background:#e2e8f0; padding:5px 10px; border-radius:5px;'>{it['hora']}</div></div><div style='margin-top:5px;opacity:0.8;'>{it['desc']}</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='{clase}'><div style='display:flex;justify-content:space-between;'><div class='evento-titulo'>{it['titulo']}</div><div style='font-weight:bold; background:#e2e8f0; padding:5px 10px; border-radius:5px;'>{it['hora']}</div></div><div style='margin-top:5px;opacity:0.8; font-size:calc(1rem * {escala});'>{it['desc']}</div></div>", unsafe_allow_html=True)
 
         with col_der:
-            # === PANEL DE CONTROL SIEMPRE VISIBLE ===
-            with st.container(border=True):
-                st.markdown("<h3 style='margin-top:0; color: #1e293b;'>⚙️ Configuración</h3>", unsafe_allow_html=True)
-                
-                st.selectbox("👁️ Perfil Visual", ["Inspectoría / UTP", "Profesores / PIE", "Apoderados"], key="tv_profile")
-                
-                if "tv_scale" not in st.session_state: st.session_state.tv_scale = 100
-                st.slider("🔍 Tamaño Texto (%)", 50, 200, key="tv_scale", step=5)
-                
-                st.divider()
-                
-                if st.button("🔙 VOLVER AL MENÚ", use_container_width=True, type="primary"):
-                    st.session_state.ver_pantalla_tv = False
-                    st.rerun()
-                
-                components.html("""
-                    <button onclick="const doc=window.parent.document; if(!doc.fullscreenElement){doc.documentElement.requestFullscreen();}else{doc.exitFullscreen();}" 
-                    style="width:100%; height:40px; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:8px; font-family:sans-serif; font-weight:bold; color:#0f172a; cursor:pointer;">
-                    🔲 Pantalla Completa</button>
-                """, height=45)
+            # LOS CONTROLES AHORA SON VISIBLES YA QUE EL FONDO NO SE FUERZA A OSCURO
+            st.subheader("⚙️ Configuración")
+            
+            st.selectbox("👁️ Perfil Visual", ["Inspectoría / UTP", "Profesores / PIE", "Apoderados"], key="tv_profile")
+            st.slider("🔍 Tamaño Texto (%)", 50, 200, key="tv_scale", step=5)
+            
+            if st.button("🔙 VOLVER AL MENÚ", use_container_width=True, type="primary"):
+                st.session_state.ver_pantalla_tv = False
+                st.rerun()
+            
+            components.html("""
+                <button onclick="const doc=window.parent.document; if(!doc.fullscreenElement){doc.documentElement.requestFullscreen();}else{doc.exitFullscreen();}" 
+                style="width:100%; height:40px; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:8px; font-family:sans-serif; font-weight:bold; color:#0f172a; cursor:pointer;">
+                🔲 Pantalla Completa</button>
+            """, height=45)
 
-            # === SECCIÓN DE AVISOS ===
-            st.markdown("<h2 style='color:white; margin-top:20px;'>🚨 Avisos</h2>", unsafe_allow_html=True)
+            st.divider()
+            st.markdown("<h2>🚨 Avisos</h2>", unsafe_allow_html=True)
             try:
                 avisos = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).neq("prioridad", 999).execute().data or []
                 avisos_vivos = [a for a in avisos if pd.to_datetime(a['expiracion']).tz_localize(None) > now_dt]
                 if not avisos_vivos:
-                    st.markdown("<p style='color:#94a3b8;'>No hay avisos vigentes.</p>", unsafe_allow_html=True)
+                    st.markdown("<p style='color:gray;'>No hay avisos vigentes.</p>", unsafe_allow_html=True)
                 else:
                     for a in avisos_vivos[:3]:
-                        color = "#ef4444" if a['prioridad'] == 1 else "#f59e0b"
+                        # APLICAR LOS COLORES DE PRIORIDAD EN LA TV (ROJO PARA ALTA, AMARILLO PARA MEDIA)
+                        color_borde = "#ef4444" if str(a['prioridad']) == "1" else "#f59e0b"
+                        bg_color = "#fef2f2" if str(a['prioridad']) == "1" else "#fffbeb"
                         st.markdown(f"""
-                        <div style='background:white;padding:15px;border-radius:12px;border-left:6px solid {color};margin-bottom:12px;color:#1e293b;'>
-                            <div style='font-weight:900;color:{color};'>{a['titulo']}</div>
-                            <div style='font-size:0.9rem;'>{a['descripcion']}</div>
+                        <div style='background:{bg_color};padding:15px;border-radius:12px;border-left:6px solid {color_borde};margin-bottom:12px;color:#1e293b;border: 1px solid #e2e8f0;'>
+                            <div style='font-weight:900;color:{color_borde}; font-size:calc(1.1rem * {escala});'>{a['titulo']}</div>
+                            <div style='font-size:calc(0.9rem * {escala}); margin-top:5px;'>{a['descripcion']}</div>
                         </div>
                         """, unsafe_allow_html=True)
             except: pass
 
-        st.stop() # Bloqueo para que no se vea el panel de gestión mientras la TV está activa
+        st.stop() # Fin de la pantalla pública
 
     # ==============================================================================
     # 💻 2. PANEL DE GESTIÓN (MENSAJERÍA INTERNA)
@@ -2169,7 +2162,8 @@ elif page == "Modo TV":
         with st.form("nuevo_anuncio"):
             t = st.text_input("Título del Aviso")
             d = st.text_area("Descripción")
-            p = st.selectbox("Prioridad", [1, 2], format_func=lambda x: "Alta (Rojo)" if x==1 else "Media (Amarillo)")
+            # SELECCIÓN DE COLOR DE PRIORIDAD REPARADA (1 = Alta/Rojo, 2 = Media/Amarilla)
+            p = st.selectbox("Prioridad", [1, 2], format_func=lambda x: "🔴 Alta (Rojo)" if x==1 else "🟡 Media (Amarillo)")
             if st.form_submit_button("Publicar Aviso"):
                 exp = (dt_datetime.now() + dt.timedelta(hours=24)).isoformat()
                 supabase.table("anuncios_urgentes").insert({"titulo": t, "descripcion": d, "prioridad": p, "expiracion": exp, "is_active": True}).execute()
@@ -2188,9 +2182,14 @@ elif page == "Modo TV":
                     st.success("Evento eliminado"); st.rerun()
             else: st.info("No hay eventos activos.")
         with col_del2:
-            anns = supabase.table("anuncios_urgentes").select("id, titulo").eq("is_active", True).neq("prioridad", 999).execute().data or []
+            anns = supabase.table("anuncios_urgentes").select("id, titulo, prioridad").eq("is_active", True).neq("prioridad", 999).execute().data or []
             if anns:
-                an_dict = {a['titulo']: a['id'] for a in anns}
+                # SE MUESTRAN LOS COLORES EN EL MENÚ DESPLEGABLE AL ELIMINAR UN AVISO
+                def formatear_aviso_borrar(a):
+                    icono = "🔴" if str(a['prioridad']) == "1" else "🟡"
+                    return f"{icono} {a['titulo']}"
+                
+                an_dict = {formatear_aviso_borrar(a): a['id'] for a in anns}
                 sel_an = st.selectbox("Borrar Aviso:", ["-- Seleccionar --"] + list(an_dict.keys()))
                 if st.button("🗑️ Eliminar Aviso", use_container_width=True) and sel_an != "-- Seleccionar --":
                     supabase.table("anuncios_urgentes").update({"is_active": False}).eq("id", an_dict[sel_an]).execute()
@@ -2200,11 +2199,16 @@ elif page == "Modo TV":
         st.divider()
         st.subheader("📋 Registros Activos")
         hoy_str_t = dt.date.today().strftime("%Y-%m-%d")
+        
         df_ev = pd.DataFrame(supabase.table("eventos_tv").select("titulo, descripcion, fecha_evento, hora_inicio").gte("fecha_evento", hoy_str_t).eq("is_active", True).execute().data or [])
         if not df_ev.empty:
             st.write("**Eventos del Cronograma:**")
             st.dataframe(df_ev, use_container_width=True, hide_index=True)
+            
         df_an = pd.DataFrame(supabase.table("anuncios_urgentes").select("titulo, descripcion, prioridad").eq("is_active", True).neq("prioridad", 999).execute().data or [])
         if not df_an.empty:
+            # CONVERSIÓN DE NÚMEROS A TEXTO VISUAL EN LA TABLA DE REGISTROS (1->🔴 Alta, 2->🟡 Media)
+            df_an["prioridad"] = df_an["prioridad"].apply(lambda x: "🔴 Alta" if str(x) == "1" else "🟡 Media")
+            df_an.rename(columns={"prioridad": "Nivel"}, inplace=True)
             st.write("**Avisos Laterales:**")
             st.dataframe(df_an, use_container_width=True, hide_index=True)
