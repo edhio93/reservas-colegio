@@ -148,375 +148,249 @@ CLAVE_SUPABASE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
 supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 
-
 # ==============================================================================
 # 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO SIN LOGIN)
 # ==============================================================================
 if "ver_pantalla_tv" in st.session_state and st.session_state.ver_pantalla_tv:
 
-    # Inicializamos el zoom en el session state si no existe
+    # 1. CONFIGURACIÓN INICIAL Y REFRESCO
+    # El refresco de 20s es vital para la rotación de páginas y alertas
+    refresh_count = st_autorefresh(interval=20000, key="tv_refresh_global")
+    
     if "tv_scale" not in st.session_state:
         st.session_state.tv_scale = 100
-
-    # Temporizador de recarga de la página: 20000ms = 20 segundos
-    refresh_count = st_autorefresh(interval=20000, limit=None, key="tv_refresh_timer")
     
+    escala = st.session_state.tv_scale / 100.0
+
+    # --- PREPARACIÓN DE VARIABLES CRÍTICAS ---
+    now_dt = dt_datetime.now()
+    hoy_str = now_dt.strftime("%Y-%m-%d")
+    
+    # Manejo del Logo (Evita el NameError)
     ruta_logo = "logotv.png"
     logo_src_html = ""
     if os.path.exists(ruta_logo):
-        with open(ruta_logo, "rb") as image_file:
-            encoded_string = base64.b64encode(image_file.read()).decode()
-            logo_src_html = f"<img src='data:image/png;base64,{encoded_string}' class='header-logo-img'/>"
+        try:
+            with open(ruta_logo, "rb") as image_file:
+                encoded_string = base64.b64encode(image_file.read()).decode()
+                logo_src_html = f"<img src='data:image/png;base64,{encoded_string}' class='header-logo-img'/>"
+        except:
+            logo_src_html = "<i class='ph-fill ph-shield-check header-logo-fallback'></i>"
     else:
-        logo_src_html = "<i class='ph-fill ph-airplane-landing header-logo-fallback'></i>"
+        logo_src_html = "<i class='ph-fill ph-shield-check header-logo-fallback'></i>"
 
-    now_dt = dt_datetime.now()
-    hoy_str = now_dt.strftime("%Y-%m-%d")
-
+    # Fecha en español
     dias_es = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
     meses_es = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-    fecha_es_formateada = f"{dias_es[now_dt.weekday()]}, {now_dt.day} de {meses_es[now_dt.month - 1]} de {now_dt.year}"
+    fecha_es_formateada = f"{dias_es[now_dt.weekday()]}, {now_dt.day} de {meses_es[now_dt.month - 1]}"
 
-    # Calculamos el multiplicador de escala
-    escala = st.session_state.tv_scale / 100.0
+    # 2. SISTEMA DE ALERTA ROJA (Prioridad 999)
+    try:
+        alerta_roja_db = supabase.table("anuncios_urgentes")\
+            .select("*")\
+            .eq("is_active", True)\
+            .eq("prioridad", 999)\
+            .execute()
+        
+        if alerta_roja_db.data:
+            alerta = alerta_roja_db.data[0]
+            exp_dt = pd.to_datetime(alerta['expiracion']).tz_localize(None)
+            if exp_dt > now_dt:
+                st.markdown(f"""
+                    <style>
+                    .stApp {{ background-color: #ff0000 !important; }}
+                    header, footer, [data-testid="stSidebar"] {{ visibility: hidden; display: none; }}
+                    .emergencia-full {{
+                        display: flex; flex-direction: column; justify-content: center;
+                        align-items: center; height: 90vh; text-align: center; color: white;
+                    }}
+                    .aviso-txt {{ font-size: calc(100px * {escala}); font-weight: 900; animation: pulse 1s infinite; }}
+                    .msg-txt {{ font-size: calc(60px * {escala}); line-height: 1.2; padding: 0 50px; font-weight: 700; }}
+                    @keyframes pulse {{ 0% {{ opacity: 1; }} 50% {{ opacity: 0.5; }} 100% {{ opacity: 1; }} }}
+                    </style>
+                    <div class="emergencia-full">
+                        <div class="aviso-txt">⚠️ ALERTA MÁXIMA ⚠️</div>
+                        <div class="msg-txt">{alerta['descripcion']}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+                st.audio("alarma.mp3", format="audio/mp3", autoplay=True)
+                st.stop()
+    except Exception as e:
+        pass
 
-    # === ESTILO: FONDO OSCURO, TARJETAS BLANCAS ===
-    aesthetic_style = f"""            
+    # 3. ESTILOS DE LA PANTALLA NORMAL
+    st.markdown(f"""
     <style>
         @import url('https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css');
-
-        :root {{
-            --tv-scale: {escala};
-        }}
-
-        /* Fondo general oscuro */
+        :root {{ --tv-scale: {escala}; }}
         .stApp {{ background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }}
-        [data-testid="stHeader"] {{ background: rgba(0,0,0,0); }}
-        [data-testid="stToolbar"] {{ display: none; }}
-        [data-testid="stSidebar"] {{ display: none; }}
+        [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display: none; }}
         
-        /* Cabecera Principal - Blanca/Gris Clara */
         .tv-header-container {{ 
-            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-            color: #0f172a; padding: 15px 25px 0 25px; border-radius: 20px; 
-            margin-bottom: 25px; border: 1px solid #cbd5e1; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.15); overflow: hidden; 
+            background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%);
+            color: #0f172a; padding: 15px 25px; border-radius: 20px; 
+            margin-bottom: 20px; border: 1px solid #cbd5e1; box-shadow: 0 10px 25px rgba(0,0,0,0.3);
             display: flex; flex-direction: column; align-items: center;
         }}
-        .header-content-layout {{ display: flex; align-items: center; justify-content: space-between; width: 100%; padding-bottom: 15px; }}
-        .header-logo-img {{ height: calc(85px * var(--tv-scale)); width: auto; display: block; }}
-        .header-logo-fallback {{ font-size: calc(4rem * var(--tv-scale)); color: #64748b; line-height: 1; display: block; }}
-
-        .header-info-group {{ display: flex; align-items: center; gap: 15px; font-size: calc(1.2rem * var(--tv-scale)); font-weight: 600; color: #1e293b; }}
-        .header-divider {{ opacity: 0.3; font-weight: 300; font-size: calc(1.5rem * var(--tv-scale)); color: #94a3b8; }}
-        .header-status {{ display: flex; align-items: center; color: #475569; }}
-        .status-icon {{ margin-right: 8px; font-size: calc(1.3rem * var(--tv-scale)); color: #10b981; }}
+        .header-content-layout {{ display: flex; align-items: center; justify-content: space-between; width: 100%; }}
+        .header-logo-img {{ height: calc(80px * var(--tv-scale)); width: auto; }}
+        .header-logo-fallback {{ font-size: calc(4rem * var(--tv-scale)); color: #64748b; }}
+        .header-info-group {{ display: flex; align-items: center; gap: 20px; font-size: calc(1.3rem * var(--tv-scale)); font-weight: 700; color: #1e293b; }}
         
-        /* Barra de progreso 20s */
-        .progress-container {{ width: 100%; height: 6px; background-color: #cbd5e1; }}
-        .progress-bar {{ height: 100%; background-color: #3b82f6; width: 0%; animation: loadBar 20s linear infinite; }}
+        .progress-container {{ width: 100%; height: 8px; background-color: #e2e8f0; margin-top: 15px; border-radius: 10px; overflow: hidden; }}
+        .progress-bar {{ height: 100%; background: #3b82f6; width: 0%; animation: loadBar 20s linear infinite; }}
         @keyframes loadBar {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
         
-        /* Títulos de sección adaptados para fondo oscuro */
-        .tv-sub-header {{ color: #f8fafc; font-weight: 800; font-size: calc(1.6rem * var(--tv-scale)); margin-top: 5px; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #334155; padding-bottom: 10px;}}
+        .block-card {{ padding: 25px; border-radius: 18px; border-left: 10px solid; margin-bottom: 20px; background: white; color: #1e293b; box-shadow: 0 5px 15px rgba(0,0,0,0.2); animation: slideIn 0.8s ease-out forwards; }}
+        .block-title-text {{ font-weight: 800; font-size: calc(1.5rem * var(--tv-scale)); color: #1e40af; }}
+        .block-time-badge {{ background: #f1f5f9; padding: 8px 15px; border-radius: 10px; font-weight: 800; font-size: calc(1.2rem * var(--tv-scale)); border: 1px solid #e2e8f0; }}
+        .tv-sub-header {{ color: white; font-weight: 900; font-size: calc(1.8rem * var(--tv-scale)); margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; }}
         
-        /* Animaciones */
-        @keyframes cascadeIn {{ 0% {{ opacity: 0; transform: translateY(30px) scale(0.98); }} 100% {{ opacity: 1; transform: translateY(0) scale(1); }} }}
-        @keyframes pulseAlert {{ 0% {{ box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }} 70% {{ box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }} 100% {{ box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }} }}
-
-        /* Tarjetas Cronograma - Blancas */
-        .block-card {{ padding: 22px; border-radius: 16px; border-left: 8px solid; margin-bottom: 18px; background-color: white; box-shadow: 0 6px 15px rgba(0,0,0,0.1); }}
-        
-        /* Nuevo título con hora a la derecha */
-        .block-title-row {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; width: 100%; }}
-        .block-title-text {{ font-weight: 700; font-size: calc(1.35rem * var(--tv-scale)); text-transform: uppercase; }}
-        .block-time-badge {{ display: flex; align-items: center; gap: 6px; background-color: #f1f5f9; color: #475569; padding: 6px 12px; border-radius: 8px; font-weight: 700; font-size: calc(1.1rem * var(--tv-scale)); border: 1px solid #e2e8f0; }}
-        
-        .block-info {{ font-size: calc(1.05rem * var(--tv-scale)); color: #475569; }}
-        .block-info-row {{ display: flex; gap: 20px; align-items: center; margin-top: 12px; font-size: calc(1rem * var(--tv-scale));}}
-        .block-info-item {{ display: flex; align-items: center; color: #64748b; }}
-        
-        .info-icon {{ font-size: calc(1.25rem * var(--tv-scale)); margin-right: 8px; }}
-        .icon-profesor {{ color: #4ade80; }} 
-        .icon-observaciones {{ color: #fbbf24; }} 
-        
-        .block-hora-pill {{ margin-top: 15px; font-weight: 600; color: #64748b; background: #f8fafc; display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 10px; font-size: calc(0.9rem * var(--tv-scale)); border: 1px solid #e2e8f0;}}
-        .icon-categoria {{ color: #818cf8; margin-right: 7px; font-size: calc(1.1rem * var(--tv-scale));}} 
-
-        /* Contenedor Avisos - Blanco */
-        .announcements-container {{ background-color: white; border-radius: 20px; padding: 25px; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.1); height: 100%; }}
-        .announcement-card {{ padding: 20px; border-radius: 16px; border: 1px solid #e2e8f0; margin-bottom: 18px; border-left: 6px solid;}}
-        .announcement-title {{ font-weight: 700; margin-bottom: 7px; font-size: calc(1.2rem * var(--tv-scale)); text-transform: uppercase;}}
-        .announcement-desc {{ font-size: calc(1rem * var(--tv-scale)); color: #334155; line-height: 1.5; }}
+        @keyframes slideIn {{ from {{ opacity: 0; transform: translateX(-30px); }} to {{ opacity: 1; transform: translateX(0); }} }}
     </style>
-    """
-    st.markdown(aesthetic_style, unsafe_allow_html=True) 
+    """, unsafe_allow_html=True)
 
+    # 4. RENDER CABECERA
     clima_html = obtener_clima_vicuna()
-
-    html_cabecera = f"""
-<div class="tv-header-container">
-    <div class="header-content-layout">
-        <div class="header-logo-section">
-            {logo_src_html}
-        </div>
-        <div class="header-info-group">
-            <div class="header-date">{fecha_es_formateada}</div>
-            <div class="header-divider">|</div>
-            <div class="header-weather">
-                {clima_html}
-            </div>
-            <div class="header-divider">|</div>
-            <div class="header-status">
-                <i class="ph-fill ph-check-circle status-icon"></i> Siguiente en 20s
+    st.markdown(f"""
+    <div class="tv-header-container">
+        <div class="header-content-layout">
+            <div class="header-logo-section">{logo_src_html}</div>
+            <div class="header-info-group">
+                <div><i class="ph-fill ph-calendar-blank"></i> {fecha_es_formateada}</div>
+                <div style="color:#cbd5e1">|</div>
+                <div>{clima_html}</div>
+                <div style="color:#cbd5e1">|</div>
+                <div style="color: #10b981;"><i class="ph-fill ph-clock"></i> {now_dt.strftime("%H:%M")}</div>
             </div>
         </div>
+        <div class="progress-container"><div class="progress-bar"></div></div>
     </div>
-    <div class="progress-container"><div class="progress-bar"></div></div>
-</div>
-"""
-    st.markdown(html_cabecera, unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
     
-    col_main, col_ann = st.columns([2.5, 1], gap="large")
+    col_main, col_ann = st.columns([2.3, 1], gap="large")
     
-        # ==========================================
-        # COLUMNA IZQUIERDA (CRONOGRAMA DE EVENTOS)
-        # ==========================================
+    # 5. COLUMNA IZQUIERDA: CRONOGRAMA DINÁMICO
     with col_main:
-            try:
-                # Capturamos la hora y minuto actual en formato HH:MM (Ej: "14:30")
-                hora_actual = dt_datetime.now().strftime("%H:%M")
-                perfil_actual = st.session_state.tv_profile.upper()
-                
-                # 1. Inicializar lista maestra
-                events_hoy_list = []
-                
-                # 2. Cargar Google Calendar (Todos los perfiles)
-                url_guardada = st.session_state.get('url_calendario_tv', '')
-                eventos_calendar = obtener_eventos_google_calendar(url_guardada)
-                events_hoy_list.extend(eventos_calendar) 
-                
-                # 3. Cargar Eventos TV de Supabase (Todos los perfiles)
-                res_tv = supabase.table("eventos_tv").select("*").eq("fecha_evento", hoy_str).eq("is_active", True).execute()
-                res_tv_hoy = res_tv.data if res_tv.data else []
-                
-                for ev in res_tv_hoy:
-                    h_ini = str(ev.get("hora_inicio", ev.get("hora", "00:00")))[:5]
-                    h_fin = str(ev.get("hora_fin", "23:59"))[:5]
-                    if not h_fin or h_fin == "None" or h_fin.strip() == "": 
-                        h_fin = "23:59"
-                    
-                    if hora_actual > h_fin and h_fin != "23:59":
-                        continue
-                        
-                    disp_hora = f"{h_ini} - {h_fin}" if h_fin and h_fin != h_ini and h_fin != "23:59" else f"{h_ini}"
-                    if not h_ini or h_ini == "None" or h_ini == "00:00": disp_hora = "TODO EL DÍA"
-                    
+        try:
+            hora_actual_str = now_dt.strftime("%H:%M")
+            perfil = st.session_state.get("tv_profile", "Inspectoría / UTP").upper()
+            
+            events_hoy_list = []
+            
+            # A. Google Calendar
+            url_cal = st.session_state.get('url_calendario_tv', '')
+            if url_cal:
+                events_hoy_list.extend(obtener_eventos_google_calendar(url_cal))
+            
+            # B. Eventos TV (Supabase)
+            res_tv = supabase.table("eventos_tv").select("*").eq("fecha_evento", hoy_str).eq("is_active", True).execute()
+            for ev in (res_tv.data or []):
+                h_fin = str(ev.get("hora_fin", "23:59"))[:5]
+                if hora_actual_str <= h_fin:
                     events_hoy_list.append({
-                        "hora_sort": h_ini if h_ini and h_ini != "None" and h_ini != "00:00" else "00:00", 
-                        "display_hora": disp_hora,
-                        "titulo": ev.get("titulo", "Evento"), 
-                        "descripcion": ev.get("descripcion", ""),
+                        "hora_sort": str(ev.get("hora_inicio", "00:00"))[:5],
+                        "display_hora": f"{str(ev.get('hora_inicio'))[:5]} - {h_fin}",
+                        "titulo": ev.get("titulo"), "descripcion": ev.get("descripcion", ""),
                         "categoria": ev.get("categoria", "Evento")
                     })
-                    
-                # 4. Cargar Reservas de Enlaces (SOLO Perfil Profesores/PIE)
-                if "PROFESORES" in perfil_actual or "PIE" in perfil_actual:
-                    res_supabase = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute()
-                    res_reservas_hoy = res_supabase.data if res_supabase.data else []
-                    
-                    for r in res_reservas_hoy:
-                        h_ini = str(r.get("hora_inicio", r.get("hora", "00:00")))[:5]
-                        h_fin = str(r.get("hora_fin", "23:59"))[:5]
-                        if not h_fin or h_fin == "None" or h_fin.strip() == "": 
-                            h_fin = "23:59"
-                        
-                        if hora_actual > h_fin and h_fin != "23:59":
-                            continue
-                            
-                        disp_hora = f"{h_ini} - {h_fin}" if h_fin and h_fin != h_ini and h_fin != "23:59" else f"{h_ini}"
-                        if not h_ini or h_ini == "None" or h_ini == "00:00": disp_hora = "RESERVA"
-                        
-                        prof = r.get("profesores", {}).get("nombre", "Docente") if r.get("profesores") else "Docente"
-                        rec = r.get("recursos", {}).get("nombre", "Recurso") if r.get("recursos") else "Recurso"
-                        curso = r.get("cursos", {}).get("nombre", "Curso") if r.get("cursos") else "Curso"
-                        obs = r.get("observaciones", "")
-                        
+
+            # C. Reservas (Solo profes/PIE)
+            if "PROFESOR" in perfil or "PIE" in perfil:
+                res_reser = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute()
+                for r in (res_reser.data or []):
+                    h_fin = str(r.get("hora_fin", "23:59"))[:5]
+                    if hora_actual_str <= h_fin:
                         events_hoy_list.append({
-                            "hora_sort": h_ini if h_ini and h_ini != "None" and h_ini != "00:00" else "23:59", 
-                            "display_hora": disp_hora,
-                            "titulo": f"{rec} ➔ {curso}", 
-                            "profesor": prof,
-                            "observaciones": obs, 
-                            "categoria": "Clase / Uso Recurso"
+                            "hora_sort": str(r.get("hora_inicio", "00:00"))[:5],
+                            "display_hora": f"{str(r.get('hora_inicio'))[:5]} - {h_fin}",
+                            "titulo": f"{r['recursos']['nombre']} ➔ {r['cursos']['nombre']}",
+                            "descripcion": f"Docente: {r['profesores']['nombre']}",
+                            "categoria": "Reserva Recurso"
                         })
-                
-                # 5. Ordenar cronológicamente
-                events_hoy_list = sorted(events_hoy_list, key=lambda x: str(x.get("hora_sort", "99:99")))
-                
-                if not events_hoy_list:
-                    st.markdown("<div class='tv-sub-header'>⏱️ Cronograma de Hoy</div>", unsafe_allow_html=True)
-                    st.info(f"No hay eventos activos para el resto del día en este perfil.")
-                else:
-                    ITEMS_POR_PAGINA = 3
-                    total_paginas = max(1, (len(events_hoy_list) + ITEMS_POR_PAGINA - 1) // ITEMS_POR_PAGINA)
-                    pagina_actual = refresh_count % total_paginas 
-                    
-                    inicio_idx = pagina_actual * ITEMS_POR_PAGINA
-                    fin_idx = inicio_idx + ITEMS_POR_PAGINA
-                    eventos_a_mostrar = events_hoy_list[inicio_idx:fin_idx]
-                    
-                    st.markdown(f"<div class='tv-sub-header'>⏱️ Cronograma de Hoy (Pág. {pagina_actual + 1}/{total_paginas})</div>", unsafe_allow_html=True)
-                    
-                    paleta_colores = ["#0ea5e9", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#14b8a6"]
-                    html_cronograma = ""
-                    
-                    for i, item in enumerate(eventos_a_mostrar):
-                        color_tema = "#6366f1" if item['categoria'] == "Evento Especial" else paleta_colores[i % len(paleta_colores)]
-                        delay = i * 0.15 
-                        
-                        info_row_html = ""
-                        if item.get("profesor") or item.get("observaciones"):
-                            info_row_html = "<div class='block-info-row'>"
-                            if item.get("profesor"):
-                                info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-user-graduate info-icon'></i> {item['profesor']}</div>"
-                            if item.get("observaciones"):
-                                info_row_html += f"<div class='block-info-item'><i class='ph-fill ph-clipboard-text info-icon'></i> {item['observaciones']}</div>"
-                            info_row_html += "</div>"
-                        
-                        html_cronograma += (
-                            f"<div class='block-card' style='border-left-color: {color_tema}; animation: cascadeIn 0.8s forwards; animation-delay: {delay}s; opacity: 0;'>"
-                            f"  <div class='block-title-row'>"
-                            f"      <div class='block-title-text' style='color: {color_tema};'>{item['titulo']}</div>"
-                            f"      <div class='block-time-badge'><i class='ph-fill ph-clock'></i> {item['display_hora']}</div>"
-                            f"  </div>"
-                            f"  <div class='block-info'>{item.get('descripcion', '')}</div>"
-                            f"  {info_row_html}"
-                            f"  <div class='block-hora-pill'><i class='ph-fill ph-tag icon-categoria'></i> {item['categoria']}</div>"
-                            f"</div>"
-                        )
-                    st.markdown(html_cronograma, unsafe_allow_html=True)
-                    
-            except Exception as e:
-                st.error(f"Error al cargar cronograma: {e}")
 
-        # ==========================================
-        # COLUMNA DERECHA (ANUNCIOS Y CONTROLES)
-        # ==========================================
+            events_hoy_list = sorted(events_hoy_list, key=lambda x: x['hora_sort'])
+
+            # Paginación automática
+            if not events_hoy_list:
+                st.info("No hay más actividades programadas para el día de hoy.")
+            else:
+                ITEMS_PAG = 3
+                total_pag = max(1, (len(events_hoy_list) + ITEMS_PAG - 1) // ITEMS_PAG)
+                pag_act = refresh_count % total_pag
+                visibles = events_hoy_list[pag_act*ITEMS_PAG : (pag_act+1)*ITEMS_PAG]
+
+                st.markdown(f"<div class='tv-sub-header'><i class='ph-fill ph-list-checks'></i> Cronograma de Hoy ({pag_act+1}/{total_pag})</div>", unsafe_allow_html=True)
+                for i, item in enumerate(visibles):
+                    color = "#3b82f6" if "Reserva" not in item['categoria'] else "#10b981"
+                    st.markdown(f"""
+                        <div class='block-card' style='border-left-color: {color};'>
+                            <div style='display:flex; justify-content:space-between; align-items:center;'>
+                                <div class='block-title-text'>{item['titulo']}</div>
+                                <div class='block-time-badge'><i class="ph-fill ph-timer"></i> {item['display_hora']}</div>
+                            </div>
+                            <div style='margin-top:12px; font-size:calc(1.1rem * var(--tv-scale)); color:#475569;'>{item['descripcion']}</div>
+                            <div style='margin-top:15px; font-weight:700; font-size:0.9rem; color:{color}; opacity:0.8;'>
+                                <i class="ph-fill ph-tag"></i> {item['categoria'].upper()}
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"Error cargando cronograma: {e}")
+
+    # 6. COLUMNA DERECHA: AVISOS Y CONTROLES
     with col_ann:
-            # --- SELECTOR DE PERFILES ---
-            st.selectbox(
-                "👁️ Perfil de Visualización", 
-                ["Inspectoría / UTP", "Profesores / PIE", "Apoderados"], 
-                key="tv_profile"
-            )
-            st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
+        st.selectbox("👁️ Perfil Visual", ["Inspectoría / UTP", "Profesores / PIE", "Apoderados"], key="tv_profile")
+        
+        with st.expander("⚙️ Ajustes de Pantalla"):
+            st.slider("Zoom de contenido", 50, 200, st.session_state.tv_scale, key="tv_scale")
+            if st.button("🔙 Salir al Menú Principal", use_container_width=True):
+                st.session_state.ver_pantalla_tv = False
+                st.rerun()
+
+        try:
+            st.markdown("<div class='tv-sub-header'><i class='ph-fill ph-megaphone'></i> Avisos Urgentes</div>", unsafe_allow_html=True)
+            ann_data = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).neq("prioridad", 999).execute().data or []
+            avisos_vivos = [a for a in ann_data if pd.to_datetime(a['expiracion']).tz_localize(None) > now_dt]
+            avisos_vivos = sorted(avisos_vivos, key=lambda x: x['prioridad'])
+
+            if not avisos_vivos:
+                st.markdown("<div style='text-align:center; color:#64748b; padding:20px;'>No hay avisos vigentes</div>", unsafe_allow_html=True)
+            else:
+                for a in avisos_vivos[:3]:
+                    bg = "#fff1f2" if a['prioridad'] == 1 else "#fefce8"
+                    border = "#e11d48" if a['prioridad'] == 1 else "#ca8a04"
+                    st.markdown(f"""
+                        <div style='background:{bg}; padding:20px; border-radius:15px; border-left:6px solid {border}; margin-bottom:15px; color:#1e293b; box-shadow:0 4px 6px rgba(0,0,0,0.1);'>
+                            <div style='font-weight:900; color:{border}; font-size:calc(1.1rem * var(--tv-scale)); text-transform:uppercase;'>{a['titulo']}</div>
+                            <div style='margin-top:8px; font-size:calc(1rem * var(--tv-scale)); font-weight:500;'>{a['descripcion']}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+        except:
+            pass
+
+    # 7. GESTOR DE SONIDOS (Notificaciones)
+    try:
+        # Detectar cambios para sonar avisos
+        ids_eventos_actuales = set([f"{e['titulo']}_{e['display_hora']}" for e in events_hoy_list])
+        ids_avisos_actuales = set([str(a['id']) for a in avisos_vivos])
+        
+        if "tv_init" not in st.session_state:
+            st.session_state.tv_init = True
+            st.session_state.old_evs = ids_eventos_actuales
+            st.session_state.old_ann = ids_avisos_actuales
+        else:
+            if ids_avisos_actuales - st.session_state.old_ann:
+                st.audio("alarma.mp3", format="audio/mp3", autoplay=True)
+            elif ids_eventos_actuales - st.session_state.old_evs:
+                st.audio("evento.mp3", format="audio/mp3", autoplay=True)
             
-            # --- CONTROLES SECUNDARIOS ---
-            with st.expander("⚙️ Controles Extra", expanded=False):
-                st.slider("🔍 Tamaño del texto (%)", min_value=50, max_value=250, value=st.session_state.tv_scale, step=5, key="tv_scale")
-                st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
-                if st.button("🔙 Volver al Menú", use_container_width=True):
-                    st.session_state.ver_pantalla_tv = False
-                    st.rerun()
-                    
-                components.html(
-                    """
-                    <style>
-                        body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
-                        button {
-                            width: 100%; height: 38px; background-color: #ffffff;
-                            border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a;
-                            font-size: 14px; font-weight: 500; cursor: pointer;
-                            display: flex; align-items: center; justify-content: center; gap: 8px;
-                            transition: all 0.2s;
-                        }
-                        button:hover { border-color: #94a3b8; background-color: #f8fafc; }
-                    </style>
-                    <button onclick="
-                        const doc = window.parent.document;
-                        if (!doc.fullscreenElement) {
-                            doc.documentElement.requestFullscreen();
-                            this.innerHTML = '🗗 Salir Pantalla Completa';
-                        } else {
-                            doc.exitFullscreen();
-                            this.innerHTML = '🔲 Pantalla Completa';
-                        }
-                    ">
-                        🔲 Pantalla Completa
-                    </button>
-                    """,
-                    height=40
-                )
+            st.session_state.old_evs = ids_eventos_actuales
+            st.session_state.old_ann = ids_avisos_actuales
+    except:
+        pass
 
-            # --- SECCIÓN DE ANUNCIOS ---
-            try:
-                now = dt_datetime.now()
-                ann_data = supabase.table("anuncios_urgentes").select("id, titulo, descripcion, prioridad, expiracion").eq("is_active", True).execute().data
-                
-                active_ann = []
-                for ann in ann_data:
-                    try:
-                        exp_dt = pd.to_datetime(ann['expiracion']).tz_localize(None)
-                        if exp_dt > now: 
-                            active_ann.append(ann)
-                    except:
-                        pass
-                
-                active_ann = sorted(active_ann, key=lambda x: x['prioridad'])
-                
-                if st.session_state.tv_profile == "Apoderados":
-                    titulo_panel = "📰 Noticias y Comunicados"
-                    texto_vacio = "No hay comunicados vigentes en este momento."
-                else:
-                    titulo_panel = "🚨 Avisos Urgentes y Alertas"
-                    texto_vacio = "No hay avisos en este momento."
-
-                html_anuncios = '<div class="announcements-container">'
-                
-                if not active_ann:
-                    st.markdown(f"<div class='tv-sub-header'>{titulo_panel}</div>", unsafe_allow_html=True)
-                    html_anuncios += f"<p style='color: #64748b; text-align:center; font-style:italic; margin-top: 10px;'>{texto_vacio}</p>"
-                else:
-                    ITEMS_POR_PAGINA_ANN = 3
-                    total_paginas_ann = max(1, (len(active_ann) + ITEMS_POR_PAGINA_ANN - 1) // ITEMS_POR_PAGINA_ANN)
-                    pagina_actual_ann = refresh_count % total_paginas_ann 
-                    
-                    inicio_idx_ann = pagina_actual_ann * ITEMS_POR_PAGINA_ANN
-                    fin_idx_ann = inicio_idx_ann + ITEMS_POR_PAGINA_ANN
-                    anuncios_a_mostrar = active_ann[inicio_idx_ann:fin_idx_ann]
-                    
-                    st.markdown(f"<div class='tv-sub-header'>{titulo_panel} (Pág. {pagina_actual_ann + 1}/{total_paginas_ann})</div>", unsafe_allow_html=True)
-
-                    for i, ann in enumerate(anuncios_a_mostrar):
-                        delay_ann = i * 0.15 
-                        
-                        if st.session_state.tv_profile == "Apoderados":
-                            bg_color = "#f0f9ff"; border_color = "#38bdf8"; title_color = "#0369a1"; desc_color = "#334155"
-                            animacion_extra = ""
-                        else:
-                            if ann['prioridad'] == 1:
-                                bg_color = "#fef2f2"; border_color = "#ef4444"; title_color = "#dc2626"; desc_color = "#334155"
-                                animacion_extra = ", pulseAlert 2s infinite"
-                            else:
-                                bg_color = "#fffbeb"; border_color = "#f59e0b"; title_color = "#d97706"; desc_color = "#334155"
-                                animacion_extra = "" 
-                        
-                        html_anuncios += (
-                            f"<div class='announcement-card' style='border-left-color: {border_color}; background-color: {bg_color}; animation: cascadeIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards{animacion_extra}; animation-delay: {delay_ann}s; opacity: 0;'>"
-                            f"<div class='announcement-title' style='color: {title_color};'>{ann['titulo']}</div>"
-                            f"<div class='announcement-desc' style='color: {desc_color};'>{ann['descripcion']}</div>"
-                            f"</div>"
-                        )
-                
-                html_anuncios += '</div>'
-                st.markdown(html_anuncios, unsafe_allow_html=True)
-                
-            except Exception as e:
-                st.error(f"Error técnico al consultar anuncios: {e}")
-
-        # MUY IMPORTANTE: Este stop() frena que se dibuje el resto del menú cuando estamos en modo TV
-    st.stop()
+    st.stop() # IMPORTANTE: Detiene el resto de la app para que solo se vea la TV
 # ──────────────────────────────────────────────────────────────────────────────
 # 0) CONFIGURACIÓN GLOBAL Y ESTILO
 # ──────────────────────────────────────────────────────────────────────────────
