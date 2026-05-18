@@ -149,7 +149,7 @@ opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
 supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 
 # ==============================================================================
-# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - DISEÑO COLORIDO PREMIUM
+# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - CORRECCIÓN ESTRUCTURAL Y COLOR
 # ==============================================================================
 if st.session_state.get("ver_pantalla_tv", False):
     # Configuración de refresco y escala
@@ -193,7 +193,7 @@ if st.session_state.get("ver_pantalla_tv", False):
                 st.stop()
     except: pass
 
-    # 📺 2. MODO TV NORMAL (ESTILOS GENERALES)
+    # 📺 2. MODO TV NORMAL (ESTILOS GENERALES BLINDADOS)
     st.markdown(f"""
     <style>
         @import url('https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css');
@@ -208,9 +208,14 @@ if st.session_state.get("ver_pantalla_tv", False):
         .time-highlight {{ color: #2563eb !important; font-weight: 900; background: #eff6ff; padding: 6px 16px; border-radius: 10px; border: 1px solid #bfdbfe; }}
         
         /* Tarjetas base de Cronograma */
-        .card-evento {{ background: white; padding: 22px 26px; border-radius: 16px; margin-bottom: 18px; color: #1e293b; box-shadow: 0 8px 24px rgba(0,0,0,0.25); animation: slideIn 0.6s ease-out; }}
-        .evento-titulo {{ font-weight: 850; font-size: calc(1.45rem * var(--tv-scale)); line-height: 1.2; }}
-        .evento-hora {{ padding: 6px 14px; border-radius: 8px; font-weight: 900; font-size: calc(1.1rem * var(--tv-scale)); white-space: nowrap; }}
+        .card-evento {{ background: white !important; padding: 22px 26px !important; border-radius: 16px !important; margin-bottom: 18px !important; color: #1e293b !important; box-shadow: 0 8px 24px rgba(0,0,0,0.25) !important; animation: slideIn 0.6s ease-out; }}
+        
+        /* 🔥 CLASE CRÍTICA RE-ESTABLECIDA CON !IMPORTANT PARA EVITAR DESCUADRES 🔥 */
+        .card-flex {{ display: flex !important; justify-content: space-between !important; align-items: center !important; width: 100% !important; gap: 20px !important; }}
+        
+        .evento-titulo {{ font-weight: 850 !important; font-size: calc(1.45rem * var(--tv-scale)) !important; line-height: 1.2 !important; flex-grow: 1 !important; }}
+        .evento-hora {{ padding: 6px 14px !important; border-radius: 8px !important; font-weight: 900 !important; font-size: calc(1.1rem * var(--tv-scale)) !important; white-space: nowrap !important; text-align: center !important; }}
+        .evento-desc {{ margin-top: 10px !important; color: #334155 !important; font-weight: 600 !important; font-size: calc(1.15rem * var(--tv-scale)) !important; line-height: 1.4 !important; }}
         
         /* Barra de progreso de refresco */
         .progress-bar {{ height: 6px; background: linear-gradient(90deg, #3b82f6, #60a5fa); width: 0%; animation: load 20s linear infinite; margin-top: -10px; margin-bottom: 25px; border-radius: 10px; }}
@@ -263,7 +268,7 @@ if st.session_state.get("ver_pantalla_tv", False):
                             "tipo": "reserva"
                         })
         except Exception as e:
-            st.error(f"Error cargando datos desde la Base de Datos: {e}")
+            st.error(f"Error cargando datos: {e}")
 
         eventos = sorted(eventos, key=lambda x: x['hora'])
         if not eventos:
@@ -274,21 +279,21 @@ if st.session_state.get("ver_pantalla_tv", False):
             items = eventos[(refresh_count % total_pag)*PAG_SIZE : ((refresh_count % total_pag)+1)*PAG_SIZE]
             st.markdown(f"<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>📅 Cronograma de Actividades <span style='font-size:1.1rem; color:#94a3b8; font-weight:500;'>({ (refresh_count % total_pag)+1 }/{total_pag})</span></h2>", unsafe_allow_html=True)
             
-            # 🎨 RENDERIZADO CON PESTAÑAS DE COLORES DINÁMICOS Y TEXTOS ULTRA ESTILIZADOS
+            # 🎨 PALETAS DINÁMICAS DE ALTO CONTRASTE (Pestaña vibrante + Título/Hora oscuros legibles)
             for idx, it in enumerate(items):
-                colores_pestana = ["#3b82f6", "#10b981", "#f59e0b", "#ec4899"]
-                colores_titulo = ["#1e40af", "#065f46", "#9a3412", "#9d174d"]
+                colores_pestana = ["#2563eb", "#10b981", "#f59e0b", "#d946ef"] # Azul, Verde, Naranja, Magenta
+                colores_titulo = ["#1e3a8a", "#064e3b", "#7c2d12", "#701a75"]  # Versiones oscuras ultra-legibles
                 colores_fondo_hora = ["#eff6ff", "#ecfdf5", "#fff7ed", "#fdf2f8"]
                 
                 c_pestana = colores_pestana[idx % len(colores_pestana)]
                 c_titulo = colores_titulo[idx % len(colores_titulo)]
                 c_f_hora = colores_fondo_hora[idx % len(colores_fondo_hora)]
                 
-                # Una sola línea física estricta para inmunidad total al bug de Streamlit
-                st.markdown(f"<div class='card-evento' style='border-left: 12px solid {c_pestana} !important;'><div style='display:flex;justify-content:space-between;align-items:center;'><div class='evento-titulo' style='color:{c_titulo} !important;'>{it['titulo']}</div><div class='evento-hora' style='background:{c_f_hora} !important; color:{c_titulo} !important; border:1px solid {c_pestana}40;'>{it['hora']}</div></div><div style='margin-top:10px; color:#334155; font-weight:600; font-size:calc(1.15rem * var(--tv-scale));'>{it['desc']}</div></div>", unsafe_allow_html=True)
+                # Una sola línea compacta absoluta para evitar que Streamlit rompa el HTML
+                st.markdown(f"<div class='card-evento' style='border-left: 12px solid {c_pestana} !important;'><div class='card-flex'><div class='evento-titulo' style='color:{c_titulo} !important;'>{it['titulo']}</div><div class='evento-hora' style='background:{c_f_hora} !important; color:{c_titulo} !important; border:1px solid {c_pestana}40;'>{it['hora']}</div></div><div class='evento-desc'>{it['desc']}</div></div>", unsafe_allow_html=True)
 
     with col_der:
-        st.markdown("<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>🚨 Avisos Urgentis</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>🚨 Avisos</h2>", unsafe_allow_html=True)
         try:
             avisos = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).neq("prioridad", 999).execute().data or []
             avisos_vivos = [a for a in avisos if pd.to_datetime(a['expiracion']).tz_localize(None) > now_dt]
