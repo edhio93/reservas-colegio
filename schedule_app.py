@@ -149,7 +149,7 @@ opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
 supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 
 # ==============================================================================
-# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - CORRECCIÓN ESTRUCTURAL Y COLOR
+# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - TOTALMENTE OPTIMIZADO
 # ==============================================================================
 if st.session_state.get("ver_pantalla_tv", False):
     # Configuración de refresco y escala
@@ -209,8 +209,6 @@ if st.session_state.get("ver_pantalla_tv", False):
         
         /* Tarjetas base de Cronograma */
         .card-evento {{ background: white !important; padding: 22px 26px !important; border-radius: 16px !important; margin-bottom: 18px !important; color: #1e293b !important; box-shadow: 0 8px 24px rgba(0,0,0,0.25) !important; animation: slideIn 0.6s ease-out; }}
-        
-        /* 🔥 CLASE CRÍTICA RE-ESTABLECIDA CON !IMPORTANT PARA EVITAR DESCUADRES 🔥 */
         .card-flex {{ display: flex !important; justify-content: space-between !important; align-items: center !important; width: 100% !important; gap: 20px !important; }}
         
         .evento-titulo {{ font-weight: 850 !important; font-size: calc(1.45rem * var(--tv-scale)) !important; line-height: 1.2 !important; flex-grow: 1 !important; }}
@@ -222,11 +220,10 @@ if st.session_state.get("ver_pantalla_tv", False):
         @keyframes load {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
         @keyframes slideIn {{ from {{ opacity: 0; transform: translateY(20px); }} to {{ opacity: 1; transform: translateY(0); }} }}
         
-        /* Panel de Ajustes Inferior */
-        .contenedor-controles {{ background-color: #ffffff !important; padding: 22px; border-radius: 16px; border: 2px solid #3b82f6 !important; margin-top: 25px; color: #0f172a !important; box-shadow: 0 6px 20px rgba(0,0,0,0.3); }}
-        .contenedor-controles * {{ color: #0f172a !important; }}
-        div[data-testid="stSelectbox"] label, div[data-testid="stSlider"] label {{ color: #0f172a !important; font-weight: 800 !important; font-size: 1.1rem !important; }}
-        div[data-testid="stSelectbox"] div[data-baseweb="select"] {{ background-color: #f1f5f9 !important; border: 1px solid #cbd5e1 !important; }}
+        /* Estilos del Desplegable de Ajustes Oculto (Modo Oscuro Elegante) */
+        .stExpander {{ background-color: #1e293b !important; border: 1px solid #3b82f640 !important; border-radius: 14px !important; margin-top: 20px !important; }}
+        .stExpander * {{ color: #f8fafc !important; }}
+        .stExpander summary {{ font-weight: 800 !important; font-size: 1.05rem !important; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -253,43 +250,41 @@ if st.session_state.get("ver_pantalla_tv", False):
         try:
             res_ev = supabase.table("eventos_tv").select("*").eq("fecha_evento", hoy_str).eq("is_active", True).execute()
             for e in (res_ev.data or []):
-                if hora_actual_str <= str(e.get("hora_fin", "23:59")):
-                    eventos.append({"hora": str(e.get("hora_inicio", "00:00"))[:5], "titulo": e['titulo'], "desc": e.get("descripcion", ""), "tipo": "evento"})
+                # Se eliminó el filtro de hora para asegurar que se vean TODOS los del día
+                eventos.append({"hora": str(e.get("hora_inicio", "00:00"))[:5], "titulo": e['titulo'], "desc": e.get("descripcion", ""), "tipo": "evento"})
             
             perfil = st.session_state.get("tv_profile", "General")
             if perfil == "General" or "PROFESOR" in perfil.upper() or "PIE" in perfil.upper() or "INSPECTOR" in perfil.upper():
                 res_res = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute()
                 for r in (res_res.data or []):
-                    if hora_actual_str <= str(r.get("hora_fin", "23:59")):
-                        eventos.append({
-                            "hora": str(r.get("hora_inicio", "00:00"))[:5], 
-                            "titulo": f"🔒 {r['recursos']['nombre']} ➔ {r['cursos']['nombre']}", 
-                            "desc": f"Docente: {r['profesores']['nombre']}", 
-                            "tipo": "reserva"
-                        })
+                    # Se eliminó el filtro de hora para asegurar que se vean TODAS las reservas del día
+                    eventos.append({
+                        "hora": str(r.get("hora_inicio", "00:00"))[:5], 
+                        "titulo": f"🔒 {r['recursos']['nombre']} ➔ {r['cursos']['nombre']}", 
+                        "desc": f"Docente: {r['profesores']['nombre']}", 
+                        "tipo": "reserva"
+                    })
         except Exception as e:
             st.error(f"Error cargando datos: {e}")
 
         eventos = sorted(eventos, key=lambda x: x['hora'])
         if not eventos:
-            st.info("No hay actividades ni reservas programadas para el resto del día.")
+            st.info("No hay actividades ni reservas programadas para hoy.")
         else:
             PAG_SIZE = 4
             total_pag = max(1, (len(eventos) + PAG_SIZE - 1) // PAG_SIZE)
             items = eventos[(refresh_count % total_pag)*PAG_SIZE : ((refresh_count % total_pag)+1)*PAG_SIZE]
             st.markdown(f"<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>📅 Cronograma de Actividades <span style='font-size:1.1rem; color:#94a3b8; font-weight:500;'>({ (refresh_count % total_pag)+1 }/{total_pag})</span></h2>", unsafe_allow_html=True)
             
-            # 🎨 PALETAS DINÁMICAS DE ALTO CONTRASTE (Pestaña vibrante + Título/Hora oscuros legibles)
             for idx, it in enumerate(items):
-                colores_pestana = ["#2563eb", "#10b981", "#f59e0b", "#d946ef"] # Azul, Verde, Naranja, Magenta
-                colores_titulo = ["#1e3a8a", "#064e3b", "#7c2d12", "#701a75"]  # Versiones oscuras ultra-legibles
+                colores_pestana = ["#2563eb", "#10b981", "#f59e0b", "#d946ef"]
+                colores_titulo = ["#1e3a8a", "#064e3b", "#7c2d12", "#701a75"]
                 colores_fondo_hora = ["#eff6ff", "#ecfdf5", "#fff7ed", "#fdf2f8"]
                 
                 c_pestana = colores_pestana[idx % len(colores_pestana)]
                 c_titulo = colores_titulo[idx % len(colores_titulo)]
                 c_f_hora = colores_fondo_hora[idx % len(colores_fondo_hora)]
                 
-                # Una sola línea compacta absoluta para evitar que Streamlit rompa el HTML
                 st.markdown(f"<div class='card-evento' style='border-left: 12px solid {c_pestana} !important;'><div class='card-flex'><div class='evento-titulo' style='color:{c_titulo} !important;'>{it['titulo']}</div><div class='evento-hora' style='background:{c_f_hora} !important; color:{c_titulo} !important; border:1px solid {c_pestana}40;'>{it['hora']}</div></div><div class='evento-desc'>{it['desc']}</div></div>", unsafe_allow_html=True)
 
     with col_der:
@@ -304,12 +299,10 @@ if st.session_state.get("ver_pantalla_tv", False):
                 st.markdown(f"<div style='background:{bg_color}; padding:18px; border-radius:14px; border-left:8px solid {color}; margin-bottom:15px; box-shadow:0 6px 16px rgba(0,0,0,0.25);'><div style='font-weight:900; color:{text_color}; text-transform:uppercase; font-size:0.95rem; letter-spacing:0.5px;'>⚠️ {a['titulo']}</div><div style='color:#1e293b; margin-top:8px; font-weight:700; font-size:1.1rem; line-height:1.4;'>{a['descripcion']}</div></div>", unsafe_allow_html=True)
         except: pass
         
-        # Panel de Ajustes
-        st.markdown('<div class="contenedor-controles">', unsafe_allow_html=True)
-        st.markdown("<h4 style='margin-top:0; color:#0f172a; font-weight:900;'>⚙️ Ajustes de Pantalla</h4>", unsafe_allow_html=True)
-        st.selectbox("👁️ Perfil Visual", ["General", "Profesores / PIE", "Inspectoría / UTP"], key="tv_profile")
-        st.slider("🔍 Tamaño Texto (%)", 50, 200, key="tv_scale", step=5)
-        st.markdown('</div>', unsafe_allow_html=True)
+        # 👇 ⚙️ EL CUADRO BLANCO GIGANTE FUE REEMPLAZADO POR UN DESPLEGABLE TOTALMENTE OCULTO 👇
+        with st.expander("⚙️ Ajustes Avanzados"):
+            st.selectbox("👁️ Perfil Visual", ["General", "Profesores / PIE", "Inspectoría / UTP"], key="tv_profile")
+            st.slider("🔍 Tamaño Texto (%)", 50, 200, key="tv_scale", step=5)
         
         st.write("")
         if st.button("🔙 VOLVER AL MENÚ PRINCIPAL", use_container_width=True, type="primary"):
