@@ -149,7 +149,7 @@ opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
 supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 
 # ==============================================================================
-# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - FILTRADO POR HORA LOCAL CHILE
+# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - DISEÑO CON PESTAÑAS BLINDADO
 # ==============================================================================
 if st.session_state.get("ver_pantalla_tv", False):
     # Configuración de refresco y escala
@@ -157,7 +157,7 @@ if st.session_state.get("ver_pantalla_tv", False):
     if "tv_scale" not in st.session_state: st.session_state.tv_scale = 100
     escala = st.session_state.tv_scale / 100.0
 
-    # 🕒 Sincronización absoluta con la hora local de Chile para evitar desfases de servidor
+    # 🕒 Sincronización absoluta con la hora local de Chile
     import pytz
     tz_chile = pytz.timezone("America/Santiago")
     now_dt = dt_datetime.now(tz_chile)
@@ -210,14 +210,6 @@ if st.session_state.get("ver_pantalla_tv", False):
         .header-info {{ display: flex; align-items: center; gap: 24px; font-size: calc(1.35rem * var(--tv-scale)); font-weight: 800; color: #334155; }}
         .time-highlight {{ color: #2563eb !important; font-weight: 900; background: #eff6ff; padding: 6px 16px; border-radius: 10px; border: 1px solid #bfdbfe; }}
         
-        /* Tarjetas base de Cronograma con pestaña izquierda */
-        .card-evento {{ background: white !important; padding: 22px 26px !important; border-radius: 16px !important; margin-bottom: 18px !important; color: #1e293b !important; box-shadow: 0 8px 24px rgba(0,0,0,0.25) !important; animation: slideIn 0.6s ease-out; }}
-        .card-flex {{ display: flex !important; justify-content: space-between !important; align-items: center !important; width: 100% !important; gap: 20px !important; }}
-        
-        .evento-titulo {{ font-weight: 850 !important; font-size: calc(1.45rem * var(--tv-scale)) !important; line-height: 1.2 !important; flex-grow: 1 !important; }}
-        .evento-hora {{ padding: 6px 14px !important; border-radius: 8px !important; font-weight: 900 !important; font-size: calc(1.1rem * var(--tv-scale)) !important; white-space: nowrap !important; text-align: center !important; }}
-        .evento-desc {{ margin-top: 10px !important; color: #334155 !important; font-weight: 600 !important; font-size: calc(1.15rem * var(--tv-scale)) !important; line-height: 1.4 !important; }}
-        
         /* Barra de progreso de refresco */
         .progress-bar {{ height: 6px; background: linear-gradient(90deg, #3b82f6, #60a5fa); width: 0%; animation: load 20s linear infinite; margin-top: -10px; margin-bottom: 25px; border-radius: 10px; }}
         @keyframes load {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
@@ -263,7 +255,7 @@ if st.session_state.get("ver_pantalla_tv", False):
                 res_res = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute()
                 for r in (res_res.data or []):
                     hora_fin_res = str(r.get("hora_fin", "23:59"))[:5]
-                    # 🕒 Ocultar automáticamente si la reserva ya finalizó hoy
+                    # 🕒 Ocultar automáticamente si la reserva ya finalizó
                     if hora_actual_str <= hora_fin_res:
                         eventos.append({
                             "hora": str(r.get("hora_inicio", "00:00"))[:5], 
@@ -282,19 +274,32 @@ if st.session_state.get("ver_pantalla_tv", False):
             total_pag = max(1, (len(eventos) + PAG_SIZE - 1) // PAG_SIZE)
             items = eventos[(refresh_count % total_pag)*PAG_SIZE : ((refresh_count % total_pag)+1)*PAG_SIZE]
             
-            # Titulo simplificado a "Cronograma" únicamente
-            st.markdown(f"<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>Cronograma <span style='font-size:1.1rem; color:#94a3b8; font-weight:500;'>({ (refresh_count % total_pag)+1 }/{total_pag})</span></h2>", unsafe_allow_html=True)
+            # Título simple
+            st.markdown(f"<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>📅 Cronograma <span style='font-size:1.1rem; color:#94a3b8; font-weight:500;'>({ (refresh_count % total_pag)+1 }/{total_pag})</span></h2>", unsafe_allow_html=True)
             
+            # 🎨 TARJETAS CON ESTRUCTURA FÍSICA PARA LA PESTAÑA (Prueba de fallos de Streamlit)
             for idx, it in enumerate(items):
-                colores_pestana = ["#2563eb", "#10b981", "#f59e0b", "#d946ef"]
-                colores_titulo = ["#1e3a8a", "#064e3b", "#7c2d12", "#701a75"]
-                colores_fondo_hora = ["#eff6ff", "#ecfdf5", "#fff7ed", "#fdf2f8"]
+                colores_pestana = ["#3b82f6", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6"] # Azul, Verde, Naranja, Rosa, Morado
+                colores_titulo = ["#1e3a8a", "#064e3b", "#7c2d12", "#831843", "#4c1d95"]
+                colores_fondo_hora = ["#eff6ff", "#ecfdf5", "#fff7ed", "#fdf2f8", "#f5f3ff"]
                 
                 c_pestana = colores_pestana[idx % len(colores_pestana)]
                 c_titulo = colores_titulo[idx % len(colores_titulo)]
                 c_f_hora = colores_fondo_hora[idx % len(colores_fondo_hora)]
                 
-                st.markdown(f"<div class='card-evento' style='border-left: 12px solid {c_pestana} !important;'><div class='card-flex'><div class='evento-titulo' style='color:{c_titulo} !important;'>{it['titulo']}</div><div class='evento-hora' style='background:{c_f_hora} !important; color:{c_titulo} !important; border:1px solid {c_pestana}40;'>{it['hora']}</div></div><div class='evento-desc'>{it['desc']}</div></div>", unsafe_allow_html=True)
+                html_tarjeta = f"""
+                <div style="display: flex; background-color: white; border-radius: 14px; margin-bottom: 16px; box-shadow: 0 6px 20px rgba(0,0,0,0.25); overflow: hidden; animation: slideIn 0.5s ease-out;">
+                    <div style="width: 14px; background-color: {c_pestana}; flex-shrink: 0;"></div>
+                    <div style="padding: 18px 24px; flex-grow: 1;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px;">
+                            <div style="font-weight: 800; font-size: calc(1.35rem * var(--tv-scale)); color: #0f172a; line-height: 1.2;">{it['titulo']}</div>
+                            <div style="background-color: {c_f_hora}; color: {c_titulo}; font-weight: 900; font-size: calc(1.1rem * var(--tv-scale)); padding: 6px 14px; border-radius: 8px; border: 1px solid {c_pestana}; white-space: nowrap;">{it['hora']}</div>
+                        </div>
+                        <div style="margin-top: 8px; color: #475569; font-weight: 600; font-size: calc(1.1rem * var(--tv-scale)); line-height: 1.3;">{it['desc']}</div>
+                    </div>
+                </div>
+                """
+                st.markdown(html_tarjeta, unsafe_allow_html=True)
 
     with col_der:
         st.markdown("<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>🚨 Avisos</h2>", unsafe_allow_html=True)
@@ -303,12 +308,12 @@ if st.session_state.get("ver_pantalla_tv", False):
             avisos_vivos = []
             for a in avisos:
                 exp_dt = pd.to_datetime(a['expiracion'])
-                # Sincronizar aviso con zona horaria para ocultación inmediata precisa
                 if exp_dt.tzinfo is not None:
                     exp_dt = exp_dt.tz_convert(tz_chile)
                 else:
                     exp_dt = tz_chile.localize(exp_dt)
                 
+                # 🕒 Ocultar anuncio cuando expira
                 if exp_dt > now_dt:
                     avisos_vivos.append(a)
             
