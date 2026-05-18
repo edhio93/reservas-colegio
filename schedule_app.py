@@ -204,12 +204,18 @@ if st.session_state.get("ver_pantalla_tv", False):
         .header-logo-img {{ height: calc(80px * var(--tv-scale)); width: auto; }}
         .header-info {{ display: flex; align-items: center; gap: 20px; font-size: calc(1.3rem * var(--tv-scale)); font-weight: 800; }}
         .card-evento {{ background: white; padding: 25px; border-radius: 15px; border-left: 10px solid #3b82f6; margin-bottom: 20px; color: #1e293b; box-shadow: 0 5px 15px rgba(0,0,0,0.2); animation: slideIn 0.6s ease-out; }}
-        .card-reserva {{ border-left-color: #10b981; }}
+        .card-reserva {{ border-left-color: #10b981 !important; }}
         .evento-titulo {{ font-weight: 800; font-size: calc(1.5rem * var(--tv-scale)); color: #1e40af; line-height: 1.1; }}
         .evento-hora {{ background: #f1f5f9; padding: 6px 12px; border-radius: 8px; font-weight: 800; }}
         .progress-bar {{ height: 6px; background: #3b82f6; width: 0%; animation: load 20s linear infinite; margin-top: 10px; border-radius: 10px; }}
         @keyframes load {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
         @keyframes slideIn {{ from {{ opacity: 0; transform: translateY(20px); }} to {{ opacity: 1; transform: translateY(0); }} }}
+        
+        /* 👇 PROTECCIÓN ABSOLUTA EN CSS PARA EVITAR QUE LOS CONTROLES SE VUELVAN INVISIBLES 👇 */
+        .contenedor-controles {{ background-color: #ffffff !important; padding: 20px; border-radius: 15px; border: 2px solid #3b82f6 !important; margin-top: 25px; color: #0f172a !important; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }}
+        .contenedor-controles * {{ color: #0f172a !important; }}
+        div[data-testid="stSelectbox"] label, div[data-testid="stSlider"] label {{ color: #0f172a !important; font-weight: 800 !important; font-size: 1.1rem !important; }}
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] {{ background-color: #f1f5f9 !important; border: 1px solid #cbd5e1 !important; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -241,19 +247,26 @@ if st.session_state.get("ver_pantalla_tv", False):
                     eventos.append({"hora": str(e.get("hora_inicio", "00:00"))[:5], "titulo": e['titulo'], "desc": e.get("descripcion", ""), "tipo": "evento"})
             
             perfil = st.session_state.get("tv_profile", "General")
-            if "PROFESOR" in perfil.upper() or "PIE" in perfil.upper():
+            # Condición corregida: se muestran reservas en los perfiles General, Profesor, PIE e Inspectoría
+            if perfil == "General" or "PROFESOR" in perfil.upper() or "PIE" in perfil.upper() or "INSPECTOR" in perfil.upper():
                 res_res = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute()
                 for r in (res_res.data or []):
                     if hora_actual_str <= str(r.get("hora_fin", "23:59")):
-                        eventos.append({"hora": str(r.get("hora_inicio", "00:00"))[:5], "titulo": f"{r['recursos']['nombre']} ➔ {r['cursos']['nombre']}", "desc": f"Docente: {r['profesores']['nombre']}", "tipo": "reserva"})
-        except: pass
+                        eventos.append({
+                            "hora": str(r.get("hora_inicio", "00:00"))[:5], 
+                            "titulo": f"🔒 {r['recursos']['nombre']} ➔ {r['cursos']['nombre']}", 
+                            "desc": f"Docente: {r['profesores']['nombre']}", 
+                            "tipo": "reserva"
+                        })
+        except Exception as e:
+            st.error(f"Error cargando datos desde la Base de Datos: {e}")
 
         eventos = sorted(eventos, key=lambda x: x['hora'])
         if not eventos:
-            st.info("No hay actividades programadas para hoy.")
+            st.info("No hay actividades ni reservas programadas para el resto del día.")
         else:
             PAG_SIZE = 4
-            total_pag = (len(eventos) + PAG_SIZE - 1) // PAG_SIZE
+            total_pag = max(1, (len(eventos) + PAG_SIZE - 1) // PAG_SIZE)
             items = eventos[(refresh_count % total_pag)*PAG_SIZE : ((refresh_count % total_pag)+1)*PAG_SIZE]
             st.markdown(f"<h2 style='color:white'>📅 Cronograma ({ (refresh_count % total_pag)+1 }/{total_pag})</h2>", unsafe_allow_html=True)
             for it in items:
@@ -269,6 +282,20 @@ if st.session_state.get("ver_pantalla_tv", False):
                 color = "#e11d48" if a['prioridad'] == 1 else "#ca8a04"
                 st.markdown(f"<div style='background:white;padding:15px;border-radius:12px;border-left:6px solid {color};margin-bottom:12px;box-shadow:0 4px 6px rgba(0,0,0,0.1);'><div style='font-weight:800;color:{color};text-transform:uppercase;font-size:0.9rem;'>{a['titulo']}</div><div style='color:#1e293b;margin-top:5px;'>{a['descripcion']}</div></div>", unsafe_allow_html=True)
         except: pass
+        
+        # 👇 RESTAURACIÓN COMPLETA DE LOS CONTROLES PERDIDOS CON ALTO CONTRASTE 👇
+        st.markdown('<div class="contenedor-controles">', unsafe_allow_html=True)
+        st.markdown("<h4 style='margin-top:0; color:#0f172a; font-weight:900;'>⚙️ Ajustes de Pantalla</h4>", unsafe_allow_html=True)
+        
+        st.selectbox("👁️ Perfil Visual", ["General", "Profesores / PIE", "Inspectoría / UTP"], key="tv_profile")
+        st.slider("🔍 Tamaño Texto (%)", 50, 200, key="tv_scale", step=5)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.write("") # Espacio
+        if st.button("🔙 VOLVER AL MENÚ PRINCIPAL", use_container_width=True, type="primary"):
+            st.session_state.ver_pantalla_tv = False
+            st.rerun()
+
     st.stop()
 # ──────────────────────────────────────────────────────────────────────────────
 # 0) CONFIGURACIÓN GLOBAL Y ESTILO
