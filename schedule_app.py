@@ -149,10 +149,10 @@ opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
 supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 
 # ==============================================================================
-# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - DISEÑO PREMIUM CORREGIDO
+# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - DISEÑO COLORIDO PREMIUM
 # ==============================================================================
 if st.session_state.get("ver_pantalla_tv", False):
-    # Refresco automático cada 20 segundos
+    # Configuración de refresco y escala
     refresh_count = st_autorefresh(interval=20000, key="tv_refresh_global")
     if "tv_scale" not in st.session_state: st.session_state.tv_scale = 100
     escala = st.session_state.tv_scale / 100.0
@@ -181,7 +181,7 @@ if st.session_state.get("ver_pantalla_tv", False):
                     .stApp {{ background-color: #ff0000 !important; }}
                     header, [data-testid="stSidebar"] {{ display: none; }}
                     .alerta-total {{ display: flex; flex-direction: column; align-items: center; justify-content: center; height: 95vh; color: white; text-align: center; font-family: 'Inter', sans-serif; }}
-                    .at-titulo {{ font-size: calc(90px * {escala}); font-weight: 900; }}
+                    .at-titulo {{ font-size: calc(90px * {escala}); font-weight: 900; text-shadow: 4px 4px 10px rgba(0,0,0,0.5); }}
                     .at-msg {{ font-size: calc(50px * {escala}); margin-top: 30px; font-weight: 600; padding: 0 60px; line-height: 1.1; }}
                     </style>
                     <div class="alerta-total">
@@ -193,77 +193,35 @@ if st.session_state.get("ver_pantalla_tv", False):
                 st.stop()
     except: pass
 
-    # 📺 2. MODO TV ESTILIZADO (FONDO OSCURO + TARJETAS BLANCAS CON PESTAÑA)
+    # 📺 2. MODO TV NORMAL (ESTILOS GENERALES)
     st.markdown(f"""
     <style>
         @import url('https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css');
         :root {{ --tv-scale: {escala}; }}
-        
-        /* Fondo General de la App (Oscuro Elegante) */
-        .stApp {{ background-color: #0f172a !important; color: #f8fafc; font-family: 'Inter', sans-serif; }}
+        .stApp {{ background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }}
         [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display: none !important; }}
         
-        /* Encabezado Superior Blanco de Alto Impacto */
-        .tv-header {{ 
-            background: #ffffff !important; 
-            color: #0f172a !important; 
-            padding: 16px 30px !important; 
-            border-radius: 16px !important; 
-            margin-bottom: 25px !important; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3) !important; 
-            display: flex !important; 
-            justify-content: space-between !important; 
-            align-items: center !important; 
-        }}
-        .header-logo-img {{ height: calc(65px * var(--tv-scale)); width: auto; }}
-        .header-info {{ display: flex !important; align-items: center !important; gap: 24px !important; font-size: calc(1.25rem * var(--tv-scale)) !important; font-weight: 800 !important; color: #334155 !important; }}
-        .time-highlight {{ color: #1d4ed8 !important; font-weight: 900 !important; background: #eff6ff !important; padding: 6px 14px !important; border-radius: 8px !important; }}
+        /* Encabezado Superior Blanco */
+        .tv-header {{ background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); color: #0f172a; padding: 15px 30px; border-radius: 20px; margin-bottom: 25px; border: 1px solid #e2e8f0; box-shadow: 0 10px 30px rgba(0,0,0,0.4); display: flex; justify-content: space-between; align-items: center; }}
+        .header-logo-img {{ height: calc(75px * var(--tv-scale)); width: auto; }}
+        .header-info {{ display: flex; align-items: center; gap: 24px; font-size: calc(1.35rem * var(--tv-scale)); font-weight: 800; color: #334155; }}
+        .time-highlight {{ color: #2563eb !important; font-weight: 900; background: #eff6ff; padding: 6px 16px; border-radius: 10px; border: 1px solid #bfdbfe; }}
         
-        /* 🎴 TARJETAS IMPECABLES CON PESTAÑA LATERAL DE COLOR */
-        .card-evento {{ 
-            background: #ffffff !important; 
-            padding: 22px 26px !important; 
-            border-radius: 14px !important; 
-            margin-bottom: 18px !important; 
-            color: #1e293b !important; 
-            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2) !important; 
-            border-left: 10px solid #3b82f6 !important; /* Pestaña Azul (Eventos) */
-            animation: slideIn 0.5s ease-out;
-        }}
-        .card-reserva {{ 
-            border-left-color: #10b981 !important; /* Pestaña Verde (Reservas) */
-        }}
+        /* Tarjetas base de Cronograma */
+        .card-evento {{ background: white; padding: 22px 26px; border-radius: 16px; margin-bottom: 18px; color: #1e293b; box-shadow: 0 8px 24px rgba(0,0,0,0.25); animation: slideIn 0.6s ease-out; }}
+        .evento-titulo {{ font-weight: 850; font-size: calc(1.45rem * var(--tv-scale)); line-height: 1.2; }}
+        .evento-hora {{ padding: 6px 14px; border-radius: 8px; font-weight: 900; font-size: calc(1.1rem * var(--tv-scale)); white-space: nowrap; }}
         
-        /* Contenedor Flex de una sola línea estricta */
-        .card-flex {{ 
-            display: flex !important; 
-            justify-content: space-between !important; 
-            align-items: center !important; 
-            width: 100% !important; 
-        }}
-        .evento-titulo {{ font-weight: 850 !important; font-size: calc(1.4rem * var(--tv-scale)) !important; color: #0f172a !important; line-height: 1.1; }}
-        .evento-hora {{ background: #f1f5f9 !important; color: #0f172a !important; padding: 6px 14px !important; border-radius: 8px !important; font-weight: 800 !important; font-size: calc(1.05rem * var(--tv-scale)) !important; white-space: nowrap !important; }}
-        .evento-desc {{ margin-top: 8px !important; color: #475569 !important; font-weight: 600; font-size: calc(1.1rem * var(--tv-scale)) !important; }}
-        
-        /* Barra de carga de tiempo */
-        .progress-bar {{ height: 5px; background: #3b82f6; width: 0%; animation: load 20s linear infinite; margin-top: -25px; margin-bottom: 25px; border-radius: 10px; opacity: 0.8; }}
+        /* Barra de progreso de refresco */
+        .progress-bar {{ height: 6px; background: linear-gradient(90deg, #3b82f6, #60a5fa); width: 0%; animation: load 20s linear infinite; margin-top: -10px; margin-bottom: 25px; border-radius: 10px; }}
         @keyframes load {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
-        @keyframes slideIn {{ from {{ opacity: 0; transform: translateY(15px); }} to {{ opacity: 1; transform: translateY(0); }} }}
+        @keyframes slideIn {{ from {{ opacity: 0; transform: translateY(20px); }} to {{ opacity: 1; transform: translateY(0); }} }}
         
-        /* Botón de salida mimetizado con el fondo oscuro */
-        div[data-testid="stButton"] button {{
-            background-color: transparent !important;
-            color: #475569 !important;
-            border: 1px solid #1e293b !important;
-            border-radius: 8px !important;
-            font-weight: 600 !important;
-            transition: all 0.3s ease;
-        }}
-        div[data-testid="stButton"] button:hover {{
-            color: #ffffff !important;
-            border-color: #3b82f6 !important;
-            background-color: #131c2e !important;
-        }}
+        /* Panel de Ajustes Inferior */
+        .contenedor-controles {{ background-color: #ffffff !important; padding: 22px; border-radius: 16px; border: 2px solid #3b82f6 !important; margin-top: 25px; color: #0f172a !important; box-shadow: 0 6px 20px rgba(0,0,0,0.3); }}
+        .contenedor-controles * {{ color: #0f172a !important; }}
+        div[data-testid="stSelectbox"] label, div[data-testid="stSlider"] label {{ color: #0f172a !important; font-weight: 800 !important; font-size: 1.1rem !important; }}
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] {{ background-color: #f1f5f9 !important; border: 1px solid #cbd5e1 !important; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -305,36 +263,51 @@ if st.session_state.get("ver_pantalla_tv", False):
                             "tipo": "reserva"
                         })
         except Exception as e:
-            st.error(f"Error cargando datos: {e}")
+            st.error(f"Error cargando datos desde la Base de Datos: {e}")
 
         eventos = sorted(eventos, key=lambda x: x['hora'])
-        
         if not eventos:
             st.info("No hay actividades ni reservas programadas para el resto del día.")
         else:
             PAG_SIZE = 4
             total_pag = max(1, (len(eventos) + PAG_SIZE - 1) // PAG_SIZE)
             items = eventos[(refresh_count % total_pag)*PAG_SIZE : ((refresh_count % total_pag)+1)*PAG_SIZE]
-            st.markdown(f"<h2 style='color:white; margin-top:0; font-weight:800;'>📅 Cronograma <span style='font-size:1.1rem; color:#64748b; font-weight:500;'>({ (refresh_count % total_pag)+1 }/{total_pag})</span></h2>", unsafe_allow_html=True)
+            st.markdown(f"<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>📅 Cronograma de Actividades <span style='font-size:1.1rem; color:#94a3b8; font-weight:500;'>({ (refresh_count % total_pag)+1 }/{total_pag})</span></h2>", unsafe_allow_html=True)
             
-            # Renderizado estricto en una sola línea física de código para esquivar el bug de Streamlit
-            for it in items:
-                clase_extra = "card-reserva" if it['tipo'] == "reserva" else ""
-                st.markdown(f"<div class='card-evento {clase_extra}'><div class='card-flex'><div class='evento-titulo'>{it['titulo']}</div><div class='evento-hora'>{it['hora']}</div></div><div class='evento-desc'>{it['desc']}</div></div>", unsafe_allow_html=True)
+            # 🎨 RENDERIZADO CON PESTAÑAS DE COLORES DINÁMICOS Y TEXTOS ULTRA ESTILIZADOS
+            for idx, it in enumerate(items):
+                colores_pestana = ["#3b82f6", "#10b981", "#f59e0b", "#ec4899"]
+                colores_titulo = ["#1e40af", "#065f46", "#9a3412", "#9d174d"]
+                colores_fondo_hora = ["#eff6ff", "#ecfdf5", "#fff7ed", "#fdf2f8"]
+                
+                c_pestana = colores_pestana[idx % len(colores_pestana)]
+                c_titulo = colores_titulo[idx % len(colores_titulo)]
+                c_f_hora = colores_fondo_hora[idx % len(colores_fondo_hora)]
+                
+                # Una sola línea física estricta para inmunidad total al bug de Streamlit
+                st.markdown(f"<div class='card-evento' style='border-left: 12px solid {c_pestana} !important;'><div style='display:flex;justify-content:space-between;align-items:center;'><div class='evento-titulo' style='color:{c_titulo} !important;'>{it['titulo']}</div><div class='evento-hora' style='background:{c_f_hora} !important; color:{c_titulo} !important; border:1px solid {c_pestana}40;'>{it['hora']}</div></div><div style='margin-top:10px; color:#334155; font-weight:600; font-size:calc(1.15rem * var(--tv-scale));'>{it['desc']}</div></div>", unsafe_allow_html=True)
 
     with col_der:
-        st.markdown("<h2 style='color:white; margin-top:0; font-weight:800;'>🚨 Avisos</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>🚨 Avisos Urgentis</h2>", unsafe_allow_html=True)
         try:
             avisos = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).neq("prioridad", 999).execute().data or []
             avisos_vivos = [a for a in avisos if pd.to_datetime(a['expiracion']).tz_localize(None) > now_dt]
             for a in avisos_vivos[:3]:
-                color = "#e11d48" if a['prioridad'] == 1 else "#ca8a04"
-                st.markdown(f"<div style='background:#ffffff; padding:18px; border-radius:12px; border-left:6px solid {color}; margin-bottom:14px; box-shadow:0 4px 12px rgba(0,0,0,0.15);'><div style='font-weight:900; color:{color}; text-transform:uppercase; font-size:0.85rem; letter-spacing:0.5px;'>{a['titulo']}</div><div style='color:#334155; margin-top:6px; font-weight:600; font-size:1.05rem; line-height:1.4;'>{a['descripcion']}</div></div>", unsafe_allow_html=True)
+                color = "#f43f5e" if a['prioridad'] == 1 else "#eab308"
+                bg_color = "#fff1f2" if a['prioridad'] == 1 else "#fef9c3"
+                text_color = "#9f1239" if a['prioridad'] == 1 else "#854d0e"
+                st.markdown(f"<div style='background:{bg_color}; padding:18px; border-radius:14px; border-left:8px solid {color}; margin-bottom:15px; box-shadow:0 6px 16px rgba(0,0,0,0.25);'><div style='font-weight:900; color:{text_color}; text-transform:uppercase; font-size:0.95rem; letter-spacing:0.5px;'>⚠️ {a['titulo']}</div><div style='color:#1e293b; margin-top:8px; font-weight:700; font-size:1.1rem; line-height:1.4;'>{a['descripcion']}</div></div>", unsafe_allow_html=True)
         except: pass
         
-        # Botón de escape integrado elegantemente abajo sin llamar la atención
+        # Panel de Ajustes
+        st.markdown('<div class="contenedor-controles">', unsafe_allow_html=True)
+        st.markdown("<h4 style='margin-top:0; color:#0f172a; font-weight:900;'>⚙️ Ajustes de Pantalla</h4>", unsafe_allow_html=True)
+        st.selectbox("👁️ Perfil Visual", ["General", "Profesores / PIE", "Inspectoría / UTP"], key="tv_profile")
+        st.slider("🔍 Tamaño Texto (%)", 50, 200, key="tv_scale", step=5)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
         st.write("")
-        if st.button("🔙 VOLVER AL MENÚ", use_container_width=True):
+        if st.button("🔙 VOLVER AL MENÚ PRINCIPAL", use_container_width=True, type="primary"):
             st.session_state.ver_pantalla_tv = False
             st.rerun()
 
