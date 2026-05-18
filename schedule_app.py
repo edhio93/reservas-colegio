@@ -149,18 +149,32 @@ opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
 supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 
 # ==============================================================================
-# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - OPTIMIZADO
+# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - DISEÑO PREMIUM
 # ==============================================================================
 if st.session_state.get("ver_pantalla_tv", False):
+    import datetime as dt
+    from datetime import datetime as dt_datetime
+    
     # Configuración de refresco y escala
     refresh_count = st_autorefresh(interval=20000, key="tv_refresh_global")
     if "tv_scale" not in st.session_state: st.session_state.tv_scale = 100
     escala = st.session_state.tv_scale / 100.0
 
-    # Variables de tiempo y logo
+    # Variables de tiempo
     now_dt = dt_datetime.now()
     hoy_str = now_dt.strftime("%Y-%m-%d")
     hora_actual_str = now_dt.strftime("%H:%M")
+    
+    # ⏱️ Función para saber cuándo debe desaparecer una actividad de la pantalla
+    def calcular_hora_fin(hora_inicio_str, hora_fin_str):
+        if hora_fin_str and len(str(hora_fin_str)) >= 4:
+            return str(hora_fin_str)[:5]
+        # Si no tiene hora de fin, asumimos que dura 60 minutos y luego se oculta
+        try:
+            inicio = dt_datetime.strptime(str(hora_inicio_str)[:5], "%H:%M")
+            return (inicio + dt.timedelta(minutes=60)).strftime("%H:%M")
+        except:
+            return "23:59"
     
     # Preparar Logo
     ruta_logo = "logotv.png"
@@ -193,25 +207,38 @@ if st.session_state.get("ver_pantalla_tv", False):
                 st.stop()
     except: pass
 
-    # 📺 2. MODO TV NORMAL (Si no hay alerta roja)
+    # 📺 2. MODO TV NORMAL
     st.markdown(f"""
     <style>
         @import url('https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css');
         :root {{ --tv-scale: {escala}; }}
         .stApp {{ background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }}
         [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display: none !important; }}
+        
+        /* Encabezado Principal */
         .tv-header {{ background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%); color: #0f172a; padding: 15px 30px; border-radius: 20px; margin-bottom: 25px; border: 1px solid #cbd5e1; box-shadow: 0 10px 30px rgba(0,0,0,0.4); display: flex; justify-content: space-between; align-items: center; }}
         .header-logo-img {{ height: calc(80px * var(--tv-scale)); width: auto; }}
         .header-info {{ display: flex; align-items: center; gap: 20px; font-size: calc(1.3rem * var(--tv-scale)); font-weight: 800; }}
-        .card-evento {{ background: white; padding: 25px; border-radius: 15px; border-left: 10px solid #3b82f6; margin-bottom: 20px; color: #1e293b; box-shadow: 0 5px 15px rgba(0,0,0,0.2); animation: slideIn 0.6s ease-out; }}
-        .card-reserva {{ border-left-color: #10b981 !important; }}
-        .evento-titulo {{ font-weight: 800; font-size: calc(1.5rem * var(--tv-scale)); color: #1e40af; line-height: 1.1; }}
-        .evento-hora {{ background: #f1f5f9; padding: 6px 12px; border-radius: 8px; font-weight: 800; }}
+        
+        /* 🎨 TARJETAS DE CRONOGRAMA EN COLORES LLENOS COMPLETOS */
+        .card-evento {{ padding: 22px; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); animation: slideIn 0.6s ease-out; }}
+        
+        /* Evento General: Fondo Celeste Pastel */
+        .tipo-evento {{ background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%); border: 1px solid #7dd3fc; color: #0c4a6e; }}
+        .tipo-evento .evento-titulo {{ color: #0369a1; }}
+        
+        /* Reservas de Recurso: Fondo Verde Menta */
+        .tipo-reserva {{ background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); border: 1px solid #86efac; color: #064e3b; }}
+        .tipo-reserva .evento-titulo {{ color: #047857; }}
+        
+        .evento-titulo {{ font-weight: 900; font-size: calc(1.5rem * var(--tv-scale)); line-height: 1.2; }}
+        .evento-hora {{ background: rgba(255,255,255,0.7); padding: 6px 12px; border-radius: 8px; font-weight: 800; border: 1px solid rgba(0,0,0,0.05); }}
+        
         .progress-bar {{ height: 6px; background: #3b82f6; width: 0%; animation: load 20s linear infinite; margin-top: 10px; border-radius: 10px; }}
         @keyframes load {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
         @keyframes slideIn {{ from {{ opacity: 0; transform: translateY(20px); }} to {{ opacity: 1; transform: translateY(0); }} }}
         
-        /* 👇 PROTECCIÓN ABSOLUTA EN CSS PARA EVITAR QUE LOS CONTROLES SE VUELVAN INVISIBLES 👇 */
+        /* Contenedor Control de Ajustes */
         .contenedor-controles {{ background-color: #ffffff !important; padding: 20px; border-radius: 15px; border: 2px solid #3b82f6 !important; margin-top: 25px; color: #0f172a !important; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }}
         .contenedor-controles * {{ color: #0f172a !important; }}
         div[data-testid="stSelectbox"] label, div[data-testid="stSlider"] label {{ color: #0f172a !important; font-weight: 800 !important; font-size: 1.1rem !important; }}
@@ -237,21 +264,23 @@ if st.session_state.get("ver_pantalla_tv", False):
 
     with col_izq:
         eventos = []
-        # Cargar de todas las fuentes
         if st.session_state.get('url_calendario_tv'):
             eventos.extend(obtener_eventos_google_calendar(st.session_state.url_calendario_tv))
         try:
             res_ev = supabase.table("eventos_tv").select("*").eq("fecha_evento", hoy_str).eq("is_active", True).execute()
             for e in (res_ev.data or []):
-                if hora_actual_str <= str(e.get("hora_fin", "23:59")):
+                h_fin = calcular_hora_fin(e.get("hora_inicio", "00:00"), e.get("hora_fin"))
+                # 🕒 Filtro estricto de hora cumplida
+                if hora_actual_str <= h_fin:
                     eventos.append({"hora": str(e.get("hora_inicio", "00:00"))[:5], "titulo": e['titulo'], "desc": e.get("descripcion", ""), "tipo": "evento"})
             
             perfil = st.session_state.get("tv_profile", "General")
-            # Condición corregida: se muestran reservas en los perfiles General, Profesor, PIE e Inspectoría
             if perfil == "General" or "PROFESOR" in perfil.upper() or "PIE" in perfil.upper() or "INSPECTOR" in perfil.upper():
                 res_res = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute()
                 for r in (res_res.data or []):
-                    if hora_actual_str <= str(r.get("hora_fin", "23:59")):
+                    h_fin = calcular_hora_fin(r.get("hora_inicio", "00:00"), r.get("hora_fin"))
+                    # 🕒 Filtro estricto de hora cumplida
+                    if hora_actual_str <= h_fin:
                         eventos.append({
                             "hora": str(r.get("hora_inicio", "00:00"))[:5], 
                             "titulo": f"🔒 {r['recursos']['nombre']} ➔ {r['cursos']['nombre']}", 
@@ -259,31 +288,41 @@ if st.session_state.get("ver_pantalla_tv", False):
                             "tipo": "reserva"
                         })
         except Exception as e:
-            st.error(f"Error cargando datos desde la Base de Datos: {e}")
+            st.error(f"Error cargando datos: {e}")
 
         eventos = sorted(eventos, key=lambda x: x['hora'])
+        
         if not eventos:
             st.info("No hay actividades ni reservas programadas para el resto del día.")
         else:
             PAG_SIZE = 4
             total_pag = max(1, (len(eventos) + PAG_SIZE - 1) // PAG_SIZE)
             items = eventos[(refresh_count % total_pag)*PAG_SIZE : ((refresh_count % total_pag)+1)*PAG_SIZE]
-            st.markdown(f"<h2 style='color:white'>📅 Cronograma ({ (refresh_count % total_pag)+1 }/{total_pag})</h2>", unsafe_allow_html=True)
+            st.markdown(f"<h2 style='color:white; margin-top:0;'>📅 Cronograma ({ (refresh_count % total_pag)+1 }/{total_pag})</h2>", unsafe_allow_html=True)
+            
             for it in items:
-                clase = "card-evento card-reserva" if it['tipo'] == "reserva" else "card-evento"
-                st.markdown(f"<div class='{clase}'><div style='display:flex;justify-content:space-between;align-items:center;'><div class='evento-titulo'>{it['titulo']}</div><div class='evento-hora'>{it['hora']}</div></div><div style='margin-top:10px;opacity:0.8'>{it['desc']}</div></div>", unsafe_allow_html=True)
+                clase_css = "tipo-reserva" if it['tipo'] == "reserva" else "tipo-evento"
+                st.markdown(f"""
+                <div class='card-evento {clase_css}'>
+                    <div style='display:flex;justify-content:space-between;align-items:center;'>
+                        <div class='evento-titulo'>{it['titulo']}</div>
+                        <div class='evento-hora'>{it['hora']}</div>
+                    </div>
+                    <div style='margin-top:10px; font-weight: 500; font-size: calc(1.1rem * var(--tv-scale));'>{it['desc']}</div>
+                </div>
+                """, unsafe_allow_html=True)
 
     with col_der:
-        st.markdown("<h2 style='color:white'>🚨 Avisos</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='color:white; margin-top:0;'>🚨 Avisos</h2>", unsafe_allow_html=True)
         try:
             avisos = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).neq("prioridad", 999).execute().data or []
             avisos_vivos = [a for a in avisos if pd.to_datetime(a['expiracion']).tz_localize(None) > now_dt]
             for a in avisos_vivos[:3]:
                 color = "#e11d48" if a['prioridad'] == 1 else "#ca8a04"
-                st.markdown(f"<div style='background:white;padding:15px;border-radius:12px;border-left:6px solid {color};margin-bottom:12px;box-shadow:0 4px 6px rgba(0,0,0,0.1);'><div style='font-weight:800;color:{color};text-transform:uppercase;font-size:0.9rem;'>{a['titulo']}</div><div style='color:#1e293b;margin-top:5px;'>{a['descripcion']}</div></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='background:white;padding:15px;border-radius:12px;border-left:6px solid {color};margin-bottom:12px;box-shadow:0 4px 6px rgba(0,0,0,0.1);'><div style='font-weight:800;color:{color};text-transform:uppercase;font-size:0.9rem;'>{a['titulo']}</div><div style='color:#1e293b;margin-top:5px; font-weight:500;'>{a['descripcion']}</div></div>", unsafe_allow_html=True)
         except: pass
         
-        # 👇 RESTAURACIÓN COMPLETA DE LOS CONTROLES PERDIDOS CON ALTO CONTRASTE 👇
+        # Panel de controles unificado y limpio (Sin cuadros blancos sobrantes)
         st.markdown('<div class="contenedor-controles">', unsafe_allow_html=True)
         st.markdown("<h4 style='margin-top:0; color:#0f172a; font-weight:900;'>⚙️ Ajustes de Pantalla</h4>", unsafe_allow_html=True)
         
@@ -291,7 +330,7 @@ if st.session_state.get("ver_pantalla_tv", False):
         st.slider("🔍 Tamaño Texto (%)", 50, 200, key="tv_scale", step=5)
         st.markdown('</div>', unsafe_allow_html=True)
         
-        st.write("") # Espacio
+        st.write("") 
         if st.button("🔙 VOLVER AL MENÚ PRINCIPAL", use_container_width=True, type="primary"):
             st.session_state.ver_pantalla_tv = False
             st.rerun()
