@@ -149,21 +149,19 @@ opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
 supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 
 # ==============================================================================
-# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - DISEÑO PREMIUM AESTHETIC
+# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - DISEÑO PREMIUM AESTHETIC V2
 # ==============================================================================
 if st.session_state.get("ver_pantalla_tv", False):
     import datetime as dt
     from datetime import datetime as dt_datetime
     
-    # Configuración de refresco automático (20 segundos)
+    # Refresco automático cada 20 segundos
     refresh_count = st_autorefresh(interval=20000, key="tv_refresh_global")
 
-    # Variables de tiempo real
     now_dt = dt_datetime.now()
     hoy_str = now_dt.strftime("%Y-%m-%d")
     hora_actual_str = now_dt.strftime("%H:%M")
     
-    # ⏱️ Función para calcular la expiración de la actividad
     def calcular_hora_fin(hora_inicio_str, hora_fin_str):
         if hora_fin_str and len(str(hora_fin_str)) >= 4:
             return str(hora_fin_str)[:5]
@@ -173,7 +171,6 @@ if st.session_state.get("ver_pantalla_tv", False):
         except:
             return "23:59"
     
-    # Preparación de Logo corporativo
     ruta_logo = "logotv.png"
     logo_src = "<i class='ph-fill ph-shield-check header-logo-fallback'></i>"
     if os.path.exists(ruta_logo):
@@ -192,8 +189,8 @@ if st.session_state.get("ver_pantalla_tv", False):
                     .stApp {{ background-color: #ff0000 !important; }}
                     header, [data-testid="stSidebar"] {{ display: none; }}
                     .alerta-total {{ display: flex; flex-direction: column; align-items: center; justify-content: center; height: 95vh; color: white; text-align: center; font-family: 'Inter', sans-serif; }}
-                    .at-titulo {{ font-size: 80px; font-weight: 900; text-shadow: 4px 4px 10px rgba(0,0,0,0.5); }}
-                    .at-msg {{ font-size: 45px; margin-top: 30px; font-weight: 600; padding: 0 60px; line-height: 1.1; }}
+                    .at-titulo {{ font-size: 80px; font-weight: 900; }}
+                    .at-msg {{ font-size: 45px; margin-top: 30px; font-weight: 600; padding: 0 60px; }}
                     </style>
                     <div class="alerta-total">
                         <div class="at-titulo">⚠️ AVISO URGENTE ⚠️</div>
@@ -204,64 +201,88 @@ if st.session_state.get("ver_pantalla_tv", False):
                 st.stop()
     except: pass
 
-    # 📺 2. ESTILOS CSS MODO TV (DISEÑO OSCURO DE ALTA GAMA)
+    # 📺 2. ESTILOS ARQUITECTÓNICOS DE ALTA FIDELIDAD (DARK MODE)
     st.markdown("""
     <style>
         @import url('https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css');
-        .stApp {{ background-color: #0b0f19; color: #f8fafc; font-family: 'Inter', sans-serif; }}
+        
+        /* Contenedor Base de Streamlit */
+        .stApp {{ background-color: #090d16 !important; color: #f8fafc; font-family: 'Inter', sans-serif; }}
         [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display: none !important; }}
         
-        /* Encabezado Superior Translúcido */
+        /* Header Superior Estilo Cristal (Glassmorphism) */
         .tv-header {{ 
-            background: rgba(30, 41, 59, 0.6); 
+            background: rgba(15, 23, 42, 0.6); 
             backdrop-filter: blur(12px);
-            color: #f8fafc; 
-            padding: 16px 30px; 
+            padding: 18px 30px; 
             border-radius: 16px; 
             margin-bottom: 25px; 
-            border: 1px solid rgba(255, 255, 255, 0.08); 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3); 
+            border: 1px solid rgba(255, 255, 255, 0.05); 
             display: flex; 
             justify-content: space-between; 
             align-items: center; 
         }}
-        .header-logo-img {{ height: 60px; width: auto; }}
-        .header-info {{ display: flex; align-items: center; gap: 24px; font-size: 1.25rem; font-weight: 700; color: #cbd5e1; }}
-        .time-highlight {{ color: #38bdf8; font-weight: 800; background: rgba(56, 189, 248, 0.12); padding: 4px 12px; border-radius: 8px; }}
+        .header-logo-img {{ height: 55px; width: auto; }}
+        .header-info {{ display: flex; align-items: center; gap: 24px; font-size: 1.2rem; font-weight: 700; color: #94a3b8; }}
+        .time-highlight {{ color: #38bdf8; font-weight: 800; background: rgba(56, 189, 248, 0.1); padding: 6px 14px; border-radius: 8px; }}
         
-        /* ✨ TARJETAS CON PESTAÑAS LATERALES AESTHETIC */
+        /* 🎴 TARJETAS CON PESTAÑA LATERAL (DISEÑO LIMPIO) */
         .card-evento {{ 
-            background-color: #1e293b; 
-            padding: 20px 24px; 
-            border-radius: 14px; 
-            margin-bottom: 16px; 
-            box-shadow: 0 4px 20px rgba(0,0,0,0.2); 
-            animation: slideIn 0.5s ease-out;
-            border: 1px solid rgba(255, 255, 255, 0.04);
+            background-color: #131c2e; 
+            padding: 22px 26px; 
+            border-radius: 12px; 
+            margin-bottom: 18px; 
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }}
         
-        /* Pestaña Celeste para Eventos Generales */
-        .tipo-evento {{ border-left: 7px solid #38bdf8 !important; }}
+        /* Pestaña Celeste - Eventos Generales */
+        .tipo-evento {{ border-left: 6px solid #38bdf8 !important; }}
         
-        /* Pestaña Verde Menta para Reservas de Recursos */
-        .tipo-reserva {{ border-left: 7px solid #34d399 !important; }}
+        /* Pestaña Verde - Reservas de Recursos */
+        .tipo-reserva {{ border-left: 6px solid #34d399 !important; }}
         
-        .evento-titulo {{ font-weight: 700; font-size: 1.4rem; color: #ffffff; line-height: 1.2; }}
+        /* Fila del Título y la Hora perfectamente alineados */
+        .card-header-row {{
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            width: 100%;
+        }}
+        
+        .evento-titulo {{ font-weight: 700; font-size: 1.35rem; color: #ffffff; letter-spacing: -0.3px; }}
         .evento-hora {{ 
-            background: #293548; 
+            background: rgba(255, 255, 255, 0.05); 
             color: #f8fafc;
-            padding: 5px 12px; 
-            border-radius: 8px; 
+            padding: 4px 12px; 
+            border-radius: 6px; 
             font-weight: 700; 
             font-size: 0.95rem;
-            border: 1px solid rgba(255,255,255,0.06); 
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            white-space: nowrap;
         }}
-        .evento-desc {{ margin-top: 8px; color: #94a3b8; font-weight: 500; font-size: 1.1rem; }}
+        .evento-desc {{ color: #64748b; font-weight: 500; font-size: 1.05rem; margin: 0; }}
         
-        /* Barra de progreso de recarga discreta */
-        .progress-bar {{ height: 4px; background: #38bdf8; width: 0%; animation: load 20s linear infinite; margin-top: -25px; margin-bottom: 25px; border-radius: 10px; opacity: 0.6; }}
+        /* Barra de progreso superior discreta */
+        .progress-bar {{ height: 3px; background: #38bdf8; width: 0%; animation: load 20s linear infinite; margin-top: -25px; margin-bottom: 25px; opacity: 0.4; }}
         @keyframes load {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
-        @keyframes slideIn {{ from {{ opacity: 0; transform: translateY(15px); }} to {{ opacity: 1; transform: translateY(0); }} }}
+        
+        /* Estilización del botón de Streamlit para integrarse al diseño oscuro */
+        div[data-testid="stButton"] button {{
+            background-color: #131c2e !important;
+            color: #64748b !important;
+            border: 1px solid rgba(255, 255, 255, 0.05) !important;
+            border-radius: 8px !important;
+            transition: all 0.3s ease;
+        }}
+        div[data-testid="stButton"] button:hover {{
+            color: #ffffff !important;
+            border-color: #38bdf8 !important;
+            background-color: #1e293b !important;
+        }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -271,9 +292,9 @@ if st.session_state.get("ver_pantalla_tv", False):
         <div>{logo_src}</div>
         <div class="header-info">
             <div><i class="ph-fill ph-calendar"></i> {now_dt.day}/{now_dt.month}</div>
-            <div style="color:rgba(255,255,255,0.15)">|</div>
+            <div style="color:rgba(255,255,255,0.05)">|</div>
             <div>{clima}</div>
-            <div style="color:rgba(255,255,255,0.15)">|</div>
+            <div style="color:rgba(255,255,255,0.05)">|</div>
             <div class="time-highlight"><i class="ph-fill ph-clock"></i> {hora_actual_str}</div>
         </div>
     </div><div class="progress-bar"></div>
@@ -289,11 +310,9 @@ if st.session_state.get("ver_pantalla_tv", False):
             res_ev = supabase.table("eventos_tv").select("*").eq("fecha_evento", hoy_str).eq("is_active", True).execute()
             for e in (res_ev.data or []):
                 h_fin = calcular_hora_fin(e.get("hora_inicio", "00:00"), e.get("hora_fin"))
-                # Filtro dinámico: solo vigentes
                 if hora_actual_str <= h_fin:
                     eventos.append({"hora": str(e.get("hora_inicio", "00:00"))[:5], "titulo": e['titulo'], "desc": e.get("descripcion", ""), "tipo": "evento"})
             
-            # Carga global de reservas vigentes para el kiosco informativo
             res_res = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute()
             for r in (res_res.data or []):
                 h_fin = calcular_hora_fin(r.get("hora_inicio", "00:00"), r.get("hora_fin"))
@@ -315,32 +334,36 @@ if st.session_state.get("ver_pantalla_tv", False):
             PAG_SIZE = 4
             total_pag = max(1, (len(eventos) + PAG_SIZE - 1) // PAG_SIZE)
             items = eventos[(refresh_count % total_pag)*PAG_SIZE : ((refresh_count % total_pag)+1)*PAG_SIZE]
-            st.markdown(f"<h2 style='color:white; margin-top:0; font-weight:800;'>📅 Cronograma <span style='font-size:1.1rem; color:#64748b;'>({ (refresh_count % total_pag)+1 }/{total_pag})</span></h2>", unsafe_allow_html=True)
+            st.markdown(f"<h2 style='color:white; margin-top:0; font-weight:800; font-size:1.6rem;'>📅 Cronograma <span style='font-size:1rem; color:#475569; font-weight:500;'>({ (refresh_count % total_pag)+1 }/{total_pag})</span></h2>", unsafe_allow_html=True)
             
             for it in items:
                 clase_css = "tipo-reserva" if it['tipo'] == "reserva" else "tipo-evento"
                 st.markdown(f"""
                 <div class='card-evento {clase_css}'>
-                    <div style='display:flex; justify-content:between; align-items:center; gap:15px;'>
-                        <div class='evento-titulo' style='flex-grow:1;'>{it['titulo']}</div>
+                    <div class='card-header-row'>
+                        <div class='evento-titulo'>{it['titulo']}</div>
                         <div class='evento-hora'>{it['hora']}</div>
                     </div>
-                    <div class='evento-desc'>{it['desc']}</div>
+                    <p class='evento-desc'>{it['desc']}</p>
                 </div>
                 """, unsafe_allow_html=True)
 
     with col_der:
-        st.markdown("<h2 style='color:white; margin-top:0; font-weight:800;'>🚨 Avisos</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='color:white; margin-top:0; font-weight:800; font-size:1.6rem;'>🚨 Avisos</h2>", unsafe_allow_html=True)
         try:
             avisos = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).neq("prioridad", 999).execute().data or []
             avisos_vivos = [a for a in avisos if pd.to_datetime(a['expiracion']).tz_localize(None) > now_dt]
             for a in avisos_vivos[:3]:
                 color = "#e11d48" if a['prioridad'] == 1 else "#ca8a04"
-                st.markdown(f"<div style='background:#1e293b; padding:16px; border-radius:12px; border-left:6px solid {color}; margin-bottom:12px; box-shadow:0 4px 6px rgba(0,0,0,0.15); border-top:1px solid rgba(255,255,255,0.02);'><div style='font-weight:800; color:{color}; text-transform:uppercase; font-size:0.85rem; letter-spacing:0.5px;'>{a['titulo']}</div><div style='color:#cbd5e1; margin-top:6px; font-weight:500; font-size:1rem;'>{a['descripcion']}</div></div>", unsafe_allow_html=True)
+                st.markdown(f"""
+                <div style='background:#131c2e; padding:18px; border-radius:12px; border-left:5px solid {color}; margin-bottom:14px; border-top:1px solid rgba(255,255,255,0.01);'>
+                    <div style='font-weight:800; color:{color}; text-transform:uppercase; font-size:0.8rem; letter-spacing:0.5px;'>{a['titulo']}</div>
+                    <div style='color:#cbd5e1; margin-top:6px; font-weight:500; font-size:0.95rem; line-height:1.4;'>{a['descripcion']}</div>
+                </div>
+                """, unsafe_allow_html=True)
         except: pass
         
-        # 🔙 BOTÓN DE RETORNO LIMPIO Y INTEGRADO SIN RECUADROS EXTRARES
-        st.write("")
+        # Al final de la columna derecha, el botón completamente mimetizado con la interfaz oscura
         st.write("")
         if st.button("🔙 VOLVER AL MENÚ", use_container_width=True):
             st.session_state.ver_pantalla_tv = False
