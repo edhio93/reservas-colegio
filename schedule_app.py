@@ -149,7 +149,7 @@ opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
 supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 
 # ==============================================================================
-# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - PERFILES REALES Y RANGOS HORARIOS
+# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - MOTOR DE SONIDO INTEGRADO
 # ==============================================================================
 if st.session_state.get("ver_pantalla_tv", False):
     # Configuración de refresco y escala
@@ -172,19 +172,17 @@ if st.session_state.get("ver_pantalla_tv", False):
             b64 = base64.b64encode(f.read()).decode()
             logo_src = f"<img src='data:image/png;base64,{b64}' class='header-logo-img'/>"
 
-    # 🚨 1. PRIORIDAD ABSOLUTA: ALERTA ROJA (999) - CORREGIDA CON ZONA HORARIA BLINDADA
+    # 🚨 1. PRIORIDAD ABSOLUTA: ALERTA ROJA (999) - ZONA HORARIA BLINDADA
     try:
         res_critica = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).eq("prioridad", 999).execute()
         if res_critica.data:
             alerta = res_critica.data[0]
             exp_alerta = pd.to_datetime(alerta['expiracion'])
-            # Sincronizar zona horaria de la alerta crítca
             if exp_alerta.tzinfo is not None:
                 exp_alerta = exp_alerta.tz_convert(tz_chile)
             else:
                 exp_alerta = tz_chile.localize(exp_alerta)
             
-            # Si el aviso aún no expira, bloquea la pantalla inmediatamente
             if exp_alerta > now_dt:
                 st.markdown(f"""
                     <style>
@@ -199,12 +197,94 @@ if st.session_state.get("ver_pantalla_tv", False):
                         <div class="at-msg">{alerta['descripcion']}</div>
                     </div>
                 """, unsafe_allow_html=True)
-                st.audio("alarma.mp3", format="audio/mp3", autoplay=True)
+                if os.path.exists("alarma.mp3"):
+                    st.audio("alarma.mp3", format="audio/mp3", autoplay=True)
                 st.stop()
     except Exception as e:
-        pass # Evita caídas si la tabla está vacía temporalmente
+        pass
 
-    # 📺 2. MODO TV NORMAL (ESTILOS GENERALES BLINDADOS)
+    # 📺 2. PROCESAMIENTO Y FILTRADO DE DATOS (Antes de renderizar)
+    eventos = []
+    avisos_vivos = []
+    perfil = st.session_state.get("tv_profile", "General")
+
+    # A. Cargar Cronograma (Eventos Generales)
+    if st.session_state.get('url_calendario_tv'):
+        eventos.extend(obtener_eventos_google_calendar(st.session_state.url_calendario_tv))
+    try:
+        res_ev = supabase.table("eventos_tv").select("*").eq("fecha_evento", hoy_str).eq("is_active", True).execute()
+        for e in (res_ev.data or []):
+            hora_fin_ev = str(e.get("hora_fin", "23:59"))[:5]
+            hora_ini_ev = str(e.get("hora_inicio", "00:00"))[:5]
+            if hora_actual_str <= hora_fin_ev:
+                eventos.append({
+                    "id_unico": f"ev_{e['id']}",
+                    "hora_sort": hora_ini_ev, 
+                    "rango": f"{hora_ini_ev} - {hora_fin_ev}", 
+                    "titulo": f"📢 {e['titulo']}", 
+                    "desc": e.get("descripcion", ""), 
+                    "tipo": "evento"
+                })
+        
+        # B. Cargar Cronograma (Reservas según Perfil Técnico Real)
+        if perfil in ["Profesores / PIE", "Inspectoría / UTP"]:
+            res_res = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute()
+            for r in (res_res.data or []):
+                hora_fin_res = str(r.get("hora_fin", "23:59"))[:5]
+                hora_ini_res = str(r.get("hora_inicio", "00:00"))[:5]
+                if hora_actual_str <= hora_fin_res:
+                    eventos.append({
+                        "id_unico": f"res_{r['id']}",
+                        "hora_sort": hora_ini_res, 
+                        "rango": f"{hora_ini_res} - {hora_fin_res}", 
+                        "titulo": f"🔒 {r['recursos']['nombre']} ➔ {r['cursos']['nombre']}", 
+                        "desc": f"Docente: {r['profesores']['nombre']}", 
+                        "tipo": "reserva"
+                    })
+    except Exception as e:
+        st.error(f"Error cargando cronograma: {e}")
+
+    eventos = sorted(eventos, key=lambda x: x['hora_sort'])
+
+    # C. Cargar Columna de Avisos Laterales
+    try:
+        avisos = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).neq("prioridad", 999).execute().data or []
+        for a in avisos:
+            exp_dt = pd.to_datetime(a['expiracion'])
+            if exp_dt.tzinfo is not None:
+                exp_dt = exp_dt.tz_convert(tz_chile)
+            else:
+                exp_dt = tz_chile.localize(exp_dt)
+            
+            if exp_dt > now_dt:
+                avisos_vivos.append(a)
+    except Exception as e:
+        pass
+
+    # 🎵 3. DETECTOR INTELIGENTE DE NUEVOS ELEMENTOS (SISTEMA DE AUDIO)
+    if "tv_elementos_vistos" not in st.session_state:
+        st.session_state.tv_elementos_vistos = None
+
+    # Recopilar firmas de todo lo actual
+    firmas_actuales = set()
+    for ev in eventos:
+        firmas_actuales.add(ev.get("id_unico", f"ev_fallback_{ev['titulo']}"))
+    for av in avisos_vivos:
+        firmas_actuales.add(f"aviso_{av['id']}")
+
+    reproducir_notificacion = False
+    if st.session_state.tv_elementos_vistos is None:
+        # Estado base inicial para no sonar al encender la pantalla
+        st.session_state.tv_elementos_vistos = firmas_actuales
+    else:
+        # Si hay algo actual que no estaba guardado en memoria, ¡es nuevo!
+        nuevos = firmas_actuales - st.session_state.tv_elementos_vistos
+        if nuevos:
+            reproducir_notificacion = True
+        # Mantener memoria actualizada de lo que se queda en pantalla
+        st.session_state.tv_elementos_vistos = firmas_actuales
+
+    # 📺 4. INTERFAZ GRÁFICA (ESTILOS Y MAQUETACIÓN)
     st.markdown(f"""
     <style>
         @import url('https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css');
@@ -212,18 +292,15 @@ if st.session_state.get("ver_pantalla_tv", False):
         .stApp {{ background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }}
         [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display: none !important; }}
         
-        /* Encabezado Superior Blanco */
         .tv-header {{ background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); color: #0f172a; padding: 15px 30px; border-radius: 20px; margin-bottom: 25px; border: 1px solid #e2e8f0; box-shadow: 0 10px 30px rgba(0,0,0,0.4); display: flex; justify-content: space-between; align-items: center; }}
         .header-logo-img {{ height: calc(75px * var(--tv-scale)); width: auto; }}
         .header-info {{ display: flex; align-items: center; gap: 24px; font-size: calc(1.35rem * var(--tv-scale)); font-weight: 800; color: #334155; }}
         .time-highlight {{ color: #2563eb !important; font-weight: 900; background: #eff6ff; padding: 6px 16px; border-radius: 10px; border: 1px solid #bfdbfe; }}
         
-        /* Barra de progreso de refresco */
         .progress-bar {{ height: 6px; background: linear-gradient(90deg, #3b82f6, #60a5fa); width: 0%; animation: load 20s linear infinite; margin-top: -10px; margin-bottom: 25px; border-radius: 10px; }}
         @keyframes load {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
         @keyframes slideIn {{ from {{ opacity: 0; transform: translateY(20px); }} to {{ opacity: 1; transform: translateY(0); }} }}
         
-        /* Estilos del Desplegable de Ajustes Oculto */
         .stExpander {{ background-color: #1e293b !important; border: 1px solid #3b82f640 !important; border-radius: 14px !important; margin-top: 20px !important; }}
         .stExpander * {{ color: #f8fafc !important; }}
         .stExpander summary {{ font-weight: 800 !important; font-size: 1.05rem !important; }}
@@ -246,49 +323,8 @@ if st.session_state.get("ver_pantalla_tv", False):
 
     col_izq, col_der = st.columns([2.3, 1], gap="large")
 
+    # --- COLUMNA CRONOGRAMA ---
     with col_izq:
-        eventos = []
-        perfil = st.session_state.get("tv_profile", "General")
-
-        # 📅 1. CARGAR EVENTOS GENERALES DEL CRONOGRAMA (Se muestran en todos los perfiles)
-        if st.session_state.get('url_calendario_tv'):
-            eventos.extend(obtener_eventos_google_calendar(st.session_state.url_calendario_tv))
-        try:
-            res_ev = supabase.table("eventos_tv").select("*").eq("fecha_evento", hoy_str).eq("is_active", True).execute()
-            for e in (res_ev.data or []):
-                hora_fin_ev = str(e.get("hora_fin", "23:59"))[:5]
-                hora_ini_ev = str(e.get("hora_inicio", "00:00"))[:5]
-                # 🕒 Ocultar si ya terminó el evento
-                if hora_actual_str <= hora_fin_ev:
-                    eventos.append({
-                        "hora_sort": hora_ini_ev, 
-                        "rango": f"{hora_ini_ev} - {hora_fin_ev}", 
-                        "titulo": f"📢 {e['titulo']}", 
-                        "desc": e.get("descripcion", ""), 
-                        "tipo": "evento"
-                    })
-            
-            # 🔒 2. CARGAR RESERVAS TÉCNICAS (SOLO Profesores/PIE e Inspectoría/UTP)
-            if perfil in ["Profesores / PIE", "Inspectoría / UTP"]:
-                res_res = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute()
-                for r in (res_res.data or []):
-                    hora_fin_res = str(r.get("hora_fin", "23:59"))[:5]
-                    hora_ini_res = str(r.get("hora_inicio", "00:00"))[:5]
-                    # 🕒 Ocultar automáticamente si la reserva ya finalizó hoy
-                    if hora_actual_str <= hora_fin_res:
-                        eventos.append({
-                            "hora_sort": hora_ini_res, 
-                            "rango": f"{hora_ini_res} - {hora_fin_res}", 
-                            "titulo": f"🔒 {r['recursos']['nombre']} ➔ {r['cursos']['nombre']}", 
-                            "desc": f"Docente: {r['profesores']['nombre']}", 
-                            "tipo": "reserva"
-                        })
-        except Exception as e:
-            st.error(f"Error cargando datos: {e}")
-
-        # Ordenar cronológicamente por hora de inicio
-        eventos = sorted(eventos, key=lambda x: x['hora_sort'])
-        
         if not eventos:
             st.info(f"No hay actividades programadas para el perfil '{perfil}' en lo que queda de día.")
         else:
@@ -296,12 +332,10 @@ if st.session_state.get("ver_pantalla_tv", False):
             total_pag = max(1, (len(eventos) + PAG_SIZE - 1) // PAG_SIZE)
             items = eventos[(refresh_count % total_pag)*PAG_SIZE : ((refresh_count % total_pag)+1)*PAG_SIZE]
             
-            # Título limpio
             st.markdown(f"<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>📅 Cronograma <span style='font-size:1.1rem; color:#94a3b8; font-weight:500;'>({ (refresh_count % total_pag)+1 }/{total_pag})</span></h2>", unsafe_allow_html=True)
             
-            # 🎨 TARJETAS CON PESTAÑA VISUAL FÍSICA Y RANGO DE HORAS
             for idx, it in enumerate(items):
-                colores_pestana = ["#3b82f6", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6"] # Azul, Verde, Naranja, Rosa, Morado
+                colores_pestana = ["#3b82f6", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6"]
                 colores_titulo = ["#1e3a8a", "#064e3b", "#7c2d12", "#831843", "#4c1d95"]
                 colores_fondo_hora = ["#eff6ff", "#ecfdf5", "#fff7ed", "#fdf2f8", "#f5f3ff"]
                 
@@ -325,28 +359,18 @@ if st.session_state.get("ver_pantalla_tv", False):
                 """
                 st.markdown(html_tarjeta, unsafe_allow_html=True)
 
+    # --- COLUMNA AVISOS LATERALES ---
     with col_der:
         st.markdown("<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>🚨 Avisos</h2>", unsafe_allow_html=True)
-        try:
-            avisos = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).neq("prioridad", 999).execute().data or []
-            avisos_vivos = []
-            for a in avisos:
-                exp_dt = pd.to_datetime(a['expiracion'])
-                if exp_dt.tzinfo is not None:
-                    exp_dt = exp_dt.tz_convert(tz_chile)
-                else:
-                    exp_dt = tz_chile.localize(exp_dt)
-                
-                # 🕒 Ocultar aviso inmediatamente si ya expiró
-                if exp_dt > now_dt:
-                    avisos_vivos.append(a)
-            
+        
+        if not avisos_vivos:
+            st.caption("No hay avisos secundarios vigentes.")
+        else:
             for a in avisos_vivos[:3]:
                 color = "#f43f5e" if a['prioridad'] == 1 else "#eab308"
                 bg_color = "#fff1f2" if a['prioridad'] == 1 else "#fef9c3"
                 text_color = "#9f1239" if a['prioridad'] == 1 else "#854d0e"
                 st.markdown(f"<div style='background:{bg_color}; padding:18px; border-radius:14px; border-left:8px solid {color}; margin-bottom:15px; box-shadow:0 6px 16px rgba(0,0,0,0.25);'><div style='font-weight:900; color:{text_color}; text-transform:uppercase; font-size:0.95rem; letter-spacing:0.5px;'>⚠️ {a['titulo']}</div><div style='color:#1e293b; margin-top:8px; font-weight:700; font-size:1.1rem; line-height:1.4;'>{a['descripcion']}</div></div>", unsafe_allow_html=True)
-        except: pass
         
         # Desplegable de Ajustes oculto por defecto
         with st.expander("⚙️ Ajustes Avanzados"):
@@ -357,6 +381,10 @@ if st.session_state.get("ver_pantalla_tv", False):
         if st.button("🔙 VOLVER AL MENÚ PRINCIPAL", use_container_width=True, type="primary"):
             st.session_state.ver_pantalla_tv = False
             st.rerun()
+
+    # 🎛️ EJECUCIÓN FÍSICA DEL SONIDO DE NOTIFICACIÓN NUEVA
+    if reproducir_notificacion and os.path.exists("notificacion.mp3"):
+        st.audio("notificacion.mp3", format="audio/mp3", autoplay=True)
 
     st.stop()
 # ──────────────────────────────────────────────────────────────────────────────
