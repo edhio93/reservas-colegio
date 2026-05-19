@@ -149,7 +149,7 @@ opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
 supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 
 # ==============================================================================
-# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - DISEÑO CON PESTAÑAS BLINDADO
+# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - PERFILES REALES Y RANGOS HORARIOS
 # ==============================================================================
 if st.session_state.get("ver_pantalla_tv", False):
     # Configuración de refresco y escala
@@ -172,17 +172,24 @@ if st.session_state.get("ver_pantalla_tv", False):
             b64 = base64.b64encode(f.read()).decode()
             logo_src = f"<img src='data:image/png;base64,{b64}' class='header-logo-img'/>"
 
-    # 🚨 1. PRIORIDAD ABSOLUTA: ALERTA ROJA (999)
+    # 🚨 1. PRIORIDAD ABSOLUTA: ALERTA ROJA (999) - CORREGIDA CON ZONA HORARIA BLINDADA
     try:
         res_critica = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).eq("prioridad", 999).execute()
         if res_critica.data:
             alerta = res_critica.data[0]
-            exp_alerta = pd.to_datetime(alerta['expiracion']).tz_localize(None)
-            if exp_alerta > now_dt.replace(tzinfo=None):
+            exp_alerta = pd.to_datetime(alerta['expiracion'])
+            # Sincronizar zona horaria de la alerta crítca
+            if exp_alerta.tzinfo is not None:
+                exp_alerta = exp_alerta.tz_convert(tz_chile)
+            else:
+                exp_alerta = tz_chile.localize(exp_alerta)
+            
+            # Si el aviso aún no expira, bloquea la pantalla inmediatamente
+            if exp_alerta > now_dt:
                 st.markdown(f"""
                     <style>
                     .stApp {{ background-color: #ff0000 !important; }}
-                    header, [data-testid="stSidebar"] {{ display: none; }}
+                    [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display: none !important; }}
                     .alerta-total {{ display: flex; flex-direction: column; align-items: center; justify-content: center; height: 95vh; color: white; text-align: center; font-family: 'Inter', sans-serif; }}
                     .at-titulo {{ font-size: calc(90px * {escala}); font-weight: 900; text-shadow: 4px 4px 10px rgba(0,0,0,0.5); }}
                     .at-msg {{ font-size: calc(50px * {escala}); margin-top: 30px; font-weight: 600; padding: 0 60px; line-height: 1.1; }}
@@ -194,7 +201,8 @@ if st.session_state.get("ver_pantalla_tv", False):
                 """, unsafe_allow_html=True)
                 st.audio("alarma.mp3", format="audio/mp3", autoplay=True)
                 st.stop()
-    except: pass
+    except Exception as e:
+        pass # Evita caídas si la tabla está vacía temporalmente
 
     # 📺 2. MODO TV NORMAL (ESTILOS GENERALES BLINDADOS)
     st.markdown(f"""
@@ -240,25 +248,37 @@ if st.session_state.get("ver_pantalla_tv", False):
 
     with col_izq:
         eventos = []
+        perfil = st.session_state.get("tv_profile", "General")
+
+        # 📅 1. CARGAR EVENTOS GENERALES DEL CRONOGRAMA (Se muestran en todos los perfiles)
         if st.session_state.get('url_calendario_tv'):
             eventos.extend(obtener_eventos_google_calendar(st.session_state.url_calendario_tv))
         try:
             res_ev = supabase.table("eventos_tv").select("*").eq("fecha_evento", hoy_str).eq("is_active", True).execute()
             for e in (res_ev.data or []):
                 hora_fin_ev = str(e.get("hora_fin", "23:59"))[:5]
-                # 🕒 Ocultar automáticamente si ya finalizó
+                hora_ini_ev = str(e.get("hora_inicio", "00:00"))[:5]
+                # 🕒 Ocultar si ya terminó el evento
                 if hora_actual_str <= hora_fin_ev:
-                    eventos.append({"hora": str(e.get("hora_inicio", "00:00"))[:5], "titulo": e['titulo'], "desc": e.get("descripcion", ""), "tipo": "evento"})
+                    eventos.append({
+                        "hora_sort": hora_ini_ev, 
+                        "rango": f"{hora_ini_ev} - {hora_fin_ev}", 
+                        "titulo": f"📢 {e['titulo']}", 
+                        "desc": e.get("descripcion", ""), 
+                        "tipo": "evento"
+                    })
             
-            perfil = st.session_state.get("tv_profile", "General")
-            if perfil == "General" or "PROFESOR" in perfil.upper() or "PIE" in perfil.upper() or "INSPECTOR" in perfil.upper():
+            # 🔒 2. CARGAR RESERVAS TÉCNICAS (SOLO Profesores/PIE e Inspectoría/UTP)
+            if perfil in ["Profesores / PIE", "Inspectoría / UTP"]:
                 res_res = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute()
                 for r in (res_res.data or []):
                     hora_fin_res = str(r.get("hora_fin", "23:59"))[:5]
-                    # 🕒 Ocultar automáticamente si la reserva ya finalizó
+                    hora_ini_res = str(r.get("hora_inicio", "00:00"))[:5]
+                    # 🕒 Ocultar automáticamente si la reserva ya finalizó hoy
                     if hora_actual_str <= hora_fin_res:
                         eventos.append({
-                            "hora": str(r.get("hora_inicio", "00:00"))[:5], 
+                            "hora_sort": hora_ini_res, 
+                            "rango": f"{hora_ini_res} - {hora_fin_res}", 
                             "titulo": f"🔒 {r['recursos']['nombre']} ➔ {r['cursos']['nombre']}", 
                             "desc": f"Docente: {r['profesores']['nombre']}", 
                             "tipo": "reserva"
@@ -266,18 +286,20 @@ if st.session_state.get("ver_pantalla_tv", False):
         except Exception as e:
             st.error(f"Error cargando datos: {e}")
 
-        eventos = sorted(eventos, key=lambda x: x['hora'])
+        # Ordenar cronológicamente por hora de inicio
+        eventos = sorted(eventos, key=lambda x: x['hora_sort'])
+        
         if not eventos:
-            st.info("No hay actividades ni reservas programadas para el resto del día.")
+            st.info(f"No hay actividades programadas para el perfil '{perfil}' en lo que queda de día.")
         else:
             PAG_SIZE = 4
             total_pag = max(1, (len(eventos) + PAG_SIZE - 1) // PAG_SIZE)
             items = eventos[(refresh_count % total_pag)*PAG_SIZE : ((refresh_count % total_pag)+1)*PAG_SIZE]
             
-            # Título simple
+            # Título limpio
             st.markdown(f"<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>📅 Cronograma <span style='font-size:1.1rem; color:#94a3b8; font-weight:500;'>({ (refresh_count % total_pag)+1 }/{total_pag})</span></h2>", unsafe_allow_html=True)
             
-            # 🎨 TARJETAS CON ESTRUCTURA FÍSICA PARA LA PESTAÑA (Prueba de fallos de Streamlit)
+            # 🎨 TARJETAS CON PESTAÑA VISUAL FÍSICA Y RANGO DE HORAS
             for idx, it in enumerate(items):
                 colores_pestana = ["#3b82f6", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6"] # Azul, Verde, Naranja, Rosa, Morado
                 colores_titulo = ["#1e3a8a", "#064e3b", "#7c2d12", "#831843", "#4c1d95"]
@@ -289,11 +311,13 @@ if st.session_state.get("ver_pantalla_tv", False):
                 
                 html_tarjeta = f"""
                 <div style="display: flex; background-color: white; border-radius: 14px; margin-bottom: 16px; box-shadow: 0 6px 20px rgba(0,0,0,0.25); overflow: hidden; animation: slideIn 0.5s ease-out;">
-                    <div style="width: 14px; background-color: {c_pestana}; flex-shrink: 0;"></div>
+                    <div style="width: 15px; background-color: {c_pestana}; flex-shrink: 0;"></div>
                     <div style="padding: 18px 24px; flex-grow: 1;">
                         <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px;">
                             <div style="font-weight: 800; font-size: calc(1.35rem * var(--tv-scale)); color: #0f172a; line-height: 1.2;">{it['titulo']}</div>
-                            <div style="background-color: {c_f_hora}; color: {c_titulo}; font-weight: 900; font-size: calc(1.1rem * var(--tv-scale)); padding: 6px 14px; border-radius: 8px; border: 1px solid {c_pestana}; white-space: nowrap;">{it['hora']}</div>
+                            <div style="background-color: {c_f_hora}; color: {c_titulo}; font-weight: 900; font-size: calc(1.05rem * var(--tv-scale)); padding: 6px 14px; border-radius: 8px; border: 1px solid {c_pestana}; white-space: nowrap;">
+                                <i class="ph-fill ph-clock" style="vertical-align: middle;"></i> {it['rango']}
+                            </div>
                         </div>
                         <div style="margin-top: 8px; color: #475569; font-weight: 600; font-size: calc(1.1rem * var(--tv-scale)); line-height: 1.3;">{it['desc']}</div>
                     </div>
@@ -313,7 +337,7 @@ if st.session_state.get("ver_pantalla_tv", False):
                 else:
                     exp_dt = tz_chile.localize(exp_dt)
                 
-                # 🕒 Ocultar anuncio cuando expira
+                # 🕒 Ocultar aviso inmediatamente si ya expiró
                 if exp_dt > now_dt:
                     avisos_vivos.append(a)
             
