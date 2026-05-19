@@ -328,7 +328,40 @@ if st.session_state.get("ver_pantalla_tv", False):
                 st.markdown(html_tarjeta, unsafe_allow_html=True)
 
     with col_der:
-        st.markdown("<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>
+        st.markdown("<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>🚨 Avisos</h2>", unsafe_allow_html=True)
+        try:
+            avisos = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).neq("prioridad", 999).execute().data or []
+            avisos_vivos = []
+            for a in avisos:
+                exp_dt = pd.to_datetime(a['expiracion'])
+                if exp_dt.tzinfo is not None:
+                    exp_dt = exp_dt.tz_convert(tz_chile)
+                else:
+                    exp_dt = tz_chile.localize(exp_dt)
+                
+                if exp_dt > now_dt:
+                    avisos_vivos.append(a)
+            
+            if not avisos_vivos:
+                st.caption("No hay avisos secundarios vigentes.")
+            else:
+                for a in avisos_vivos[:3]:
+                    color = "#f43f5e" if a['prioridad'] == 1 else "#eab308"
+                    bg_color = "#fff1f2" if a['prioridad'] == 1 else "#fef9c3"
+                    text_color = "#9f1239" if a['prioridad'] == 1 else "#854d0e"
+                    st.markdown(f"<div style='background:{bg_color}; padding:18px; border-radius:14px; border-left:8px solid {color}; margin-bottom:15px; box-shadow:0 6px 16px rgba(0,0,0,0.25);'><div style='font-weight:900; color:{text_color}; text-transform:uppercase; font-size:0.95rem; letter-spacing:0.5px;'>⚠️ {a['titulo']}</div><div style='color:#1e293b; margin-top:8px; font-weight:700; font-size:1.1rem; line-height:1.4;'>{a['descripcion']}</div></div>", unsafe_allow_html=True)
+        except: pass
+        
+        with st.expander("⚙️ Ajustes Avanzados"):
+            st.selectbox("👁️ Perfil Visual", ["General", "Profesores / PIE", "Inspectoría / UTP"], key="tv_profile")
+            st.slider("🔍 Tamaño Texto (%)", 50, 200, key="tv_scale", step=5)
+        
+        st.write("")
+        if st.button("🔙 VOLVER AL MENÚ PRINCIPAL", use_container_width=True, type="primary"):
+            st.session_state.ver_pantalla_tv = False
+            st.rerun()
+
+    st.stop()
 # ──────────────────────────────────────────────────────────────────────────────
 # 0) CONFIGURACIÓN GLOBAL Y ESTILO
 # ──────────────────────────────────────────────────────────────────────────────
