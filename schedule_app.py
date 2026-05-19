@@ -172,18 +172,21 @@ if st.session_state.get("ver_pantalla_tv", False):
             b64 = base64.b64encode(f.read()).decode()
             logo_src = f"<img src='data:image/png;base64,{b64}' class='header-logo-img'/>"
 
-    # 🚨 1. PRIORIDAD ABSOLUTA: ALERTA ROJA (999) - ZONA HORARIA BLINDADA
+    # 🚨 1. PRIORIDAD ABSOLUTA: ALERTA ROJA (999) - RELOJ SINCRONIZADO CON EL SERVIDOR
     try:
         res_critica = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).eq("prioridad", 999).execute()
         if res_critica.data:
             alerta = res_critica.data[0]
             exp_alerta = pd.to_datetime(alerta['expiracion'])
+            
+            # Sincronización inteligente: Si no trae zona horaria, se evalúa con el mismo reloj base del servidor
             if exp_alerta.tzinfo is not None:
                 exp_alerta = exp_alerta.tz_convert(tz_chile)
+                alerta_vigente = exp_alerta > now_dt
             else:
-                exp_alerta = tz_chile.localize(exp_alerta)
+                alerta_vigente = exp_alerta > dt_datetime.now()
             
-            if exp_alerta > now_dt:
+            if alerta_vigente:
                 st.markdown(f"""
                     <style>
                     .stApp {{ background-color: #ff0000 !important; }}
@@ -246,17 +249,18 @@ if st.session_state.get("ver_pantalla_tv", False):
 
     eventos = sorted(eventos, key=lambda x: x['hora_sort'])
 
-    # C. Cargar Columna de Avisos Laterales
+    # C. Cargar Columna de Avisos Laterales (También corregido con el parche de tiempo)
     try:
         avisos = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).neq("prioridad", 999).execute().data or []
         for a in avisos:
             exp_dt = pd.to_datetime(a['expiracion'])
             if exp_dt.tzinfo is not None:
                 exp_dt = exp_dt.tz_convert(tz_chile)
+                aviso_vigente = exp_dt > now_dt
             else:
-                exp_dt = tz_chile.localize(exp_dt)
+                aviso_vigente = exp_dt > dt_datetime.now()
             
-            if exp_dt > now_dt:
+            if aviso_vigente:
                 avisos_vivos.append(a)
     except Exception as e:
         pass
