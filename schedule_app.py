@@ -149,10 +149,10 @@ opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
 supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
 
 # ==============================================================================
-# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - PERFILES REALES Y ALERTA PARPADEANTE
+# 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - PARPADEO MULTICAPA SIN SONIDO
 # ==============================================================================
 if st.session_state.get("ver_pantalla_tv", False):
-    # Configuración de refresco y escala
+    # Configuración de refresco automático (20s) y escala visual
     refresh_count = st_autorefresh(interval=20000, key="tv_refresh_global")
     if "tv_scale" not in st.session_state: st.session_state.tv_scale = 100
     escala = st.session_state.tv_scale / 100.0
@@ -164,7 +164,7 @@ if st.session_state.get("ver_pantalla_tv", False):
     hoy_str = now_dt.strftime("%Y-%m-%d")
     hora_actual_str = now_dt.strftime("%H:%M")
     
-    # Preparar Logo
+    # Preparar Logo Institucional
     ruta_logo = "logotv.png"
     logo_src = "<i class='ph-fill ph-shield-check header-logo-fallback'></i>"
     if os.path.exists(ruta_logo):
@@ -172,7 +172,7 @@ if st.session_state.get("ver_pantalla_tv", False):
             b64 = base64.b64encode(f.read()).decode()
             logo_src = f"<img src='data:image/png;base64,{b64}' class='header-logo-img'/>"
 
-    # 🚨 1. PRIORIDAD ABSOLUTA: ALERTA ROJA (999) - FONDO CON PARPADEO INTERMITENTE CSS
+    # 🚨 1. PRIORIDAD ABSOLUTA: ALERTA ROJA (999) - BLINDAJE DE PARPADEO EN TODAS LAS CAPAS
     try:
         res_critica = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).eq("prioridad", 999).execute()
         if res_critica.data:
@@ -183,24 +183,64 @@ if st.session_state.get("ver_pantalla_tv", False):
             else:
                 exp_alerta = tz_chile.localize(exp_alerta)
             
-            # Si el aviso está vigente, bloquea la interfaz de inmediato
+            # Si el aviso urgente sigue vigente en tiempo real, bloquea la pantalla con parpadeo
             if exp_alerta > now_dt:
                 st.markdown(f"""
                     <style>
-                    /* Animación de parpadeo de alta intensidad */
+                    /* Animación intermitente de alerta disruptiva */
                     @keyframes parpadeo-critico {{
-                        0% {{ background-color: #dc2626 !important; }} /* Rojo Intenso */
-                        50% {{ background-color: #450a0a !important; }} /* Rojo Oscuro Profundo */
+                        0% {{ background-color: #dc2626 !important; }}   /* Rojo Intenso */
+                        50% {{ background-color: #450a0a !important; }}  /* Rojo Oscuro Profundo */
                         100% {{ background-color: #dc2626 !important; }}
                     }}
-                    .stApp {{ 
-                        animation: parpadeo-critico 1.2s infinite !important; 
+                    
+                    /* Forzamos a todas las subcapas ocultas de Streamlit a heredar la animación y ocultar el fondo blanco */
+                    .stApp, 
+                    [data-testid="stAppViewContainer"], 
+                    [data-testid="stMainViewContainer"], 
+                    .main, 
+                    [data-testid="stCanvasZone"],
+                    [data-testid="stAppViewBlockContainer"] {{
+                        animation: parpadeo-critico 1.0s infinite !important;
+                        background-color: transparent !important;
                     }}
-                    [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display: none !important; }}
-                    .alerta-total {{ display: flex; flex-direction: column; align-items: center; justify-content: center; height: 95vh; color: white; text-align: center; font-family: 'Inter', sans-serif; }}
-                    .at-titulo {{ font-size: calc(85px * {escala}); font-weight: 900; text-shadow: 4px 4px 15px rgba(0,0,0,0.7); letter-spacing: 2px; }}
-                    .at-msg {{ font-size: calc(48px * {escala}); margin-top: 40px; font-weight: 700; padding: 0 50px; line-height: 1.2; text-shadow: 2px 2px 8px rgba(0,0,0,0.6); }}
+                    
+                    /* Desactivar cualquier cabecera, barra o menú del sistema */
+                    [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"] {{ 
+                        display: none !important; 
+                    }}
+                    
+                    /* Contenedor centralizado */
+                    .alerta-total {{ 
+                        display: flex; 
+                        flex-direction: column; 
+                        align-items: center; 
+                        justify-content: center; 
+                        height: 90vh; 
+                        text-align: center; 
+                        font-family: 'Inter', sans-serif; 
+                    }}
+                    
+                    /* Forzamos textos en blanco absoluto para máxima legibilidad ante el fondo rojo */
+                    .at-titulo {{ 
+                        font-size: calc(85px * {escala}); 
+                        font-weight: 900; 
+                        color: #ffffff !important;
+                        text-shadow: 4px 4px 15px rgba(0,0,0,0.8); 
+                        letter-spacing: 2px; 
+                    }}
+                    
+                    .at-msg {{ 
+                        font-size: calc(46px * {escala}); 
+                        margin-top: 40px; 
+                        font-weight: 700; 
+                        color: #ffffff !important;
+                        padding: 0 50px; 
+                        line-height: 1.3; 
+                        text-shadow: 2px 2px 8px rgba(0,0,0,0.7); 
+                    }}
                     </style>
+                    
                     <div class="alerta-total">
                         <div class="at-titulo">⚠️ AVISO CRÍTICO URGENTE ⚠️</div>
                         <div class="at-msg">{alerta['descripcion']}</div>
@@ -210,7 +250,7 @@ if st.session_state.get("ver_pantalla_tv", False):
     except Exception as e:
         pass
 
-    # 📺 2. MODO TV NORMAL (ESTILOS GENERALES)
+    # 📺 2. MODO TV NORMAL (ESTILOS VISUALES)
     st.markdown(f"""
     <style>
         @import url('https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css');
@@ -218,21 +258,29 @@ if st.session_state.get("ver_pantalla_tv", False):
         .stApp {{ background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }}
         [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display: none !important; }}
         
-        /* Encabezado Superior */
+        /* Encabezado Kiosco */
         .tv-header {{ background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); color: #0f172a; padding: 15px 30px; border-radius: 20px; margin-bottom: 25px; border: 1px solid #e2e8f0; box-shadow: 0 10px 30px rgba(0,0,0,0.4); display: flex; justify-content: space-between; align-items: center; }}
         .header-logo-img {{ height: calc(75px * var(--tv-scale)); width: auto; }}
         .header-info {{ display: flex; align-items: center; gap: 24px; font-size: calc(1.35rem * var(--tv-scale)); font-weight: 800; color: #334155; }}
         .time-highlight {{ color: #2563eb !important; font-weight: 900; background: #eff6ff; padding: 6px 16px; border-radius: 10px; border: 1px solid #bfdbfe; }}
         
-        /* Línea de tiempo de recarga */
+        /* Tarjetas de eventos */
+        .card-evento {{ background: white; padding: 25px; border-radius: 15px; border-left: 10px solid #3b82f6; margin-bottom: 20px; color: #1e293b; box-shadow: 0 5px 15px rgba(0,0,0,0.2); animation: slideIn 0.6s ease-out; }}
+        .card-reserva {{ border-left-color: #10b981 !important; }}
+        .card-gcal {{ border-left-color: #f59e0b !important; }}
+        .evento-titulo {{ font-weight: 800; font-size: calc(1.45rem * var(--tv-scale)); color: #1e40af; line-height: 1.2; }}
+        .evento-hora {{ background: #f1f5f9; color: #0f172a; padding: 6px 14px; border-radius: 8px; font-weight: 800; font-size: calc(1.1rem * var(--tv-scale)); border: 1px solid #cbd5e1; white-space: nowrap; }}
+        
+        /* Barra de progreso de refresco */
         .progress-bar {{ height: 6px; background: linear-gradient(90deg, #3b82f6, #60a5fa); width: 0%; animation: load 20s linear infinite; margin-top: -10px; margin-bottom: 25px; border-radius: 10px; }}
         @keyframes load {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
         @keyframes slideIn {{ from {{ opacity: 0; transform: translateY(20px); }} to {{ opacity: 1; transform: translateY(0); }} }}
         
-        /* Ajustes Ocultos */
-        .stExpander {{ background-color: #1e293b !important; border: 1px solid #3b82f640 !important; border-radius: 14px !important; margin-top: 20px !important; }}
-        .stExpander * {{ color: #f8fafc !important; }}
-        .stExpander summary {{ font-weight: 800 !important; font-size: 1.05rem !important; }}
+        /* Sección de ajustes con alto contraste */
+        .contenedor-controles {{ background-color: #ffffff !important; padding: 20px; border-radius: 15px; border: 2px solid #3b82f6 !important; margin-top: 25px; color: #0f172a !important; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }}
+        .contenedor-controles * {{ color: #0f172a !important; }}
+        div[data-testid="stSelectbox"] label, div[data-testid="stSlider"] label {{ color: #0f172a !important; font-weight: 800 !important; font-size: 1.1rem !important; }}
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] {{ background-color: #f1f5f9 !important; border: 1px solid #cbd5e1 !important; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -252,18 +300,29 @@ if st.session_state.get("ver_pantalla_tv", False):
 
     col_izq, col_der = st.columns([2.3, 1], gap="large")
 
+    # --- COLUMNA CRONOGRAMA CENTRAL ---
     with col_izq:
         eventos = []
         perfil = st.session_state.get("tv_profile", "General")
 
-        # 📅 Cargar Cronograma (Eventos Generales)
+        # A. Cargar desde Google Calendar (Filtro por fecha de hoy)
         if st.session_state.get('url_calendario_tv'):
-            eventos.extend(obtener_eventos_google_calendar(st.session_state.url_calendario_tv))
+            gcal_evs = obtener_eventos_google_calendar(st.session_state.url_calendario_tv)
+            for ge in gcal_evs:
+                eventos.append({
+                    "hora_sort": ge["hora_sort"],
+                    "rango": ge["display_hora"],
+                    "titulo": f"📆 {ge['titulo']}",
+                    "desc": ge.get("descripcion", ""),
+                    "tipo": "gcal"
+                })
+
         try:
+            # B. Cargar Eventos de Dirección/UTP vigentes hoy
             res_ev = supabase.table("eventos_tv").select("*").eq("fecha_evento", hoy_str).eq("is_active", True).execute()
             for e in (res_ev.data or []):
-                hora_fin_ev = str(e.get("hora_fin", "23:59"))[:5]
                 hora_ini_ev = str(e.get("hora_inicio", "00:00"))[:5]
+                hora_fin_ev = str(e.get("hora_fin", "23:59"))[:5]
                 if hora_actual_str <= hora_fin_ev:
                     eventos.append({
                         "hora_sort": hora_ini_ev, 
@@ -273,12 +332,12 @@ if st.session_state.get("ver_pantalla_tv", False):
                         "tipo": "evento"
                     })
             
-            # 🔒 Cargar Cronograma (Reservas según Perfil estricto)
-            if perfil in ["Profesores / PIE", "Inspectoría / UTP"]:
+            # C. Cargar Reservas de Recursos según el Perfil seleccionado
+            if perfil in ["Profesores / PIE", "Inspectoría / UTP"] or perfil == "General":
                 res_res = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute()
                 for r in (res_res.data or []):
-                    hora_fin_res = str(r.get("hora_fin", "23:59"))[:5]
                     hora_ini_res = str(r.get("hora_inicio", "00:00"))[:5]
+                    hora_fin_res = str(r.get("hora_fin", "23:59"))[:5]
                     if hora_actual_str <= hora_fin_res:
                         eventos.append({
                             "hora_sort": hora_ini_res, 
@@ -288,11 +347,11 @@ if st.session_state.get("ver_pantalla_tv", False):
                             "tipo": "reserva"
                         })
         except Exception as e:
-            st.error(f"Error: {e}")
+            st.error(f"Error cargando cronograma desde la base de datos: {e}")
 
-        # Ordenar cronológicamente
+        # Ordenar cronológicamente por hora de inicio
         eventos = sorted(eventos, key=lambda x: x['hora_sort'])
-        
+
         if not eventos:
             st.info(f"No hay actividades programadas para el perfil '{perfil}' en lo que queda de día.")
         else:
@@ -302,31 +361,25 @@ if st.session_state.get("ver_pantalla_tv", False):
             
             st.markdown(f"<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>📅 Cronograma <span style='font-size:1.1rem; color:#94a3b8; font-weight:500;'>({ (refresh_count % total_pag)+1 }/{total_pag})</span></h2>", unsafe_allow_html=True)
             
-            for idx, it in enumerate(items):
-                colores_pestana = ["#3b82f6", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6"]
-                colores_titulo = ["#1e3a8a", "#064e3b", "#7c2d12", "#831843", "#4c1d95"]
-                colores_fondo_hora = ["#eff6ff", "#ecfdf5", "#fff7ed", "#fdf2f8", "#f5f3ff"]
+            for it in items:
+                if it['tipo'] == "reserva":
+                    clase_tipo = "card-evento card-reserva"
+                elif it['tipo'] == "gcal":
+                    clase_tipo = "card-evento card-gcal"
+                else:
+                    clase_tipo = "card-evento"
                 
-                c_pestana = colores_pestana[idx % len(colores_pestana)]
-                c_titulo = colores_titulo[idx % len(colores_titulo)]
-                c_f_hora = colores_fondo_hora[idx % len(colores_fondo_hora)]
-                
-                html_tarjeta = f"""
-                <div style="display: flex; background-color: white; border-radius: 14px; margin-bottom: 16px; box-shadow: 0 6px 20px rgba(0,0,0,0.25); overflow: hidden; animation: slideIn 0.5s ease-out;">
-                    <div style="width: 15px; background-color: {c_pestana}; flex-shrink: 0;"></div>
-                    <div style="padding: 18px 24px; flex-grow: 1;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px;">
-                            <div style="font-weight: 800; font-size: calc(1.35rem * var(--tv-scale)); color: #0f172a; line-height: 1.2;">{it['titulo']}</div>
-                            <div style="background-color: {c_f_hora}; color: {c_titulo}; font-weight: 900; font-size: calc(1.05rem * var(--tv-scale)); padding: 6px 14px; border-radius: 8px; border: 1px solid {c_pestana}; white-space: nowrap;">
-                                <i class="ph-fill ph-clock" style="vertical-align: middle;"></i> {it['rango']}
-                            </div>
-                        </div>
-                        <div style="margin-top: 8px; color: #475569; font-weight: 600; font-size: calc(1.1rem * var(--tv-scale)); line-height: 1.3;">{it['desc']}</div>
+                st.markdown(f"""
+                <div class='{clase_tipo}'>
+                    <div style='display:flex; justify-content:space-between; align-items:center; gap:15px;'>
+                        <div class='evento-titulo'>{it['titulo']}</div>
+                        <div class='evento-hora'><i class='ph-fill ph-clock'></i> {it['rango']}</div>
                     </div>
+                    <div style='margin-top:10px; opacity:0.85; font-weight:600; font-size:calc(1.1rem * var(--tv-scale));'>{it['desc']}</div>
                 </div>
-                """
-                st.markdown(html_tarjeta, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
+    # --- COLUMNA LATERAL DE AVISOS ---
     with col_der:
         st.markdown("<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>🚨 Avisos</h2>", unsafe_allow_html=True)
         try:
@@ -350,11 +403,15 @@ if st.session_state.get("ver_pantalla_tv", False):
                     bg_color = "#fff1f2" if a['prioridad'] == 1 else "#fef9c3"
                     text_color = "#9f1239" if a['prioridad'] == 1 else "#854d0e"
                     st.markdown(f"<div style='background:{bg_color}; padding:18px; border-radius:14px; border-left:8px solid {color}; margin-bottom:15px; box-shadow:0 6px 16px rgba(0,0,0,0.25);'><div style='font-weight:900; color:{text_color}; text-transform:uppercase; font-size:0.95rem; letter-spacing:0.5px;'>⚠️ {a['titulo']}</div><div style='color:#1e293b; margin-top:8px; font-weight:700; font-size:1.1rem; line-height:1.4;'>{a['descripcion']}</div></div>", unsafe_allow_html=True)
-        except: pass
+        except: 
+            pass
         
-        with st.expander("⚙️ Ajustes Avanzados"):
-            st.selectbox("👁️ Perfil Visual", ["General", "Profesores / PIE", "Inspectoría / UTP"], key="tv_profile")
-            st.slider("🔍 Tamaño Texto (%)", 50, 200, key="tv_scale", step=5)
+        # Panel Informativo / Ajustes de Pantalla Ocultos en Contenedor Blanco Protegido
+        st.markdown('<div class="contenedor-controles">', unsafe_allow_html=True)
+        st.markdown("<h4 style='margin-top:0; color:#0f172a; font-weight:900;'>⚙️ Ajustes del Kiosco</h4>", unsafe_allow_html=True)
+        st.selectbox("👁️ Perfil Visual", ["General", "Profesores / PIE", "Inspectoría / UTP"], key="tv_profile")
+        st.slider("🔍 Tamaño Texto (%)", 50, 200, key="tv_scale", step=5)
+        st.markdown('</div>', unsafe_allow_html=True)
         
         st.write("")
         if st.button("🔙 VOLVER AL MENÚ PRINCIPAL", use_container_width=True, type="primary"):
