@@ -347,22 +347,23 @@ if st.session_state.get("ver_pantalla_tv", False):
                 c_titulo = colores_titulo[idx % len(colores_titulo)]
                 c_f_hora = colores_fondo_hora[idx % len(colores_fondo_hora)]
                 
+                # --- HTML DE LA TARJETA BLINDADO CONTRA EL MODO OSCURO ---
                 html_tarjeta = f"""
-                <div style="display: flex; background-color: white; border-radius: 14px; margin-bottom: 16px; box-shadow: 0 6px 20px rgba(0,0,0,0.25); overflow: hidden; animation: slideIn 0.5s ease-out;">
-                    <div style="width: 15px; background-color: {c_pestana}; flex-shrink: 0;"></div>
+                <div style="display: flex; background-color: white !important; border-radius: 14px; margin-bottom: 16px; box-shadow: 0 6px 20px rgba(0,0,0,0.25); overflow: hidden; animation: slideIn 0.5s ease-out;">
+                    <div style="width: 15px; background-color: {c_pestana} !important; flex-shrink: 0;"></div>
                     <div style="padding: 18px 24px; flex-grow: 1;">
                         <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px;">
-                            <div style="font-weight: 800; font-size: calc(1.35rem * var(--tv-scale)); color: #0f172a; line-height: 1.2;">{it['titulo']}</div>
-                            <div style="background-color: {c_f_hora}; color: {c_titulo}; font-weight: 900; font-size: calc(1.05rem * var(--tv-scale)); padding: 6px 14px; border-radius: 8px; border: 1px solid {c_pestana}; white-space: nowrap;">
-                                <i class="ph-fill ph-clock" style="vertical-align: middle;"></i> {it['rango']}
+                            <div style="font-weight: 800; font-size: calc(1.35rem * var(--tv-scale)); color: #0f172a !important; line-height: 1.2;">{it['titulo']}</div>
+                            <div style="background-color: {c_f_hora} !important; color: {c_titulo} !important; font-weight: 900; font-size: calc(1.05rem * var(--tv-scale)); padding: 6px 14px; border-radius: 8px; border: 1px solid {c_pestana} !important; white-space: nowrap;">
+                                <i class="ph-fill ph-clock" style="vertical-align: middle; color: {c_titulo} !important;"></i> {it['rango']}
                             </div>
                         </div>
-                        <div style="margin-top: 8px; color: #475569; font-weight: 600; font-size: calc(1.1rem * var(--tv-scale)); line-height: 1.3;">{it['desc']}</div>
+                        <div style="margin-top: 8px; color: #475569 !important; font-weight: 600; font-size: calc(1.1rem * var(--tv-scale)); line-height: 1.3;">{it['desc']}</div>
                     </div>
                 </div>
                 """
                 st.markdown(html_tarjeta, unsafe_allow_html=True)
-
+                
     # --- COLUMNA AVISOS LATERALES ---
     with col_der:
         st.markdown("<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>🚨 Avisos</h2>", unsafe_allow_html=True)
