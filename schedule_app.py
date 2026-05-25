@@ -288,7 +288,7 @@ if st.session_state.get("ver_pantalla_tv", False):
         # Mantener memoria actualizada de lo que se queda en pantalla
         st.session_state.tv_elementos_vistos = firmas_actuales
 
-    # 📺 4. INTERFAZ GRÁFICA (ESTILOS Y MAQUETACIÓN)
+# 📺 4. INTERFAZ GRÁFICA (ESTILOS Y MAQUETACIÓN)
     st.markdown(f"""
     <style>
         @import url('https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css');
@@ -305,9 +305,17 @@ if st.session_state.get("ver_pantalla_tv", False):
         @keyframes load {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
         @keyframes slideIn {{ from {{ opacity: 0; transform: translateY(20px); }} to {{ opacity: 1; transform: translateY(0); }} }}
         
+        /* Ajustes Expander */
         .stExpander {{ background-color: #1e293b !important; border: 1px solid #3b82f640 !important; border-radius: 14px !important; margin-top: 20px !important; }}
-        .stExpander * {{ color: #f8fafc !important; }}
-        .stExpander summary {{ font-weight: 800 !important; font-size: 1.05rem !important; }}
+        .stExpander summary p {{ font-weight: 800 !important; font-size: 1.05rem !important; color: #f8fafc !important; }}
+        
+        /* 🎨 CAMBIO SOLICITADO: Color específico solo para el título de "Perfil Visual" */
+        div[data-testid="stSelectbox"] label p {{ color: #f59e0b !important; font-size: 1rem !important; font-weight: 700 !important; }}
+        div[data-testid="stSlider"] label p {{ color: #f8fafc !important; }}
+
+        /* 🔒 Blindaje de colores oscuros para las tarjetas blancas del Cronograma */
+        .tc-titulo {{ color: #0f172a !important; }}
+        .tc-desc {{ color: #475569 !important; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -347,17 +355,18 @@ if st.session_state.get("ver_pantalla_tv", False):
                 c_titulo = colores_titulo[idx % len(colores_titulo)]
                 c_f_hora = colores_fondo_hora[idx % len(colores_fondo_hora)]
                 
+                # --- HTML CORREGIDO Y LIMPIO ---
                 html_tarjeta = f"""
-                <div style="display: flex; background-color: white; border-radius: 14px; margin-bottom: 16px; box-shadow: 0 6px 20px rgba(0,0,0,0.25); overflow: hidden; animation: slideIn 0.5s ease-out;">
-                    <div style="width: 15px; background-color: {c_pestana}; flex-shrink: 0;"></div>
+                <div style="display: flex; background-color: white !important; border-radius: 14px; margin-bottom: 16px; box-shadow: 0 6px 20px rgba(0,0,0,0.25); overflow: hidden; animation: slideIn 0.5s ease-out;">
+                    <div style="width: 15px; background-color: {c_pestana} !important; flex-shrink: 0;"></div>
                     <div style="padding: 18px 24px; flex-grow: 1;">
                         <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px;">
-                            <div style="font-weight: 800; font-size: calc(1.35rem * var(--tv-scale)); color: #0f172a; line-height: 1.2;">{it['titulo']}</div>
-                            <div style="background-color: {c_f_hora}; color: {c_titulo}; font-weight: 900; font-size: calc(1.05rem * var(--tv-scale)); padding: 6px 14px; border-radius: 8px; border: 1px solid {c_pestana}; white-space: nowrap;">
+                            <div class="tc-titulo" style="font-weight: 800; font-size: calc(1.35rem * var(--tv-scale)); line-height: 1.2;">{it['titulo']}</div>
+                            <div style="background-color: {c_f_hora} !important; color: {c_titulo} !important; font-weight: 900; font-size: calc(1.05rem * var(--tv-scale)); padding: 6px 14px; border-radius: 8px; border: 1px solid {c_pestana} !important; white-space: nowrap;">
                                 <i class="ph-fill ph-clock" style="vertical-align: middle;"></i> {it['rango']}
                             </div>
                         </div>
-                        <div style="margin-top: 8px; color: #475569; font-weight: 600; font-size: calc(1.1rem * var(--tv-scale)); line-height: 1.3;">{it['desc']}</div>
+                        <div class="tc-desc" style="margin-top: 8px; font-weight: 600; font-size: calc(1.1rem * var(--tv-scale)); line-height: 1.3;">{it['desc']}</div>
                     </div>
                 </div>
                 """
