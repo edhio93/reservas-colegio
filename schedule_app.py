@@ -2342,19 +2342,23 @@ elif page == "Modo TV":
                     supabase.table("eventos_tv").update({"is_active": False}).eq("id", ev_dict[sel_ev]).execute()
                     st.success("Evento eliminado"); st.rerun()
             else: st.info("No hay eventos activos.")
+            
         with col_del2:
-            anns = supabase.table("anuncios_urgentes").select("id, titulo, prioridad").eq("is_active", True).neq("prioridad", 999).execute().data or []
+            # CORRECCIÓN: Quitamos .neq("prioridad", 999) para que aparezca la alerta roja en la lista
+            anns = supabase.table("anuncios_urgentes").select("id, titulo, prioridad").eq("is_active", True).execute().data or []
             if anns:
                 def formatear_aviso_borrar(a):
+                    if str(a['prioridad']) == "999":
+                        return "🚨 [ALERTA ROJA ACTIVA INTERRUPCIÓN]"
                     icono = "🔴" if str(a['prioridad']) == "1" else "🟡"
                     return f"{icono} {a['titulo']}"
                 
                 an_dict = {formatear_aviso_borrar(a): a['id'] for a in anns}
-                sel_an = st.selectbox("Borrar Aviso:", ["-- Seleccionar --"] + list(an_dict.keys()))
-                if st.button("🗑️ Eliminar Aviso", use_container_width=True) and sel_an != "-- Seleccionar --":
+                sel_an = st.selectbox("Borrar Aviso o Alerta:", ["-- Seleccionar --"] + list(an_dict.keys()))
+                if st.button("🗑️ Eliminar Aviso / Alerta", use_container_width=True) and sel_an != "-- Seleccionar --":
                     supabase.table("anuncios_urgentes").update({"is_active": False}).eq("id", an_dict[sel_an]).execute()
-                    st.success("Aviso eliminado"); st.rerun()
-            else: st.info("No hay avisos activos.")
+                    st.success("Contenido desactivado correctamente"); st.rerun()
+            else: st.info("No hay avisos ni alertas activas.")
 
         st.divider()
         st.subheader("📋 Registros Activos")
@@ -2365,9 +2369,10 @@ elif page == "Modo TV":
             st.write("**Eventos del Cronograma:**")
             st.dataframe(df_ev, use_container_width=True, hide_index=True)
             
-        df_an = pd.DataFrame(supabase.table("anuncios_urgentes").select("titulo, descripcion, prioridad").eq("is_active", True).neq("prioridad", 999).execute().data or [])
+        # CORRECCIÓN: Quitamos .neq("prioridad", 999) para ver la Alerta Roja en la tabla resumen
+        df_an = pd.DataFrame(supabase.table("anuncios_urgentes").select("titulo, descripcion, prioridad").eq("is_active", True).execute().data or [])
         if not df_an.empty:
-            df_an["prioridad"] = df_an["prioridad"].apply(lambda x: "🔴 Alta" if str(x) == "1" else "🟡 Media")
+            df_an["prioridad"] = df_an["prioridad"].apply(lambda x: "🚨 CRÍTICA (Alerta Roja)" if str(x) == "999" else ("🔴 Alta" if str(x) == "1" else "🟡 Media"))
             df_an.rename(columns={"prioridad": "Nivel"}, inplace=True)
-            st.write("**Avisos Laterales:**")
+            st.write("**Avisos Laterales y Alertas del Sistema:**")
             st.dataframe(df_an, use_container_width=True, hide_index=True)
