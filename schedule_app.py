@@ -683,59 +683,59 @@ if not st.session_state.logged:
             st.markdown("<p style='text-align: center; color: gray; font-size: 0.9rem;'>Reserva de Recursos y Espacios</p>", unsafe_allow_html=True)
             
             with st.container(border=True):
-            tipo_user = st.radio("Acceder como:", ["Profesor", "Administrador", "Mensajería Interna"], horizontal=True)
-            st.markdown("---")
+                tipo_user = st.radio("Acceder como:", ["Profesor", "Administrador", "Mensajería Interna"], horizontal=True)
+                st.markdown("---")
 
-            if tipo_user == "Administrador":
-                with st.form("admin_form", clear_on_submit=True):
-                    u_adm = st.text_input("Nombre de Administrador", placeholder="Ej: Edgar")
-                    p_adm = st.text_input("Contraseña", type="password", placeholder="••••••••")
-                    
-                    if st.form_submit_button("INICIAR SESIÓN ADMIN", use_container_width=True, type="primary"):
-                        try:
-                            # 🔒 Llamada segura al panel de Secrets de Streamlit
-                            clave_admin_segura = st.secrets["passwords"]["admin_pass"]
-                        except KeyError:
-                            st.error("❌ Error: Falta configurar [passwords] admin_pass en los Secrets de Streamlit.")
-                            st.stop()
+                if tipo_user == "Administrador":
+                    with st.form("admin_form", clear_on_submit=True):
+                        u_adm = st.text_input("Nombre de Administrador", placeholder="Ej: Edgar")
+                        p_adm = st.text_input("Contraseña", type="password", placeholder="••••••••")
+                        
+                        if st.form_submit_button("INICIAR SESIÓN ADMIN", use_container_width=True, type="primary"):
+                            try:
+                                # 🔒 Llamada segura al panel de Secrets de Streamlit
+                                clave_admin_segura = st.secrets["passwords"]["admin_pass"]
+                            except KeyError:
+                                st.error("❌ Error: Falta configurar [passwords] admin_pass en los Secrets de Streamlit.")
+                                st.stop()
 
-                        if u_adm.strip().upper() in ["EDGAR", "GLORIA", "CARLOS", "ALEXIS"] and p_adm == clave_admin_segura:
-                            st.session_state.logged = True
-                            st.session_state.role = "admin"
-                            st.session_state.profesor_name = u_adm.strip().capitalize()
-                            st.rerun()
-                        else:
-                            st.error("Acceso denegado")
-                            
-            elif tipo_user == "Mensajería Interna":
-                st.info("💡 Acceso rápido libre para la gestión de las Pantallas Informativas.")
-                if st.button("ENTRAR AL PANEL DE MENSAJERÍA", use_container_width=True, type="primary"):
-                    st.session_state.logged = True
-                    st.session_state.role = "mensajeria"
-                    st.rerun()
-                    
-            else:
-                with st.form("profe_form", clear_on_submit=True):
-                    u_profe = st.selectbox("Busca tu nombre", PROFESORES, index=None, placeholder="Selecciona...")
-                    p_profe = st.text_input("Clave de Acceso", type="password", placeholder="6904")
-                    
-                    if st.form_submit_button("ENTRAR AL PANEL", use_container_width=True, type="primary"):
-                        try:
-                            # 🔒 Llamada segura al panel de Secrets de Streamlit
-                            clave_profe_segura = st.secrets["passwords"]["profe_pass"]
-                        except KeyError:
-                            st.error("❌ Error: Falta configurar [passwords] profe_pass en los Secrets de Streamlit.")
-                            st.stop()
+                            if u_adm.strip().upper() in ["EDGAR", "GLORIA", "CARLOS", "ALEXIS"] and p_adm == clave_admin_segura:
+                                st.session_state.logged = True
+                                st.session_state.role = "admin"
+                                st.session_state.profesor_name = u_adm.strip().capitalize()
+                                st.rerun()
+                            else:
+                                st.error("Acceso denegado")
+                                
+                elif tipo_user == "Mensajería Interna":
+                    st.info("💡 Acceso rápido libre para la gestión de las Pantallas Informativas.")
+                    if st.button("ENTRAR AL PANEL DE MENSAJERÍA", use_container_width=True, type="primary"):
+                        st.session_state.logged = True
+                        st.session_state.role = "mensajeria"
+                        st.rerun()
+                        
+                else:
+                    with st.form("profe_form", clear_on_submit=True):
+                        u_profe = st.selectbox("Busca tu nombre", PROFESORES, index=None, placeholder="Selecciona...")
+                        p_profe = st.text_input("Clave de Acceso", type="password", placeholder="6904")
+                        
+                        if st.form_submit_button("ENTRAR AL PANEL", use_container_width=True, type="primary"):
+                            try:
+                                # 🔒 Llamada segura al panel de Secrets de Streamlit
+                                clave_profe_segura = st.secrets["passwords"]["profe_pass"]
+                            except KeyError:
+                                st.error("❌ Error: Falta configurar [passwords] profe_pass en los Secrets de Streamlit.")
+                                st.stop()
 
-                        if u_profe and p_profe == clave_profe_segura:
-                            st.session_state.logged = True
-                            st.session_state.role = "profesor"
-                            st.session_state.profesor_name = u_profe
-                            st.rerun()
-                        elif not u_profe:
-                            st.warning("Por favor selecciona tu nombre")
-                        else:
-                            st.error("Contraseña incorrecta")
+                            if u_profe and p_profe == clave_profe_segura:
+                                st.session_state.logged = True
+                                st.session_state.role = "profesor"
+                                st.session_state.profesor_name = u_profe
+                                st.rerun()
+                            elif not u_profe:
+                                st.warning("Por favor selecciona tu nombre")
+                            else:
+                                st.error("Contraseña incorrecta")
                 
             # --- AQUÍ VA EL ACCESO PÚBLICO (Fuera de los formularios) ---
             st.markdown("---")
