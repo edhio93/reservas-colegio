@@ -870,58 +870,57 @@ html_reloj = """
 </body>
 </html>
 """
-# ==============================================================================
-# --- MODO PÚBLICO: ENRUTAMIENTO VÍA CÓDIGO QR ---
-# ==============================================================================
-# Si la URL contiene "?page=reporte", mostramos la interfaz pública y bloqueamos el panel admin
-if "page" in st.query_params and st.query_params["page"] == "reporte":
-    st.image("https://images.vexels.com/content/135222/preview/university-building-simple-icon-135222.png", width=80)
-    st.header("🚨 Reportar Falla de Equipo")
+components.html(html_reloj, height=110)
+
+# ------------------------------------------------------------------
+# MANEJO DE REPORTE DE FALLAS PÚBLICO (Vía QR Maestro)
+# ------------------------------------------------------------------
+query_params = st.query_params
+if "reporte_fallas" in query_params:
+    st.markdown("---")
+    st.markdown("<h3 style='text-align: center; color: #d32f2f;'>🚨 Sistema de Reporte de Fallas CAV</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: gray;'>Selecciona el equipo dañado y describe el problema.</p>", unsafe_allow_html=True)
     
-    recurso_id = st.query_params.get("id")
-    
-    if recurso_id:
-        try:
-            # Buscar el nombre del equipo en la base de datos
-            recurso = supabase.table("recursos").select("nombre").eq("id", recurso_id).execute().data
-            
-            if recurso:
-                st.info(f"Estás reportando una falla para el equipo: **{recurso[0]['nombre']}**")
-                
-                with st.form("form_reporte_publico", clear_on_submit=True):
-                    st.write("Por favor, completa los siguientes datos para que Soporte Técnico pueda ayudarte.")
-                    
-                    # NUEVO CAMPO OBLIGATORIO
-                    nombre_reporta = st.text_input("👤 Tu Nombre Completo (Obligatorio):", placeholder="Ej. Juan Pérez")
-                    descripcion = st.text_area("📝 Describe detalladamente el problema (Obligatorio):", height=150, placeholder="Ej. El proyector no enciende y parpadea una luz roja...")
-                    
-                    submit = st.form_submit_button("🚀 Enviar Reporte al Equipo Técnico", type="primary", use_container_width=True)
-                    
-                    if submit:
-                        if not nombre_reporta.strip() or not descripcion.strip():
-                            st.warning("⚠️ Debes ingresar tu nombre y la descripción del problema para enviar el reporte.")
-                        else:
-                            with st.spinner("Enviando reporte..."):
-                                # Guardar en la tabla mantenimientos
-                                supabase.table("mantenimientos").insert({
-                                    "recurso_id": recurso_id,
-                                    "descripcion": descripcion.strip(),
-                                    "estado": "Reportado (Vía QR)",
-                                    "reportado_por": nombre_reporta.strip() # Guardamos el nombre aquí
-                                }).execute()
-                                
-                                st.success("✅ ¡Reporte enviado con éxito! El Departamento de Enlaces ha sido notificado.")
-                                st.balloons() # ¡GLOBITOS ACTIVADOS! 🎈
-            else:
-                st.error("❌ El equipo que intentas reportar no existe o fue dado de baja.")
-        except Exception as e:
-            st.error(f"Error de conexión con la base de datos: {e}")
-    else:
-        st.error("❌ Enlace no válido. Falta el identificador del equipo.")
+    try:
+        recursos_activos = supabase.table("recursos").select("id, nombre").eq("estado", "Activo").execute().data or []
+        opciones_recursos = {r['nombre']: r['id'] for r in recursos_activos}
+    except:
+        opciones_recursos = {}
+
+    if not opciones_recursos:
+        st.error("No hay recursos activos en la base de datos para reportar.")
+        st.stop()
+
+    with st.form("public_falla_maestra"):
+        recurso_seleccionado = st.selectbox("1️⃣ ¿Qué equipo o sala presenta la falla?", ["-- Selecciona un Recurso --"] + list(opciones_recursos.keys()))
+        falla_desc = st.text_area("2️⃣ Describe el problema (Ej: No da imagen, no hay internet, cable roto...)", height=100)
         
-    # DETENEMOS LA APP AQUÍ: Esto evita que el usuario público vea el menú lateral de administrador
-    st.stop()
-# ==============================================================================
+        if st.form_submit_button("📢 ENVIAR REPORTE AL SOPORTE TÉCNICO", use_container_width=True, type="primary"):
+            if recurso_seleccionado == "-- Selecciona un Recurso --":
+                st.warning("⚠️ Debes seleccionar un recurso de la lista.")
+            elif not falla_desc.strip():
+                st.warning("⚠️ Debes escribir una descripción de la falla.")
+            else:
+                try:
+                    rec_id = opciones_recursos[recurso_seleccionado]
+                    hoy_str = dt.date.today().strftime("%Y-%m-%d")
+                    supabase.table("tickets").insert({
+                        "recurso_id": rec_id,
+                        "profesor": "Reporte General (QR Maestro)",
+                        "fecha": hoy_str,
+                        "falla": falla_desc.strip(),
+                        "estado": "Pendiente"
+                    }).execute()
+                    st.success("✅ ¡Reporte enviado con éxito! El equipo de Inspectoría/Soporte ha sido notificado.")
+                    time.sleep(3)
+                    # Limpiar la URL para reiniciar
+                    st.query_params.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error interno al enviar el reporte: {e}")
+    
+    st.stop() # Detenemos la app para que solo vean el formulario
+                # ==============================================================================
 with st.sidebar:
     components.html(html_reloj, height=85)
     st.markdown("<hr style='margin: 0px 0px 10px 0px; padding: 0;'>", unsafe_allow_html=True)
