@@ -683,15 +683,16 @@ if not st.session_state.logged:
             st.markdown("<p style='text-align: center; color: gray; font-size: 0.9rem;'>Reserva de Recursos y Espacios</p>", unsafe_allow_html=True)
             
             with st.container(border=True):
-                tipo_user = st.radio("Acceder como:", ["Profesor", "Administrador", "Mensajería Interna"], horizontal=True)
+                # Quitamos "Profesor" de las opciones. Ahora solo quedan Admin y Mensajería
+                tipo_user = st.radio("Acceder como:", ["Administrador", "Mensajería Interna"], horizontal=True)
                 st.markdown("---")
 
                 if tipo_user == "Administrador":
                     with st.form("admin_form", clear_on_submit=True):
-                        u_adm = st.text_input("Nombre de Administrador", placeholder="Ej: Edgar")
+                        u_adm = st.text_input("Usuario (Soporte Técnico)", placeholder="Ej: Edgar")
                         p_adm = st.text_input("Contraseña", type="password", placeholder="••••••••")
                         
-                        if st.form_submit_button("INICIAR SESIÓN ADMIN", use_container_width=True, type="primary"):
+                        if st.form_submit_button("INICIAR SESIÓN", use_container_width=True, type="primary"):
                             try:
                                 # 🔒 Llamada segura al panel de Secrets de Streamlit
                                 clave_admin_segura = st.secrets["passwords"]["admin_pass"]
@@ -705,10 +706,10 @@ if not st.session_state.logged:
                                 st.session_state.profesor_name = u_adm.strip().capitalize()
                                 st.rerun()
                             else:
-                                st.error("Acceso denegado")
+                                st.error("Acceso denegado. Credenciales incorrectas.")
                                 
                 elif tipo_user == "Mensajería Interna":
-                    st.info("💡 Acceso rápido libre para la gestión de las Pantallas Informativas.")
+                    st.info("💡 Acceso rápido para la gestión de las Pantallas Informativas.")
                     if st.button("ENTRAR AL PANEL DE MENSAJERÍA", use_container_width=True, type="primary"):
                         st.session_state.logged = True
                         st.session_state.role = "mensajeria"
