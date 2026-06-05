@@ -610,56 +610,58 @@ if page_param == "reporte":
     st.markdown("<p style='text-align: center; color: #64748b; font-size: 14px; margin-top: 5px;'>Colegio Antonio Varas - Depto. Enlaces</p>", unsafe_allow_html=True)
     st.write("") 
     
-    # 4. LÓGICA DEL REPORTE
-    recurso_id_str = query_params.get("id", "")
-    
-    if recurso_id_str:
-        try:
-            # ¡CLAVE AQUÍ! Convertimos el ID de texto a número entero
-            recurso_id = int(recurso_id_str)
-            
-            recurso = supabase.table("recursos").select("nombre").eq("id", recurso_id).execute().data
-            if recurso:
-                st.success(f"🛠️ **Equipo Identificado:** {recurso[0]['nombre']}")
-                
-                with st.form("form_reporte_publico", clear_on_submit=True):
-                    st.markdown("#### 📝 Detalles del Problema")
-                    st.markdown("<span style='color: #64748b; font-size: 14px;'>Ayúdanos con estos datos para que Soporte Técnico lo resuelva rápido.</span>", unsafe_allow_html=True)
-                    st.write("")
-                    
-                    nombre_reporta = st.text_input("👤 Tu Nombre Completo:", placeholder="Ej. Juan Pérez")
-                    descripcion = st.text_area("🔧 Describe el problema detalladamente:", height=120, placeholder="Ej. El proyector no enciende y parpadea una luz roja...")
-                    
-                    st.write("")
-                    submit = st.form_submit_button("🚀 Enviar Reporte Técnico", type="primary", use_container_width=True)
-                    
-                    if submit:
-                        if not nombre_reporta.strip() or not descripcion.strip():
-                            st.error("⚠️ Faltan datos: Por favor ingresa tu nombre y la descripción.")
-                        else:
-                            with st.spinner("Enviando reporte a Enlaces..."):
-                                # ¡CORREGIDA LA INDENTACIÓN AQUÍ!
-                                supabase.table("mantenimientos").insert({
-                                    "recurso_id": recurso_id,
-                                    "descripcion": descripcion.strip(),
-                                    "estado": "Reportado (Vía QR)",
-                                    "reportado_por": nombre_reporta.strip(),
-                                    "fecha": str(dt.date.today())  
-                                }).execute()
-                                
-                                st.success("✅ ¡Reporte enviado con éxito! Gracias por avisarnos.")
-                                st.balloons() # 🎈 ¡AQUÍ ESTÁN LOS GLOBOS! 🎈
-                                time.sleep(4) 
-            else:
-                st.error("❌ El equipo que intentas reportar no existe o fue dado de baja.")
-        except ValueError:
-            st.error("❌ El enlace del QR es inválido (el ID debe ser un número).")
-        except Exception as e:
-            st.error(f"Error técnico al guardar: {e}")
-    else:
-        st.error("❌ Enlace no válido. Falta el identificador del equipo.")
+    # 4. LÓGICA DEL REPORTE MAESTRO
+    try:
+        # Traer todos los recursos para el selectbox
+        recursos_activos = supabase.table("recursos").select("id, nombre").execute().data or []
+        opciones_recursos = {r['nombre']: r['id'] for r in recursos_activos}
+    except Exception as e:
+        st.error(f"Error al cargar recursos: {e}")
+        opciones_recursos = {}
+
+    if not opciones_recursos:
+        st.error("❌ No hay recursos en la base de datos para reportar.")
+        st.stop()
+
+    with st.form("form_reporte_publico", clear_on_submit=True):
+        st.markdown("#### 📝 Detalles del Problema")
+        st.markdown("<span style='color: #64748b; font-size: 14px;'>Ayúdanos con estos datos para que Soporte Técnico lo resuelva rápido.</span>", unsafe_allow_html=True)
+        st.write("")
         
-    st.stop() # Detiene la app aquí para que no cargue el Login de los profes
+        # EL NUEVO SELECTBOX (Menú desplegable)
+        recurso_seleccionado = st.selectbox("🖥️ Selecciona el equipo o sala que presenta la falla:", ["-- Selecciona un Equipo --"] + sorted(list(opciones_recursos.keys())))
+        
+        nombre_reporta = st.text_input("👤 Tu Nombre Completo:", placeholder="Ej. Juan Pérez")
+        descripcion = st.text_area("🔧 Describe el problema detalladamente:", height=120, placeholder="Ej. El proyector no enciende y parpadea una luz roja...")
+        
+        st.write("")
+        submit = st.form_submit_button("🚀 Enviar Reporte Técnico", type="primary", use_container_width=True)
+        
+        if submit:
+            if recurso_seleccionado == "-- Selecciona un Equipo --":
+                st.error("⚠️ Debes seleccionar un equipo de la lista.")
+            elif not nombre_reporta.strip() or not descripcion.strip():
+                st.error("⚠️ Faltan datos: Por favor ingresa tu nombre y la descripción.")
+            else:
+                with st.spinner("Enviando reporte a Enlaces..."):
+                    try:
+                        recurso_id = opciones_recursos[recurso_seleccionado]
+                        supabase.table("mantenimientos").insert({
+                            "recurso_id": recurso_id,
+                            "descripcion": descripcion.strip(),
+                            "estado": "Reportado (Vía QR)",
+                            "reportado_por": nombre_reporta.strip(),
+                            "fecha": str(dt.date.today())  
+                        }).execute()
+                        
+                        st.success("✅ ¡Reporte enviado con éxito! Gracias por avisarnos.")
+                        st.balloons() # 🎈 ¡AQUÍ ESTÁN LOS GLOBOS! 🎈
+                        time.sleep(4)
+                        st.rerun() # Limpia la pantalla para el siguiente reporte
+                    except Exception as e:
+                        st.error(f"Error técnico al guardar: {e}")
+
+    st.stop() # Detiene la app aquí para que no cargue el Login del sistema interno
 # ==============================================================================
 # ------------------------------------------------------------------
 # 1) INICIALIZACIÓN DE DATOS
@@ -919,57 +921,7 @@ html_reloj = """
 </body>
 </html>
 """
-# ==============================================================================
-# --- MODO PÚBLICO: ENRUTAMIENTO VÍA CÓDIGO QR ---
-# ==============================================================================
-# Si la URL contiene "?page=reporte", mostramos la interfaz pública y bloqueamos el panel admin
-if "page" in st.query_params and st.query_params["page"] == "reporte":
-    st.image("https://images.vexels.com/content/135222/preview/university-building-simple-icon-135222.png", width=80)
-    st.header("🚨 Reportar Falla de Equipo")
-    
-    recurso_id = st.query_params.get("id")
-    
-    if recurso_id:
-        try:
-            # Buscar el nombre del equipo en la base de datos
-            recurso = supabase.table("recursos").select("nombre").eq("id", recurso_id).execute().data
-            
-            if recurso:
-                st.info(f"Estás reportando una falla para el equipo: **{recurso[0]['nombre']}**")
-                
-                with st.form("form_reporte_publico", clear_on_submit=True):
-                    st.write("Por favor, completa los siguientes datos para que Soporte Técnico pueda ayudarte.")
-                    
-                    # NUEVO CAMPO OBLIGATORIO
-                    nombre_reporta = st.text_input("👤 Tu Nombre Completo (Obligatorio):", placeholder="Ej. Juan Pérez")
-                    descripcion = st.text_area("📝 Describe detalladamente el problema (Obligatorio):", height=150, placeholder="Ej. El proyector no enciende y parpadea una luz roja...")
-                    
-                    submit = st.form_submit_button("🚀 Enviar Reporte al Equipo Técnico", type="primary", use_container_width=True)
-                    
-                    if submit:
-                        if not nombre_reporta.strip() or not descripcion.strip():
-                            st.warning("⚠️ Debes ingresar tu nombre y la descripción del problema para enviar el reporte.")
-                        else:
-                            with st.spinner("Enviando reporte..."):
-                                # Guardar en la tabla mantenimientos
-                                supabase.table("mantenimientos").insert({
-                                    "recurso_id": recurso_id,
-                                    "descripcion": descripcion.strip(),
-                                    "estado": "Reportado (Vía QR)",
-                                    "reportado_por": nombre_reporta.strip() # Guardamos el nombre aquí
-                                }).execute()
-                                
-                                st.success("✅ ¡Reporte enviado con éxito! El Departamento de Enlaces ha sido notificado.")
-                                st.balloons() # ¡GLOBITOS ACTIVADOS! 🎈
-            else:
-                st.error("❌ El equipo que intentas reportar no existe o fue dado de baja.")
-        except Exception as e:
-            st.error(f"Error de conexión con la base de datos: {e}")
-    else:
-        st.error("❌ Enlace no válido. Falta el identificador del equipo.")
-        
-    # DETENEMOS LA APP AQUÍ: Esto evita que el usuario público vea el menú lateral de administrador
-    st.stop()
+
 # ==============================================================================
 with st.sidebar:
     components.html(html_reloj, height=85)
@@ -2147,25 +2099,32 @@ elif page == "Técnicos":
                 st.error(f"Error al cargar el historial desde la base de datos: {e}")
 
     # ---------------------------------------------------------
-    # MÓDULO 3: GENERADOR QR
+    # MÓDULO 3: GENERADOR QR MAESTRO
     # ---------------------------------------------------------
     elif modulo_tec == "📋 Generador QR":
-        st.subheader("Generador de Códigos QR")
-        res_data = supabase.table("recursos").select("*").execute().data
-        if res_data:
-            res_nombres = {r['nombre']: r['id'] for r in res_data}
-            sel_res = st.selectbox("Selecciona el equipo para generar QR:", sorted(list(res_nombres.keys())))
-            
-            # URL de tu app (Asegúrate que sea la correcta)
-            base_url = "https://enlaces.streamlit.app/" 
-            final_url = f"{base_url}?page=reporte&id={res_nombres[sel_res]}"
-            
+        st.subheader("📱 Generador de QR Maestro de Reportes")
+        st.markdown("""
+        Este código QR es **único para todo el colegio**. 
+        Imprímelo y pégalo en lugares estratégicos (Sala de profesores, Inspectoría, pasillos). 
+        Al escanearlo, el usuario abrirá el **Formulario Centralizado de Reportes** donde podrá elegir qué equipo o sala está fallando.
+        """)
+        
+        # URL de tu app para la página de reporte maestro (Sin ID)
+        base_url = "https://enlaces.streamlit.app/" 
+        final_url = f"{base_url}?page=reporte"
+        
+        col1, col2 = st.columns([1, 2])
+        with col1:
             qr = qrcode.make(final_url)
             buf = BytesIO()
             qr.save(buf, format="PNG")
             
-            st.image(buf.getvalue(), width=250, caption=f"Código QR para {sel_res}")
-            st.download_button("⬇️ Descargar Código QR", data=buf.getvalue(), file_name=f"QR_{sel_res}.png", mime="image/png")
+            st.image(buf.getvalue(), width=250, caption="Código QR Maestro")
+            
+        with col2:
+            st.info("💡 **Instrucciones de uso:**\n1. Descarga la imagen.\n2. Imprímela en tamaño carta o póster.\n3. Pégala en el colegio.\n\nOlvídate de generar un QR por cada equipo nuevo que compres.")
+            st.download_button("⬇️ Descargar Código QR Maestro", data=buf.getvalue(), file_name="QR_Maestro_Fallas.png", mime="image/png", type="primary")
+            st.code(final_url, language="html")
 # ------------------------------------------------------------------
 # SECCIÓN: CONFIGURACIÓN
 # ------------------------------------------------------------------
