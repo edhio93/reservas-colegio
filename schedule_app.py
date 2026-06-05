@@ -1157,11 +1157,42 @@ if page == "Registrar":
             if st.form_submit_button('💾 Guardar Registro', use_container_width=True, type="primary"):
                 if recs and fechas_a_registrar:
                     h_inicio, h_fin = [dt.datetime.strptime(t.strip(), '%H:%M').time() for t in hora.split(' a ')]
+                    
+                    # Validación 1: Revisar contra mantenimientos y caché local
                     conflictos_r, conflictos_m = check_all_conflicts(fechas_a_registrar, recs, h_inicio, h_fin, df, df_mantenimiento)
-                    if conflictos_r or conflictos_m:
-                        if conflictos_r: st.error(f"❌ **Conflicto de Reserva:**"); st.markdown(f"<ul>{''.join(conflictos_r)}</ul>", unsafe_allow_html=True)
-                        if conflictos_m: st.error(f"❌ **Conflicto de Mantenimiento:**"); st.markdown(f"<ul>{''.join(conflictos_m)}</ul>", unsafe_allow_html=True)
+                    
+                    # Validación 2: CONSULTA ESTRICTA EN TIEMPO REAL A SUPABASE
+                    # Esto evita choques si dos profes guardan al mismo tiempo
+                    hay_choque_tiempo_real = False
+                    
+                    for fecha in fechas_a_registrar:
+                        for rec in recs:
+                            id_rec_buscado = map_rec.get(rec)
+                            # Pedimos directamente a la base de datos las reservas de ese día y recurso
+                            db_check = supabase.table("reservas").select("hora_inicio, hora_fin, profesores(nombre)").eq("fecha", str(fecha)).eq("recurso", id_rec_buscado).execute()
+                            
+                            for registro_db in (db_check.data or []):
+                                h_ini_db = as_time(registro_db['hora_inicio'])
+                                h_fin_db = as_time(registro_db['hora_fin'])
+                                
+                                # Si hay solapamiento exacto
+                                if overlap(h_inicio, h_fin, h_ini_db, h_fin_db):
+                                    profe_ocupante = registro_db['profesores']['nombre'] if registro_db.get('profesores') else 'Otro usuario'
+                                    mensaje_choque = f"<li>{rec} el {fecha.strftime('%d/%m/%Y')} (Ya reservado por {profe_ocupante} justo ahora)</li>"
+                                    if mensaje_choque not in conflictos_r:
+                                        conflictos_r.append(mensaje_choque)
+                                    hay_choque_tiempo_real = True
+
+                    # Comprobamos si saltó alguna de las dos alarmas
+                    if conflictos_r or conflictos_m or hay_choque_tiempo_real:
+                        if conflictos_r: 
+                            st.error(f"❌ **Error: Alguien acaba de ocupar este horario:**")
+                            st.markdown(f"<ul>{''.join(set(conflictos_r))}</ul>", unsafe_allow_html=True)
+                        if conflictos_m: 
+                            st.error(f"❌ **Error: Equipo en Mantenimiento:**")
+                            st.markdown(f"<ul>{''.join(set(conflictos_m))}</ul>", unsafe_allow_html=True)
                     else:
+                        # Si todo está libre, procedemos a guardar
                         nuevas_reservas = []
                         for fecha in fechas_a_registrar:
                             for rec in recs:
@@ -1177,7 +1208,7 @@ if page == "Registrar":
                         try:
                             supabase.table("reservas").insert(nuevas_reservas).execute()
                             st.success("✅ ¡Reservas guardadas exitosamente!")
-                            st.cache_data.clear()
+                            st.cache_data.clear() # Limpiamos la caché global
                             
                             email_to = PROFESOR_DATA.get(prof)
                             if email_to:
@@ -1185,10 +1216,10 @@ if page == "Registrar":
                                 body = f"""<html><body><p>Hola {prof.split(' ')[0]},</p><p>Se ha(n) confirmado la(s) siguiente(s) reserva(s) a tu nombre:</p><ul><li><b>Curso:</b> {curso}</li><li><b>Recurso(s):</b> {', '.join(recs)}</li><li><b>Horario:</b> {hora}</li></ul><p><b>Fechas Registradas:</b></p><ul>{''.join([f'<li>{format_date_es(f)}</li>' for f in fechas_a_registrar])}</ul>{f"<p><b>Observaciones:</b> {obs}</p>" if obs else ""}<p>Saludos,<br>Sistema de Horarios CAV</p></body></html>"""
                                 send_email(subject, body, email_to)
                                 
-                            time.sleep(1); st.rerun()
+                            time.sleep(1)
+                            st.rerun()
                         except Exception as e:
                             st.error(f"Error al guardar en la nube: {e}")
-
 if page == "Base de datos":
     st.title("🗃️ Base de Datos de Reservas")
     st.info("Nota: Para eliminar una fila selecciónala y presiona Supr/Delete, luego guarda.")
