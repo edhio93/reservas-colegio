@@ -1120,20 +1120,30 @@ if page == "Registrar":
             st.markdown("---")
             c1, c2 = st.columns(2)
             fechas_a_registrar = []
+            
+            # 1. Definir la hora exacta en Chile
+            import pytz
+            tz_chile = pytz.timezone('America/Santiago')
+            hoy_chile = dt_datetime.now(tz_chile).date()
+
             if tipo_reserva == "Única":
-                default_date = df['Fecha'].max() if not df.empty else dt.date.today()
-                fecha = c1.date_input('Fecha', value=default_date, format="DD/MM/YYYY")
+                # Forzamos a que el valor por defecto sea hoy_chile
+                fecha = c1.date_input('Fecha', value=hoy_chile, format="DD/MM/YYYY")
                 fechas_a_registrar.append(fecha)
+                
             elif tipo_reserva == "Múltiples Fechas":
-                today = dt.date.today(); date_range = [today + dt.timedelta(days=i) for i in range(180)]
+                # Usamos hoy_chile como punto de partida
+                date_range = [hoy_chile + dt.timedelta(days=i) for i in range(180)]
                 df_dates = pd.DataFrame({"Seleccionar": [False] * len(date_range), "Fecha Disponible": [format_date_es(d) for d in date_range], "_date_obj": date_range})
                 with c1:
                     st.write("Selecciona las fechas deseadas:")
                     edited_dates_df = st.data_editor(df_dates, column_config={"Seleccionar": st.column_config.CheckboxColumn(required=True), "_date_obj": None}, hide_index=True, height=200, use_container_width=True)
                 selected_dates_df = edited_dates_df[edited_dates_df["Seleccionar"]]
                 fechas_a_registrar = sorted(selected_dates_df["_date_obj"].tolist())
+                
             else:
-                fecha_inicio = c1.date_input('Fecha de Inicio', value=dt.date.today(), format="DD/MM/YYYY")
+                # Forzamos el inicio de la recurrencia a hoy_chile
+                fecha_inicio = c1.date_input('Fecha de Inicio', value=hoy_chile, format="DD/MM/YYYY")
                 num_semanas = c1.number_input('Repetir durante (semanas)', min_value=1, max_value=52, value=4)
                 fechas_a_registrar = [fecha_inicio + dt.timedelta(weeks=i) for i in range(num_semanas)]
                 if fechas_a_registrar: c1.info(f"Se registrarán {len(fechas_a_registrar)} fechas.")
