@@ -2010,6 +2010,14 @@ elif page == "Técnicos":
             if res_data_raw:
                 nombres_recursos = sorted(list(set([r.get('nombre', 'Sin nombre') for r in res_data_raw])))
                 
+                # Inicializar estados para la descarga del archivo fuera del formulario
+                if "baja_lista" not in st.session_state:
+                    st.session_state.baja_lista = False
+                if "baja_docx_data" not in st.session_state:
+                    st.session_state.baja_docx_data = None
+                if "baja_filename" not in st.session_state:
+                    st.session_state.baja_filename = ""
+
                 with st.form("form_baja_indep", clear_on_submit=False): 
                     col_sel, col_datos_m = st.columns([1, 2])
                     with col_sel:
@@ -2027,13 +2035,11 @@ elif page == "Técnicos":
                         diagnosis = st.text_area("Diagnosis Técnico / Daño detectado", height=120)
                         
                         # --- INTEGRACIÓN GEMINI EN BAJAS ---
-                        # Nota: Dentro de un st.form, el botón debe ser submit o usarse fuera.
-                        # Para que funcione mejor, usaremos un botón especial.
                         btn_ia = st.form_submit_button("✨ IA: Mejorar Redacción Técnica")
                         if btn_ia:
                             if diagnosis:
                                 with st.spinner("Redactando profesionalmente..."):
-                                    prompt_baja = f"Convierte esta nota técnica en un párrafo formal para un informe de baja: '{diagnosis}'"
+                                    prompt_baja = f"Convierte esta nota técnica en un párrafo formal para un informe de baja de equipamiento tecnológico: '{diagnosis}'"
                                     texto_mejorado = consultar_gemini(prompt_baja)
                                     st.info(f"**Sugerencia:**\n{texto_mejorado}")
                             else:
@@ -2043,13 +2049,13 @@ elif page == "Técnicos":
                         recomendacion = st.text_area("Recomendación Técnica", height=80)
                         tecnico = st.text_input("Técnico Responsable")
 
-                    submit_baja = st.form_submit_button("🚫 Registrar Baja e Historial", type="primary", use_container_width=True)
+                    submit_baja = st.form_submit_button("🚫 Registrar Baja y Generar Informe Word", type="primary", use_container_width=True)
 
                     if submit_baja and not btn_ia:
                         if not diagnosis or not tecnico:
-                            st.warning("⚠️ Rellena los campos obligatorios.")
+                            st.warning("⚠️ Rellena los campos obligatorios (Diagnosis y Técnico).")
                         else:
-                            # Lógica de guardado en Supabase (tu código original)
+                            # Lógica de guardado en Supabase
                             datos_bd = {
                                 "recurso_nombre": recurso_cat_nom,
                                 "marca": marca_mod,
@@ -2062,13 +2068,83 @@ elif page == "Técnicos":
                                 "tecnico_responsable": tecnico,
                                 "fecha_baja": str(dt.date.today())
                             }
-                            supabase.table("equipos").insert(datos_bd).execute()
-                            st.success("✅ Baja registrada.")
-                            st.balloons()
+                            try:
+                                supabase.table("equipos").insert(datos_bd).execute()
+                                
+                                # Generar el documento Word dinámicamente en memoria
+                                docx_bytes = generar_docx_baja(datos_bd)
+                                
+                                if docx_bytes:
+                                    st.session_state.baja_docx_data = docx_bytes
+                                    st.session_state.baja_filename = f"Informe_Baja_{recurso_cat_nom.replace(' ', '_')}_{dt.date.today()}.docx"
+                                    st.session_state.baja_lista = True
+                                
+                                st.success("✅ Baja registrada exitosamente en la base de datos.")
+                                st.balloons()
+                            except Exception as e:
+                                st.error(f"Error al guardar en la base de datos: {e}")
+
+                # BOTÓN DE DESCARGA (Fuera del formulario para que Streamlit no lo bloquee)
+                if st.session_state.baja_lista and st.session_state.baja_docx_data:
+                    st.markdown("### 📥 ¡Informe Listo!")
+                    st.download_button(
+                        label="⬇️ Descargar Informe de Baja (.docx)",
+                        data=st.session_state.baja_docx_data,
+                        file_name=st.session_state.baja_filename,
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        use_container_width=True
+                    )
+                    if st.button("Limpiar Formulario / Registrar Otro"):
+                        st.session_state.baja_lista = False
+                        st.session_state.baja_docx_data = None
+                        st.rerun()
 
         with tab_historial:
             st.subheader("📋 Historial de Bajas")
-            # ... (Aquí va tu código de historial que ya funciona) ...
+            st.write("Consulta y descarga los informes técnicos de todos los equipos dados de baja en el establecimiento.")
+            
+            # Consultar los datos de baja desde la tabla 'equipos'
+            try:
+                bajas_db = supabase.table("equipos").select("*").order("fecha_baja", desc=True).execute().data
+                
+                if bajas_db:
+                    # Crear DataFrame para visualización limpia
+                    df_bajas = pd.DataFrame(bajas_db)
+                    
+                    # Renombrar columnas estéticamente para mostrar al usuario
+                    df_mostrar = df_bajas[[
+                        "fecha_baja", "recurso_nombre", "cantidad_baja", "marca", "serie", "tecnico_responsable"
+                    ]].copy()
+                    df_mostrar.columns = ["Fecha Baja", "Equipo / Recurso", "Cant.", "Marca/Modelo", "N° Serie", "Técnico Responsable"]
+                    
+                    st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
+                    
+                    # Sección para volver a descargar cualquier informe pasado
+                    st.markdown("### 🔍 Re-generar y Descargar Informe del Historial")
+                    opciones_historial = [f"{b['fecha_baja']} - {b['recurso_nombre']} (Serie: {b['serie'] or 'S/N'})" for b in bajas_db]
+                    seleccion_h = st.selectbox("Selecciona un registro para descargar su documento Word:", opciones_historial)
+                    
+                    if seleccion_h:
+                        # Obtener el índice seleccionado
+                        idx_sel = opciones_historial.index(seleccion_h)
+                        datos_registro = bajas_db[idx_sel]
+                        
+                        # Volver a armar el Word con los datos de esa fila
+                        word_bytes_historial = generar_docx_baja(datos_registro)
+                        
+                        if word_bytes_historial:
+                            nombre_archivo_h = f"Informe_Baja_{datos_registro['recurso_nombre'].replace(' ', '_')}_{datos_registro['fecha_baja']}.docx"
+                            st.download_button(
+                                label=f"⬇️ Descargar Word de {datos_registro['recurso_nombre']}",
+                                data=word_bytes_historial,
+                                file_name=nombre_archivo_h,
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                key=f"btn_hist_{datos_registro['id']}"
+                            )
+                else:
+                    st.info("📂 No se han registrado bajas de equipos en el sistema aún.")
+            except Exception as e:
+                st.error(f"Error al cargar el historial desde la base de datos: {e}")
 
     # ---------------------------------------------------------
     # MÓDULO 3: GENERADOR QR
