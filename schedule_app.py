@@ -66,6 +66,54 @@ def obtener_clima_vicuna():
 
 st.set_page_config(page_title="Sistema de Horarios CAV", page_icon="📅", layout="wide", initial_sidebar_state="expanded")
 
+# ==============================================================================
+# --- OPTIMIZACIÓN INTELIGENTE PARA CELULARES (MÓVIL) ---
+# ==============================================================================
+st.markdown("""
+<style>
+    /* 📱 ESTILOS EXCLUSIVOS PARA CELULARES (Pantallas de menos de 768px) */
+    @media (max-width: 768px) {
+        /* 1. Aprovechar el 100% del ancho del celular sin márgenes vacíos */
+        .block-container {
+            padding-top: 1rem !important;
+            padding-bottom: 1rem !important;
+            padding-left: 0.8rem !important;
+            padding-right: 0.8rem !important;
+        }
+        
+        /* 2. Hacer los títulos más legibles y proporcionados al teléfono */
+        h1 { font-size: 28px !important; text-align: center; }
+        h2 { font-size: 22px !important; text-align: center; }
+        h3 { font-size: 18px !important; }
+        
+        /* 3. Botones más grandes ("Finger-Friendly") para no errar el toque */
+        .stButton>button {
+            height: 3.2rem !important;
+            font-size: 16px !important;
+            border-radius: 12px !important;
+            font-weight: bold !important;
+        }
+        
+        /* 4. Agrandar las cajas de texto para que sea cómodo escribir con el teclado del celular */
+        .stTextInput>div>div>input, .stTextArea>div>div>textarea {
+            padding: 12px !important;
+            font-size: 16px !important;
+        }
+        
+        /* 5. Diseñar el contenedor del Login como una tarjeta de App móvil */
+        [data-testid="stForm"] {
+            padding: 15px !important;
+            border-radius: 14px !important;
+            box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.08) !important;
+        }
+        
+        /* Ocultar elementos decorativos innecesarios en celular para ahorrar espacio */
+        .stMarkdown hr {
+            margin: 10px 0px !important;
+        }
+    }
+</style>
+""", unsafe_allow_html=True)
 
 @st.cache_data(ttl=1800) # Se actualiza cada 30 minutos
 def obtener_eventos_google_calendar(url_ics):
