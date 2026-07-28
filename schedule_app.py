@@ -1924,179 +1924,625 @@ elif page == "Técnicos":
     # MÓDULO 2: BAJA DE EQUIPOS
     # ---------------------------------------------------------
     elif modulo_tec == "🗑️ Baja de Equipos":
-        st.subheader("🗑️ Procesar Baja y Generar Informe")
-        
-        # Función para generar Word (Se mantiene tu lógica estética)
-        def generar_docx_baja(datos, foto_data=None):
-            try:
-                document = Document()
-                # ... (Tu configuración de estilos burdeo y fuentes igual que antes) ...
-                titulo = document.add_paragraph()
-                titulo.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-                r_tit = titulo.add_run('INFORME TÉCNICO DE BAJA DE EQUIPO')
-                r_tit.bold = True
-                r_tit.font.size = Pt(16)
-                r_tit.font.color.rgb = RGBColor(128, 0, 32)
+        from PIL import Image, ImageOps
+        from docx.shared import Cm
+        from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
 
-                document.add_heading('1. IDENTIFICACIÓN DEL EQUIPO', level=1)
-                table = document.add_table(rows=6, cols=2)
-                table.style = 'Table Grid'
-                # ... Rellenar tabla ...
-                document.add_heading('2. ESTADO TÉCNICO', level=1)
-                document.add_paragraph(datos['diagnosis'])
-                document.add_heading('3. JUSTIFICACIÓN', level=1)
-                document.add_paragraph(datos['justificacion'])
+        st.subheader("🗑️ Procesar Baja y Generar Informe")
+        st.caption("Genera un informe institucional en Word y adjunta todas las fotografías necesarias.")
+
+        COLOR_BURDEO = RGBColor(128, 0, 32)
+        RUTA_LOGO_BAJA = Path(__file__).parent / "logocav.png"
+
+        def texto_seguro(valor, por_defecto=""):
+            if valor is None:
+                return por_defecto
+            texto = str(valor).strip()
+            return texto if texto else por_defecto
+
+        def nombre_archivo_seguro(texto):
+            limpio = re.sub(r"[^A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ_-]+", "_", texto_seguro(texto, "Equipo"))
+            return limpio.strip("_") or "Equipo"
+
+        def quitar_bordes_tabla(tabla):
+            """Quita los bordes visibles de una tabla Word."""
+            tbl = tabla._tbl
+            tbl_pr = tbl.tblPr
+            borders = tbl_pr.first_child_found_in("w:tblBorders")
+            if borders is None:
+                borders = OxmlElement("w:tblBorders")
+                tbl_pr.append(borders)
+
+            for borde in ("top", "left", "bottom", "right", "insideH", "insideV"):
+                tag = "w:" + borde
+                elemento = borders.find(qn(tag))
+                if elemento is None:
+                    elemento = OxmlElement(tag)
+                    borders.append(elemento)
+                elemento.set(qn("w:val"), "nil")
+
+        def sombrear_celda(celda, color_hex):
+            tc_pr = celda._tc.get_or_add_tcPr()
+            shd = tc_pr.find(qn("w:shd"))
+            if shd is None:
+                shd = OxmlElement("w:shd")
+                tc_pr.append(shd)
+            shd.set(qn("w:fill"), color_hex)
+
+        def configurar_fuente_run(run, tamano=11, negrita=False, color=None):
+            run.font.name = "Arial"
+            run.font.size = Pt(tamano)
+            run.bold = negrita
+            if color:
+                run.font.color.rgb = color
+            run._element.rPr.rFonts.set(qn("w:eastAsia"), "Arial")
+
+        def agregar_titulo_seccion(documento, texto):
+            p = documento.add_paragraph()
+            p.paragraph_format.space_before = Pt(10)
+            p.paragraph_format.space_after = Pt(5)
+            r = p.add_run(texto)
+            configurar_fuente_run(r, tamano=12, negrita=True, color=COLOR_BURDEO)
+            return p
+
+        def preparar_foto_para_word(foto_bytes):
+            """
+            Corrige orientación, reduce imágenes demasiado grandes y devuelve
+            un BytesIO compatible con Word.
+            """
+            entrada = BytesIO(foto_bytes)
+            imagen = Image.open(entrada)
+            imagen = ImageOps.exif_transpose(imagen)
+
+            if imagen.mode not in ("RGB", "L"):
+                fondo = Image.new("RGB", imagen.size, "white")
+                if "A" in imagen.getbands():
+                    fondo.paste(imagen, mask=imagen.getchannel("A"))
+                else:
+                    fondo.paste(imagen)
+                imagen = fondo
+            elif imagen.mode == "L":
+                imagen = imagen.convert("RGB")
+
+            imagen.thumbnail((1800, 1800))
+            salida = BytesIO()
+            imagen.save(salida, format="JPEG", quality=86, optimize=True)
+            salida.seek(0)
+            return salida
+
+        def generar_docx_baja(datos, fotos=None):
+            """
+            Genera el Word con formato institucional.
+            fotos: lista de bytes de imágenes JPG/PNG.
+            """
+            try:
+                fotos = fotos or []
+                document = Document()
+
+                # Márgenes y fuente general
+                section = document.sections[0]
+                section.top_margin = Cm(1.6)
+                section.bottom_margin = Cm(1.6)
+                section.left_margin = Cm(1.8)
+                section.right_margin = Cm(1.8)
+
+                estilo_normal = document.styles["Normal"]
+                estilo_normal.font.name = "Arial"
+                estilo_normal.font.size = Pt(11)
+                estilo_normal._element.rPr.rFonts.set(qn("w:eastAsia"), "Arial")
+
+                # ==========================================================
+                # ENCABEZADO INSTITUCIONAL
+                # ==========================================================
+                header_table = document.add_table(rows=1, cols=2)
+                header_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+                header_table.autofit = False
+                header_table.columns[0].width = Cm(3.2)
+                header_table.columns[1].width = Cm(13.5)
+                quitar_bordes_tabla(header_table)
+
+                celda_logo = header_table.cell(0, 0)
+                celda_logo.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+                p_logo = celda_logo.paragraphs[0]
+                p_logo.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                if RUTA_LOGO_BAJA.exists():
+                    p_logo.add_run().add_picture(str(RUTA_LOGO_BAJA), width=Cm(2.8))
+
+                celda_titulo = header_table.cell(0, 1)
+                celda_titulo.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+                p_titulo = celda_titulo.paragraphs[0]
+                p_titulo.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                r_titulo = p_titulo.add_run("INFORME TÉCNICO DE\nBAJA DE EQUIPOS")
+                configurar_fuente_run(r_titulo, tamano=18, negrita=True, color=COLOR_BURDEO)
+
+                p_linea = document.add_paragraph()
+                p_linea.paragraph_format.space_after = Pt(8)
+                r_linea = p_linea.add_run("_" * 82)
+                configurar_fuente_run(r_linea, tamano=8, color=RGBColor(80, 80, 80))
+
+                # DE / FECHA / MATERIA
+                meta = document.add_table(rows=3, cols=2)
+                meta.alignment = WD_TABLE_ALIGNMENT.CENTER
+                meta.autofit = False
+                meta.columns[0].width = Cm(4)
+                meta.columns[1].width = Cm(10)
+                quitar_bordes_tabla(meta)
+
+                fecha_doc = texto_seguro(datos.get("fecha_baja"))
+                try:
+                    fecha_obj = dt_datetime.strptime(fecha_doc, "%Y-%m-%d").date()
+                    fecha_doc = format_date_es(fecha_obj)
+                except Exception:
+                    pass
+
+                metadatos = [
+                    ("DE:", "Departamento de Informática."),
+                    ("FECHA:", fecha_doc),
+                    ("MATERIA:", texto_seguro(datos.get("materia"), "Baja técnica")),
+                ]
+                for fila, (etiqueta, valor) in enumerate(metadatos):
+                    p_et = meta.cell(fila, 0).paragraphs[0]
+                    p_et.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
+                    r_et = p_et.add_run(etiqueta)
+                    configurar_fuente_run(r_et, tamano=11, negrita=True, color=COLOR_BURDEO)
+
+                    p_val = meta.cell(fila, 1).paragraphs[0]
+                    r_val = p_val.add_run(valor)
+                    configurar_fuente_run(r_val, tamano=11)
+
+                document.add_paragraph()
+
+                # ==========================================================
+                # 1. ANTECEDENTES Y CAUSAS
+                # ==========================================================
+                agregar_titulo_seccion(document, "1. ANTECEDENTES Y CAUSAS")
+                p_ant = document.add_paragraph()
+                p_ant.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
+                p_ant.paragraph_format.line_spacing = 1.15
+                antecedentes = texto_seguro(
+                    datos.get("antecedentes") or datos.get("justificacion"),
+                    "No se registraron antecedentes adicionales."
+                )
+                r_ant = p_ant.add_run(antecedentes)
+                configurar_fuente_run(r_ant, tamano=11)
+
+                # ==========================================================
+                # 2. DIAGNÓSTICO
+                # ==========================================================
+                agregar_titulo_seccion(document, "2. DIAGNÓSTICO")
+                p_diag = document.add_paragraph()
+                p_diag.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
+                p_diag.paragraph_format.line_spacing = 1.15
+                r_diag = p_diag.add_run(
+                    texto_seguro(datos.get("diagnosis"), "Sin diagnóstico técnico registrado.")
+                )
+                configurar_fuente_run(r_diag, tamano=11)
+
+                # ==========================================================
+                # 3. DETALLE DE EQUIPOS PARA BAJA
+                # ==========================================================
+                agregar_titulo_seccion(document, "3. DETALLE DE EQUIPOS PARA BAJA")
+                tabla = document.add_table(rows=2, cols=5)
+                tabla.style = "Table Grid"
+                tabla.alignment = WD_TABLE_ALIGNMENT.CENTER
+                tabla.autofit = True
+
+                encabezados = ["Cantidad", "Equipo", "Marca", "Modelo", "Estado"]
+                for i, titulo_columna in enumerate(encabezados):
+                    celda = tabla.cell(0, i)
+                    sombrear_celda(celda, "800020")
+                    celda.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+                    p = celda.paragraphs[0]
+                    p.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                    r = p.add_run(titulo_columna)
+                    configurar_fuente_run(r, tamano=9, negrita=True, color=RGBColor(255, 255, 255))
+
+                valores = [
+                    str(datos.get("cantidad_baja", 1)),
+                    texto_seguro(datos.get("recurso_nombre"), "Equipo"),
+                    texto_seguro(datos.get("marca"), "S/M"),
+                    texto_seguro(datos.get("modelo"), "S/M"),
+                    texto_seguro(datos.get("estado_equipo") or datos.get("diagnosis"), "Para baja"),
+                ]
+                for i, valor in enumerate(valores):
+                    celda = tabla.cell(1, i)
+                    celda.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+                    p = celda.paragraphs[0]
+                    p.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER if i == 0 else WD_PARAGRAPH_ALIGNMENT.LEFT
+                    r = p.add_run(valor)
+                    configurar_fuente_run(r, tamano=9)
+
+                # Datos complementarios
+                complementos = []
+                if texto_seguro(datos.get("serie")):
+                    complementos.append(f"N.° de serie / inventario: {texto_seguro(datos.get('serie'))}")
+                if texto_seguro(datos.get("ubicacion")):
+                    complementos.append(f"Ubicación habitual: {texto_seguro(datos.get('ubicacion'))}")
+                if texto_seguro(datos.get("fecha_adquisicion")):
+                    complementos.append(f"Fecha o año de adquisición: {texto_seguro(datos.get('fecha_adquisicion'))}")
+
+                if complementos:
+                    p_comp = document.add_paragraph()
+                    p_comp.paragraph_format.space_before = Pt(6)
+                    for indice, complemento in enumerate(complementos):
+                        r = p_comp.add_run(("• " if indice == 0 else "\n• ") + complemento)
+                        configurar_fuente_run(r, tamano=10)
+
+                recomendacion = texto_seguro(datos.get("recomendacion"))
+                if recomendacion:
+                    agregar_titulo_seccion(document, "4. RECOMENDACIÓN TÉCNICA")
+                    p_rec = document.add_paragraph()
+                    p_rec.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
+                    r_rec = p_rec.add_run(recomendacion)
+                    configurar_fuente_run(r_rec, tamano=11)
+
+                # Firma responsable al cierre del informe
+                document.add_paragraph()
+                firma = document.add_table(rows=2, cols=2)
+                firma.alignment = WD_TABLE_ALIGNMENT.CENTER
+                quitar_bordes_tabla(firma)
+
+                etiquetas_firma = [
+                    ("Técnico responsable:", texto_seguro(datos.get("tecnico_responsable"), "No indicado")),
+                    ("Departamento:", "Departamento de Informática"),
+                ]
+                for fila, (etiqueta, valor) in enumerate(etiquetas_firma):
+                    p1 = firma.cell(fila, 0).paragraphs[0]
+                    p1.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
+                    r1 = p1.add_run(etiqueta)
+                    configurar_fuente_run(r1, tamano=10, negrita=True, color=COLOR_BURDEO)
+
+                    p2 = firma.cell(fila, 1).paragraphs[0]
+                    r2 = p2.add_run(valor)
+                    configurar_fuente_run(r2, tamano=10)
+
+                # ==========================================================
+                # ANEXO FOTOGRÁFICO
+                # ==========================================================
+                document.add_page_break()
+                p_anexo = document.add_paragraph()
+                p_anexo.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                r_anexo = p_anexo.add_run("ANEXO FOTOGRÁFICO DE SEGURIDAD")
+                configurar_fuente_run(r_anexo, tamano=15, negrita=True, color=COLOR_BURDEO)
+
+                document.add_paragraph()
+
+                if fotos:
+                    filas = (len(fotos) + 1) // 2
+                    tabla_fotos = document.add_table(rows=filas, cols=2)
+                    tabla_fotos.alignment = WD_TABLE_ALIGNMENT.CENTER
+                    tabla_fotos.autofit = False
+                    quitar_bordes_tabla(tabla_fotos)
+
+                    for indice, foto_bytes in enumerate(fotos):
+                        fila = indice // 2
+                        columna = indice % 2
+                        celda = tabla_fotos.cell(fila, columna)
+                        celda.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+
+                        p_img = celda.paragraphs[0]
+                        p_img.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                        imagen_lista = preparar_foto_para_word(foto_bytes)
+                        p_img.add_run().add_picture(imagen_lista, width=Cm(7.3))
+
+                        p_cap = celda.add_paragraph()
+                        p_cap.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                        r_cap = p_cap.add_run(f"Fotografía {indice + 1}")
+                        configurar_fuente_run(r_cap, tamano=8, negrita=True, color=RGBColor(90, 90, 90))
+                else:
+                    p_sin_fotos = document.add_paragraph()
+                    p_sin_fotos.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                    r_sin = p_sin_fotos.add_run("No se adjuntaron fotografías a este informe.")
+                    configurar_fuente_run(r_sin, tamano=11, color=RGBColor(100, 100, 100))
+
+                document.add_paragraph()
+                p_emitido = document.add_paragraph()
+                p_emitido.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                r_emitido = p_emitido.add_run(
+                    "Emitido por:\n"
+                    "Departamento de Informática\n"
+                    "Liceo Bicentenario de Excelencia Colegio Antonio Varas"
+                )
+                configurar_fuente_run(r_emitido, tamano=10)
 
                 docx_buf = BytesIO()
                 document.save(docx_buf)
                 docx_buf.seek(0)
                 return docx_buf.read()
+
             except Exception as e:
                 st.error(f"Error generando Word: {e}")
                 return None
 
         tab_baja, tab_historial = st.tabs(["🆕 Procesar Nueva Baja", "📋 Ver Historial"])
-        
+
+        # Estados para conservar la descarga después del envío
+        if "baja_lista" not in st.session_state:
+            st.session_state.baja_lista = False
+        if "baja_docx_data" not in st.session_state:
+            st.session_state.baja_docx_data = None
+        if "baja_filename" not in st.session_state:
+            st.session_state.baja_filename = ""
+
         with tab_baja:
-            res_data_raw = supabase.table("recursos").select("*").execute().data
-            if res_data_raw:
-                nombres_recursos = sorted(list(set([r.get('nombre', 'Sin nombre') for r in res_data_raw])))
-                
-                # Inicializar estados para la descarga del archivo fuera del formulario
-                if "baja_lista" not in st.session_state:
-                    st.session_state.baja_lista = False
-                if "baja_docx_data" not in st.session_state:
-                    st.session_state.baja_docx_data = None
-                if "baja_filename" not in st.session_state:
-                    st.session_state.baja_filename = ""
+            try:
+                res_data_raw = supabase.table("recursos").select("id, nombre").order("nombre").execute().data or []
+                nombres_recursos = sorted({
+                    texto_seguro(r.get("nombre"), "Sin nombre")
+                    for r in res_data_raw
+                })
+            except Exception as e:
+                st.error(f"No fue posible cargar los recursos: {e}")
+                nombres_recursos = []
 
-                with st.form("form_baja_indep", clear_on_submit=False): 
-                    col_sel, col_datos_m = st.columns([1, 2])
-                    with col_sel:
-                        st.markdown("**Identificación**")
-                        recurso_cat_nom = st.selectbox("Categoría Maestro:", nombres_recursos)
-                        marca_mod = st.text_input("Marca / Modelo específico")
-                        cantidad_baja = st.number_input("Cantidad:", min_value=1, value=1)
-                        num_serie = st.text_input("N° de Serie / Inventario")
-                        ubicacion = st.text_input("Ubicación habitual")
-                        fecha_adq = st.text_input("Fecha Adquisición")
-                        uploaded_file = st.file_uploader("Subir foto (Opcional):", type=['png', 'jpg', 'jpeg'])
-                    
-                    with col_datos_m:
-                        st.markdown("**Diagnosis y Justificación**")
-                        diagnosis = st.text_area("Diagnosis Técnico / Daño detectado", height=120)
-                        
-                        # --- INTEGRACIÓN GEMINI EN BAJAS ---
-                        btn_ia = st.form_submit_button("✨ IA: Mejorar Redacción Técnica")
-                        if btn_ia:
-                            if diagnosis:
-                                with st.spinner("Redactando profesionalmente..."):
-                                    prompt_baja = f"Convierte esta nota técnica en un párrafo formal para un informe de baja de equipamiento tecnológico: '{diagnosis}'"
-                                    texto_mejorado = consultar_gemini(prompt_baja)
-                                    st.info(f"**Sugerencia:**\n{texto_mejorado}")
-                            else:
-                                st.warning("Escribe algo en diagnosis primero.")
+            if not nombres_recursos:
+                st.warning("No hay recursos disponibles en la tabla 'recursos'.")
+            else:
+                st.markdown("""
+                    <div style="
+                        background:#EFF6FF;
+                        border:1px solid #BFDBFE;
+                        border-left:6px solid #1E3A8A;
+                        border-radius:12px;
+                        padding:14px 16px;
+                        margin-bottom:16px;">
+                        <b>📄 Informe institucional</b><br>
+                        Completa los antecedentes, diagnóstico y detalle del equipo.
+                        Puedes adjuntar varias fotografías JPG o PNG.
+                    </div>
+                """, unsafe_allow_html=True)
 
-                        justificacion = st.text_area("Justificación de la Baja", height=100)
-                        recomendacion = st.text_area("Recomendación Técnica", height=80)
-                        tecnico = st.text_input("Técnico Responsable")
+                with st.form("form_baja_profesional", clear_on_submit=False):
+                    st.markdown("### 🏷️ Identificación del equipo")
+                    col_a, col_b, col_c = st.columns(3)
 
-                    submit_baja = st.form_submit_button("🚫 Registrar Baja y Generar Informe Word", type="primary", use_container_width=True)
+                    with col_a:
+                        recurso_cat_nom = st.selectbox("Equipo / categoría *", nombres_recursos)
+                        cantidad_baja = st.number_input("Cantidad *", min_value=1, value=1, step=1)
+                        num_serie = st.text_input("N.° de serie / inventario")
 
-                    if submit_baja and not btn_ia:
-                        if not diagnosis or not tecnico:
-                            st.warning("⚠️ Rellena los campos obligatorios (Diagnosis y Técnico).")
+                    with col_b:
+                        marca = st.text_input("Marca", placeholder="Ej. Sony")
+                        modelo = st.text_input("Modelo", placeholder="Ej. E PZ 16–50 mm")
+                        estado_equipo = st.text_input(
+                            "Estado resumido",
+                            placeholder="Ej. Falla mecánica / extraviado / irreparable"
+                        )
+
+                    with col_c:
+                        materia = st.text_input("Materia", value="Baja técnica")
+                        fecha_baja_ui = st.date_input(
+                            "Fecha del informe *",
+                            value=dt.date.today(),
+                            format="DD/MM/YYYY"
+                        )
+                        tecnico = st.text_input(
+                            "Técnico responsable *",
+                            value=st.session_state.get("profesor_name") or ""
+                        )
+
+                    st.markdown("### 📝 Informe técnico")
+                    antecedentes = st.text_area(
+                        "1. Antecedentes y causas *",
+                        height=160,
+                        placeholder=(
+                            "Describe cómo se recibió el equipo, desde cuándo está bajo custodia, "
+                            "qué ocurrió y las causas conocidas de la baja."
+                        )
+                    )
+
+                    diagnosis = st.text_area(
+                        "2. Diagnóstico técnico *",
+                        height=150,
+                        placeholder="Describe la falla constatada y cómo afecta el funcionamiento."
+                    )
+
+                    recomendacion = st.text_area(
+                        "Recomendación técnica",
+                        height=90,
+                        placeholder="Ej. Dar de baja, reemplazar, enviar a reciclaje electrónico..."
+                    )
+
+                    with st.expander("➕ Datos complementarios"):
+                        col_d, col_e = st.columns(2)
+                        ubicacion = col_d.text_input("Ubicación habitual")
+                        fecha_adq = col_e.text_input("Fecha o año de adquisición")
+
+                    uploaded_files = st.file_uploader(
+                        "📷 Adjuntar fotografías",
+                        type=["png", "jpg", "jpeg"],
+                        accept_multiple_files=True,
+                        help="Puedes seleccionar varias imágenes en una sola carga."
+                    )
+
+                    submit_baja = st.form_submit_button(
+                        "🚫 Registrar Baja y Generar Informe Word",
+                        type="primary",
+                        use_container_width=True
+                    )
+
+                    if submit_baja:
+                        faltantes = []
+                        if not antecedentes.strip():
+                            faltantes.append("Antecedentes y causas")
+                        if not diagnosis.strip():
+                            faltantes.append("Diagnóstico técnico")
+                        if not tecnico.strip():
+                            faltantes.append("Técnico responsable")
+
+                        if faltantes:
+                            st.warning("⚠️ Completa los campos obligatorios: " + ", ".join(faltantes) + ".")
                         else:
-                            # Lógica de guardado en Supabase
                             datos_bd = {
                                 "recurso_nombre": recurso_cat_nom,
-                                "marca": marca_mod,
-                                "modelo": marca_mod,
-                                "cantidad_baja": cantidad_baja,
-                                "serie": num_serie,
-                                "diagnosis": diagnosis,
-                                "justificacion": justificacion,
-                                "recomendacion": recomendacion,
-                                "tecnico_responsable": tecnico,
-                                "fecha_baja": str(dt.date.today())
+                                "marca": marca.strip(),
+                                "modelo": modelo.strip(),
+                                "cantidad_baja": int(cantidad_baja),
+                                "serie": num_serie.strip(),
+                                "diagnosis": diagnosis.strip(),
+                                # Se conserva la compatibilidad con tu tabla actual:
+                                # los antecedentes se almacenan en 'justificacion'.
+                                "justificacion": antecedentes.strip(),
+                                "recomendacion": recomendacion.strip(),
+                                "tecnico_responsable": tecnico.strip(),
+                                "fecha_baja": fecha_baja_ui.isoformat(),
                             }
-                            try:
-                                supabase.table("equipos").insert(datos_bd).execute()
-                                
-                                # Generar el documento Word dinámicamente en memoria
-                                docx_bytes = generar_docx_baja(datos_bd)
-                                
-                                if docx_bytes:
-                                    st.session_state.baja_docx_data = docx_bytes
-                                    st.session_state.baja_filename = f"Informe_Baja_{recurso_cat_nom.replace(' ', '_')}_{dt.date.today()}.docx"
-                                    st.session_state.baja_lista = True
-                                
-                                st.success("✅ Baja registrada exitosamente en la base de datos.")
-                                st.balloons()
-                            except Exception as e:
-                                st.error(f"Error al guardar en la base de datos: {e}")
 
-                # BOTÓN DE DESCARGA (Fuera del formulario para que Streamlit no lo bloquee)
+                            datos_documento = {
+                                **datos_bd,
+                                "materia": materia.strip() or "Baja técnica",
+                                "antecedentes": antecedentes.strip(),
+                                "estado_equipo": estado_equipo.strip(),
+                                "ubicacion": ubicacion.strip(),
+                                "fecha_adquisicion": fecha_adq.strip(),
+                            }
+
+                            fotos_bytes = [archivo.getvalue() for archivo in (uploaded_files or [])]
+
+                            try:
+                                with st.spinner("Guardando la baja y preparando el informe..."):
+                                    supabase.table("equipos").insert(datos_bd).execute()
+                                    docx_bytes = generar_docx_baja(datos_documento, fotos_bytes)
+
+                                if docx_bytes:
+                                    fecha_nombre = fecha_baja_ui.strftime("%Y-%m-%d")
+                                    st.session_state.baja_docx_data = docx_bytes
+                                    st.session_state.baja_filename = (
+                                        f"Informe_Baja_{nombre_archivo_seguro(recurso_cat_nom)}_{fecha_nombre}.docx"
+                                    )
+                                    st.session_state.baja_lista = True
+
+                                st.success(
+                                    f"✅ Baja registrada. Se incorporaron {len(fotos_bytes)} fotografía(s) al informe."
+                                )
+                                st.balloons()
+
+                            except Exception as e:
+                                st.error(f"Error al guardar la baja en Supabase: {e}")
+
+                # Vista previa de imágenes, fuera del formulario
+                if uploaded_files:
+                    st.markdown("### 🖼️ Fotografías seleccionadas")
+                    columnas_preview = st.columns(min(4, len(uploaded_files)))
+                    for indice, archivo in enumerate(uploaded_files):
+                        with columnas_preview[indice % len(columnas_preview)]:
+                            st.image(
+                                archivo.getvalue(),
+                                caption=f"Foto {indice + 1}",
+                                use_container_width=True
+                            )
+
                 if st.session_state.baja_lista and st.session_state.baja_docx_data:
-                    st.markdown("### 📥 ¡Informe Listo!")
+                    st.markdown("### 📥 Informe listo")
                     st.download_button(
                         label="⬇️ Descargar Informe de Baja (.docx)",
                         data=st.session_state.baja_docx_data,
                         file_name=st.session_state.baja_filename,
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        use_container_width=True
+                        use_container_width=True,
+                        type="primary"
                     )
-                    if st.button("Limpiar Formulario / Registrar Otro"):
+
+                    if st.button("🧹 Limpiar y registrar otra baja", use_container_width=True):
                         st.session_state.baja_lista = False
                         st.session_state.baja_docx_data = None
+                        st.session_state.baja_filename = ""
                         st.rerun()
 
         with tab_historial:
             st.subheader("📋 Historial de Bajas")
-            st.write("Consulta y descarga los informes técnicos de todos los equipos dados de baja en el establecimiento.")
-            
-            # Consultar los datos de baja desde la tabla 'equipos'
+            st.write("Consulta y vuelve a generar los informes guardados en la tabla `equipos`.")
+
             try:
-                bajas_db = supabase.table("equipos").select("*").order("fecha_baja", desc=True).execute().data
-                
+                bajas_db = (
+                    supabase.table("equipos")
+                    .select("*")
+                    .order("fecha_baja", desc=True)
+                    .execute()
+                    .data or []
+                )
+
                 if bajas_db:
-                    # Crear DataFrame para visualización limpia
                     df_bajas = pd.DataFrame(bajas_db)
-                    
-                    # Renombrar columnas estéticamente para mostrar al usuario
-                    df_mostrar = df_bajas[[
-                        "fecha_baja", "recurso_nombre", "cantidad_baja", "marca", "serie", "tecnico_responsable"
-                    ]].copy()
-                    df_mostrar.columns = ["Fecha Baja", "Equipo / Recurso", "Cant.", "Marca/Modelo", "N° Serie", "Técnico Responsable"]
-                    
+                    columnas_disponibles = [
+                        col for col in [
+                            "fecha_baja",
+                            "recurso_nombre",
+                            "cantidad_baja",
+                            "marca",
+                            "modelo",
+                            "serie",
+                            "tecnico_responsable",
+                        ]
+                        if col in df_bajas.columns
+                    ]
+                    df_mostrar = df_bajas[columnas_disponibles].copy()
+                    df_mostrar.rename(columns={
+                        "fecha_baja": "Fecha Baja",
+                        "recurso_nombre": "Equipo / Recurso",
+                        "cantidad_baja": "Cant.",
+                        "marca": "Marca",
+                        "modelo": "Modelo",
+                        "serie": "N.° Serie",
+                        "tecnico_responsable": "Técnico Responsable",
+                    }, inplace=True)
+
                     st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
-                    
-                    # Sección para volver a descargar cualquier informe pasado
-                    st.markdown("### 🔍 Re-generar y Descargar Informe del Historial")
-                    opciones_historial = [f"{b['fecha_baja']} - {b['recurso_nombre']} (Serie: {b['serie'] or 'S/N'})" for b in bajas_db]
-                    seleccion_h = st.selectbox("Selecciona un registro para descargar su documento Word:", opciones_historial)
-                    
+
+                    st.info(
+                        "ℹ️ Los informes regenerados desde el historial contienen los datos técnicos, "
+                        "pero no las fotografías originales, porque tu tabla actual no almacena archivos."
+                    )
+
+                    st.markdown("### 🔍 Regenerar informe")
+                    opciones_historial = [
+                        (
+                            f"{texto_seguro(b.get('fecha_baja'), 'Sin fecha')} - "
+                            f"{texto_seguro(b.get('recurso_nombre'), 'Equipo')} "
+                            f"(Serie: {texto_seguro(b.get('serie'), 'S/N')})"
+                        )
+                        for b in bajas_db
+                    ]
+
+                    seleccion_h = st.selectbox(
+                        "Selecciona un registro:",
+                        opciones_historial
+                    )
+
                     if seleccion_h:
-                        # Obtener el índice seleccionado
                         idx_sel = opciones_historial.index(seleccion_h)
                         datos_registro = bajas_db[idx_sel]
-                        
-                        # Volver a armar el Word con los datos de esa fila
-                        word_bytes_historial = generar_docx_baja(datos_registro)
-                        
+                        datos_registro["materia"] = "Baja técnica"
+                        datos_registro["antecedentes"] = texto_seguro(
+                            datos_registro.get("justificacion")
+                        )
+                        datos_registro["estado_equipo"] = texto_seguro(
+                            datos_registro.get("diagnosis")
+                        )
+
+                        word_bytes_historial = generar_docx_baja(datos_registro, [])
+
                         if word_bytes_historial:
-                            nombre_archivo_h = f"Informe_Baja_{datos_registro['recurso_nombre'].replace(' ', '_')}_{datos_registro['fecha_baja']}.docx"
+                            nombre_archivo_h = (
+                                f"Informe_Baja_"
+                                f"{nombre_archivo_seguro(datos_registro.get('recurso_nombre'))}_"
+                                f"{texto_seguro(datos_registro.get('fecha_baja'), str(dt.date.today()))}.docx"
+                            )
                             st.download_button(
-                                label=f"⬇️ Descargar Word de {datos_registro['recurso_nombre']}",
+                                label=f"⬇️ Descargar Word de {texto_seguro(datos_registro.get('recurso_nombre'), 'Equipo')}",
                                 data=word_bytes_historial,
                                 file_name=nombre_archivo_h,
                                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                key=f"btn_hist_{datos_registro['id']}"
+                                key=f"btn_hist_{datos_registro.get('id', idx_sel)}",
+                                use_container_width=True
                             )
                 else:
                     st.info("📂 No se han registrado bajas de equipos en el sistema aún.")
+
             except Exception as e:
-                st.error(f"Error al cargar el historial desde la base de datos: {e}")
+                st.error(f"Error al cargar el historial desde Supabase: {e}")
 
     # ---------------------------------------------------------
     # MÓDULO 3: GENERADOR QR MAESTRO
