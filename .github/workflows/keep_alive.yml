@@ -2,16 +2,35 @@ name: Mantener Supabase Activo
 
 on:
   schedule:
-    # Se ejecuta todos los días a las 12:00 UTC
     - cron: '0 12 * * *'
-  workflow_dispatch: # Permite probarlo manualmente desde GitHub
+  workflow_dispatch:
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Hacer consulta directa a la base de datos de Supabase
+      - name: Hacer consulta directa a Supabase
+        env:
+          URL_RAW: ${{ secrets.SUPABASE_URL }}
+          KEY_RAW: ${{ secrets.SUPABASE_KEY }}
         run: |
-          curl -i -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/recursos?select=id&limit=1" \
-          -H "apikey: ${{ secrets.SUPABASE_KEY }}" \
-          -H "Authorization: Bearer ${{ secrets.SUPABASE_KEY }}"
+          # 1. Limpiar comillas, espacios y barras al final de la URL
+          URL=$(echo "$URL_RAW" | tr -d '"' | tr -d "'" | tr -d ' ' | sed 's/\/*$//')
+          KEY=$(echo "$KEY_RAW" | tr -d '"' | tr -d "'" | tr -d ' ')
+
+          echo "Probando conexión con Supabase..."
+
+          # 2. Realizar la consulta a la API
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$URL/rest/v1/recursos?select=id&limit=1" \
+            -H "apikey: $KEY" \
+            -H "Authorization: Bearer $KEY")
+
+          echo "Respuesta de Supabase (Código HTTP): $HTTP_STATUS"
+
+          # 3. Validar si respondió con éxito (Código 200 o 206)
+          if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 206 ]; then
+            echo "✅ ¡Conexión exitosa! Supabase está activo y despierto."
+          else
+            echo "❌ Error de conexión (Código HTTP: $HTTP_STATUS). Revisa tus Secretos en GitHub."
+            exit 1
+          fi
