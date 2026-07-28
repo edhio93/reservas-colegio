@@ -151,11 +151,16 @@ def obtener_eventos_google_calendar(url_ics):
                 descripcion = str(componente.get('description', ''))
                 
                 eventos_hoy.append({
+                    "id_unico": f"gcal_{hora_sort}_{titulo}",
                     "hora_sort": hora_sort,
                     "display_hora": hora_str,
+                    "hora": hora_sort,
+                    "rango": hora_str,
                     "titulo": titulo,
                     "descripcion": descripcion,
-                    "categoria": "Evento Especial"
+                    "desc": descripcion,
+                    "categoria": "Evento Especial",
+                    "tipo": "evento"
                 })
                 
         # Ordenamos los eventos por hora
@@ -186,23 +191,161 @@ def consultar_gemini(prompt):
         st.header("💬 Asistente Técnico IA")
 
 # ------------------------------------------------------------------
-# CONFIGURACIÓN SUPABASE (NUEVO MOTOR DE BASE DE DATOS)
+# CONFIGURACIÓN SUPABASE Y CAPA DE ACCESO ROBUSTA
 # ------------------------------------------------------------------
 from supabase import create_client, Client, ClientOptions
+from urllib.parse import urlparse
+
+# Referencia histórica del proyecto usado por este sistema. No contiene credenciales.
+PROYECTO_SUPABASE_ESPERADO = "zxzpaubemwpwgvswvwjh"
+
+
+def _leer_secreto_supabase():
+    """Lee la configuración desde Secrets o variables de entorno sin exponer la clave."""
+    url = None
+    key = None
+
+    # Formato plano recomendado para Streamlit Cloud.
+    try:
+        url = st.secrets.get("SUPABASE_URL")
+        key = (
+            st.secrets.get("SUPABASE_KEY")
+            or st.secrets.get("SUPABASE_ANON_KEY")
+            or st.secrets.get("SUPABASE_SERVICE_ROLE_KEY")
+        )
+    except Exception:
+        pass
+
+    # Formato alternativo: [supabase].
+    if not url or not key:
+        try:
+            bloque = st.secrets.get("supabase", {})
+            url = url or bloque.get("url") or bloque.get("SUPABASE_URL")
+            key = (
+                key
+                or bloque.get("key")
+                or bloque.get("anon_key")
+                or bloque.get("service_role_key")
+            )
+        except Exception:
+            pass
+
+    # También funciona en ejecución local mediante variables de entorno.
+    url = url or os.getenv("SUPABASE_URL")
+    key = (
+        key
+        or os.getenv("SUPABASE_KEY")
+        or os.getenv("SUPABASE_ANON_KEY")
+        or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    )
+
+    url = str(url or "").strip().rstrip("/")
+    key = str(key or "").strip()
+    if not url or not key:
+        st.error(
+            "🚨 No se encontró la configuración de Supabase. Agrega "
+            "SUPABASE_URL y SUPABASE_KEY en los Secrets de Streamlit."
+        )
+        st.stop()
+    if not url.startswith("https://") or ".supabase.co" not in url:
+        st.error("🚨 SUPABASE_URL no tiene un formato válido de proyecto Supabase.")
+        st.stop()
+    return url, key
+
+
+URL_SUPABASE, CLAVE_SUPABASE = _leer_secreto_supabase()
 
 try:
-    URL_SUPABASE = st.secrets["SUPABASE_URL"]
-    CLAVE_SUPABASE = st.secrets["SUPABASE_KEY"]
-except KeyError:
-    try:
-        URL_SUPABASE = st.secrets["supabase"]["url"]
-        CLAVE_SUPABASE = st.secrets["supabase"]["key"]
-    except KeyError:
-        st.error("🚨 Faltan SUPABASE_URL y SUPABASE_KEY en los Secrets de Streamlit.")
-        st.stop()
+    opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
+    supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
+except TypeError:
+    # Compatibilidad con versiones antiguas de supabase-py.
+    supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE)
+except Exception as e:
+    st.error(f"🚨 No fue posible inicializar Supabase: {e}")
+    st.stop()
 
-opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
-supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
+
+def _id_key(valor):
+    """Normaliza IDs enteros, UUID y valores devueltos como float por pandas."""
+    if valor is None:
+        return None
+    try:
+        if pd.isna(valor):
+            return None
+    except Exception:
+        pass
+    if isinstance(valor, bool):
+        return str(valor)
+    if isinstance(valor, float) and valor.is_integer():
+        return str(int(valor))
+    return str(valor).strip()
+
+
+def _nombre_relacion(valor, mapa, fallback=""):
+    """Resuelve una FK aunque PostgREST no entregue relaciones embebidas."""
+    if isinstance(valor, dict):
+        return str(valor.get("nombre") or fallback)
+    clave = _id_key(valor)
+    if clave is None:
+        return fallback
+    return str(mapa.get(clave, fallback))
+
+
+def leer_tabla_completa(nombre_tabla, columnas="*", page_size=1000):
+    """Lee todas las filas con paginación y evita el límite REST de 1.000 registros."""
+    filas = []
+    inicio = 0
+    while True:
+        respuesta = (
+            supabase.table(nombre_tabla)
+            .select(columnas)
+            .range(inicio, inicio + page_size - 1)
+            .execute()
+        )
+        lote = respuesta.data or []
+        filas.extend(lote)
+        if len(lote) < page_size:
+            break
+        inicio += page_size
+    return filas
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def cargar_catalogos_supabase():
+    catalogos = {"profesores": [], "cursos": [], "recursos": []}
+    errores = []
+    for tabla in catalogos:
+        try:
+            catalogos[tabla] = leer_tabla_completa(tabla, "*")
+        except Exception as e:
+            errores.append(f"{tabla}: {e}")
+    return catalogos, errores
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def diagnosticar_supabase():
+    """Comprueba las tablas principales y devuelve errores visibles, nunca silenciosos."""
+    tablas = [
+        "reservas", "profesores", "cursos", "recursos",
+        "mantenimientos", "equipos"
+    ]
+    conteos = {}
+    errores = {}
+    for tabla in tablas:
+        try:
+            conteos[tabla] = len(leer_tabla_completa(tabla, "id"))
+        except Exception as e:
+            errores[tabla] = str(e)
+    host = urlparse(URL_SUPABASE).hostname or ""
+    proyecto = host.split(".")[0] if host else "desconocido"
+    return {
+        "conectado": not errores,
+        "proyecto": proyecto,
+        "url_host": host,
+        "conteos": conteos,
+        "errores": errores,
+    }
 
 # ==============================================================================
 # 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - MOTOR DE SONIDO INTEGRADO
@@ -288,17 +431,24 @@ if st.session_state.get("ver_pantalla_tv", False):
         
         # B. Cargar Cronograma (Reservas según Perfil Técnico Real)
         if perfil in ["Profesores / PIE", "Inspectoría / UTP"]:
-            res_res = supabase.table("reservas").select("*, profesores(nombre), recursos(nombre), cursos(nombre)").eq("fecha", hoy_str).execute()
+            res_res = supabase.table("reservas").select("*").eq("fecha", hoy_str).execute()
+            catalogos_tv, _ = cargar_catalogos_supabase()
+            mapa_prof_tv = {_id_key(x.get("id")): x.get("nombre", "") for x in catalogos_tv["profesores"]}
+            mapa_cur_tv = {_id_key(x.get("id")): x.get("nombre", "") for x in catalogos_tv["cursos"]}
+            mapa_rec_tv = {_id_key(x.get("id")): x.get("nombre", "") for x in catalogos_tv["recursos"]}
             for r in (res_res.data or []):
                 hora_fin_res = str(r.get("hora_fin", "23:59"))[:5]
                 hora_ini_res = str(r.get("hora_inicio", "00:00"))[:5]
                 if hora_actual_str <= hora_fin_res:
+                    nombre_rec = _nombre_relacion(r.get("recurso", r.get("recurso_id")), mapa_rec_tv, "Recurso")
+                    nombre_cur = _nombre_relacion(r.get("curso", r.get("curso_id")), mapa_cur_tv, "Sin curso")
+                    nombre_prof = _nombre_relacion(r.get("profesor", r.get("profesor_id")), mapa_prof_tv, "Docente")
                     eventos.append({
                         "id_unico": f"res_{r['id']}",
-                        "hora_sort": hora_ini_res, 
-                        "rango": f"{hora_ini_res} - {hora_fin_res}", 
-                        "titulo": f"🔒 {r['recursos']['nombre']} ➔ {r['cursos']['nombre']}", 
-                        "desc": f"Docente: {r['profesores']['nombre']}", 
+                        "hora_sort": hora_ini_res,
+                        "rango": f"{hora_ini_res} - {hora_fin_res}",
+                        "titulo": f"🔒 {nombre_rec} ➔ {nombre_cur}",
+                        "desc": f"Docente: {nombre_prof}",
                         "tipo": "reserva"
                     })
     except Exception as e:
@@ -496,21 +646,62 @@ st.markdown("""
         background-color: var(--primary-color);
         color: white;
     }
-    @media (prefers-color-scheme: dark) {
-        :root {
-            --primary-color: #58A6FF;
-            --background-color: #0D1117;
-            --sidebar-background: #161B22;
-            --card-background: #161B22;
-            --text-color: #C9D1D9;
-            --subtle-text-color: #8B949E;
-            --border-color: #30363D;
-            --hover-color: #252b33;
-        }
-        body, .stApp { background-color: var(--background-color); color: var(--text-color); }
-        .st-emotion-cache-1r4qj8v, [data-testid="stForm"], [data-testid="stExpander"], [data-testid="stMetric"] { border-color: var(--border-color); }
-        .tooltip-text { background-color: #f0f2f6 !important; color: #111 !important; }
+    /* Interfaz institucional estable: no depende del modo oscuro del navegador. */
+    html, body, .stApp, [data-testid="stAppViewContainer"] {
+        color-scheme: light !important;
+        background-color: #F8FAFC !important;
+        color: #0F172A !important;
     }
+    [data-testid="stMainBlockContainer"] { color: #0F172A !important; }
+    [data-testid="stSidebar"] { background: #FFFFFF !important; }
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] span { color: #1E293B; }
+    h1, h2, h3, h4, h5, h6 { color: #1E3A8A; }
+    p, label, .stMarkdown, [data-testid="stCaptionContainer"] { color: #1E293B; }
+    [data-testid="stForm"], [data-testid="stExpander"], [data-testid="stMetric"] {
+        background: #FFFFFF !important;
+        color: #0F172A !important;
+    }
+    input, textarea,
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="base-input"] {
+        background: #FFFFFF !important;
+        color: #0F172A !important;
+        border-color: #CBD5E1 !important;
+    }
+    input::placeholder, textarea::placeholder { color: #64748B !important; opacity: 1; }
+    div[role="listbox"], div[role="option"] {
+        background: #FFFFFF !important;
+        color: #0F172A !important;
+    }
+    [data-testid="stAlert"] {
+        background: #EFF6FF !important;
+        border: 1px solid #BFDBFE !important;
+        color: #1E3A8A !important;
+    }
+    [data-testid="stAlert"] p, [data-testid="stAlert"] div { color: #1E3A8A !important; }
+    [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
+        background: #FFFFFF !important;
+        border-radius: 12px;
+    }
+    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+    .stTabs [data-baseweb="tab"] {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px 10px 0 0;
+        color: #334155;
+    }
+    .stTabs [aria-selected="true"] {
+        background: #EFF6FF !important;
+        color: #1E3A8A !important;
+        font-weight: 800;
+    }
+    .stButton > button, .stDownloadButton > button {
+        border-radius: 10px !important;
+        font-weight: 700 !important;
+    }
+    .tooltip-text { background-color: #0F172A !important; color: #FFFFFF !important; }
     .reservation-card { 
         border-radius: 5px; 
         padding: 6px; 
@@ -688,20 +879,23 @@ def custom_course_sort_key(course_name):
         return (level_priority, int(num), letter or '')
     return (4, 0, course_name)
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=60, show_spinner=False)
 def cargar_datos_login():
-    try:
-        p_res = supabase.table("profesores").select("nombre").execute().data
-        profs = sorted([p["nombre"] for p in p_res]) if p_res else []
-        r_res = supabase.table("recursos").select("nombre").execute().data
-        recs = sorted([r["nombre"] for r in r_res]) if r_res else []
-        c_res = supabase.table("cursos").select("nombre").execute().data
-        curs = sorted([c["nombre"] for c in c_res], key=custom_course_sort_key) if c_res else []
-        return profs, recs, curs
-    except:
-        return [], [], []
+    catalogos, errores = cargar_catalogos_supabase()
+    profs = sorted(
+        [str(p.get("nombre", "")).strip() for p in catalogos["profesores"] if p.get("nombre")]
+    )
+    recs = sorted(
+        [str(r.get("nombre", "")).strip() for r in catalogos["recursos"] if r.get("nombre")]
+    )
+    curs = sorted(
+        [str(c.get("nombre", "")).strip() for c in catalogos["cursos"] if c.get("nombre")],
+        key=custom_course_sort_key,
+    )
+    return profs, recs, curs, errores
 
-PROFESORES, RECURSOS, CURSOS = cargar_datos_login()
+
+PROFESORES, RECURSOS, CURSOS, ERRORES_CATALOGOS = cargar_datos_login()
 
 # ------------------------------------------------------------------
 # 2) SISTEMA DE LOGIN HORIZONTAL
@@ -721,6 +915,12 @@ if not st.session_state.logged:
             label { font-size: 0.85rem !important; font-weight: 600 !important; }
         </style>
     """, unsafe_allow_html=True)
+
+    if ERRORES_CATALOGOS:
+        st.error("🚨 La aplicación inició, pero no pudo leer todos los catálogos de Supabase.")
+        with st.expander("Ver diagnóstico de conexión"):
+            for error in ERRORES_CATALOGOS:
+                st.code(error)
 
     main_container = st.container()
     
@@ -812,70 +1012,149 @@ if not st.session_state.logged:
 # ------------------------------------------------------------------
 # 3) CARGA DE LA BASE DE DATOS PRINCIPAL 
 # ------------------------------------------------------------------
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=30, show_spinner=False)
 def cargar_reservas_y_datos():
     horas_corregidas = [
-        '8:00 a 8:45', '8:45 a 9:30', '8:00 a 9:30',
-        '9:45 a 10:30', '10:30 a 11:15', '9:45 a 11:15',
+        '08:00 a 08:45', '08:45 a 09:30', '08:00 a 09:30',
+        '09:45 a 10:30', '10:30 a 11:15', '09:45 a 11:15',
         '11:30 a 12:15', '12:15 a 13:00', '11:30 a 13:00',
         '14:00 a 14:45', '14:45 a 15:30', '14:00 a 15:30',
         '14:00 a 16:30', '14:45 a 16:30', '15:45 a 16:30',
         '17:00 a 18:30', '17:30 a 18:30'
     ]
-    
+    meta = {"errores": [], "advertencias": [], "filas_omitidas": 0}
+    columnas_vacias = [
+        'id', 'Fecha', 'Hora inicio', 'Hora fin',
+        'Profesor', 'Curso', 'Recurso', 'Observaciones'
+    ]
+
+    catalogos, errores_catalogos = cargar_catalogos_supabase()
+    meta["errores"].extend(errores_catalogos)
+
+    mapa_prof_id = {
+        _id_key(p.get("id")): str(p.get("nombre") or "")
+        for p in catalogos["profesores"] if p.get("id") is not None
+    }
+    mapa_cur_id = {
+        _id_key(c.get("id")): str(c.get("nombre") or "")
+        for c in catalogos["cursos"] if c.get("id") is not None
+    }
+    mapa_rec_id = {
+        _id_key(r.get("id")): str(r.get("nombre") or "")
+        for r in catalogos["recursos"] if r.get("id") is not None
+    }
+
+    # Se consultan columnas simples y las FK se resuelven en Python. Esto evita que
+    # una relación PostgREST mal nombrada deje vacío todo el sistema.
     try:
-        res_data = supabase.table("reservas").select("id, fecha, hora_inicio, hora_fin, observaciones, profesores(nombre), cursos(nombre), recursos(nombre)").execute().data
-        reservas_limpias = []
-        for r in res_data:
-            reservas_limpias.append({
-                "id": r["id"],
-                "Fecha": parse_date(r["fecha"]),
-                "Hora inicio": as_time(r["hora_inicio"]),
-                "Hora fin": as_time(r["hora_fin"]),
-                "Profesor": r["profesores"]["nombre"] if r.get("profesores") else "",
-                "Curso": r["cursos"]["nombre"] if r.get("cursos") else "",
-                "Recurso": r["recursos"]["nombre"] if r.get("recursos") else "",
-                "Observaciones": r["observaciones"]
-            })
-        df_res = pd.DataFrame(reservas_limpias) if reservas_limpias else pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones'])
-            
-        try:
-            # CORRECCIÓN DEFINITIVA DE MANTENIMIENTO: Carga simple sin JOIN para evitar errores
-            mant_data = supabase.table("mantenimientos").select("*").execute().data
-            rec_data = supabase.table("recursos").select("id, nombre").execute().data
-            mant_map_rec = {r['id']: r['nombre'] for r in rec_data} if rec_data else {}
-            
-            df_mant = pd.DataFrame(mant_data) if mant_data else pd.DataFrame()
-            
-            if not df_mant.empty:
-                df_mant = df_mant[df_mant['estado'] != 'Reparado']
-                df_mant['FechaInicio_dt'] = df_mant['fecha'].apply(parse_date) if 'fecha' in df_mant.columns else dt.date.today()
-                df_mant['FechaFin_dt'] = df_mant['FechaInicio_dt']
-                df_mant['HoraInicio'] = dt.time(0, 0)
-                df_mant['HoraFin'] = dt.time(23, 59)
-                if 'recurso_id' in df_mant.columns:
-                    df_mant['Recurso'] = df_mant['recurso_id'].apply(lambda x: mant_map_rec.get(x, 'Desconocido'))
-                else: df_mant['Recurso'] = 'Desconocido'
-            else:
-                df_mant = pd.DataFrame(columns=['Recurso', 'FechaInicio_dt', 'HoraInicio', 'FechaFin_dt', 'HoraFin'])
-        except Exception as e:
-            df_mant = pd.DataFrame(columns=['Recurso', 'FechaInicio_dt', 'HoraInicio', 'FechaFin_dt', 'HoraFin'])
-
-        return df_res, horas_corregidas, df_mant
+        res_data = leer_tabla_completa("reservas", "*")
     except Exception as e:
-        return pd.DataFrame(columns=['id', 'Fecha', 'Hora inicio', 'Hora fin', 'Profesor', 'Curso', 'Recurso', 'Observaciones']), horas_corregidas, pd.DataFrame()
+        meta["errores"].append(f"reservas: {e}")
+        res_data = []
 
-df, HORAS, df_mantenimiento = cargar_reservas_y_datos()
+    reservas_limpias = []
+    for r in res_data:
+        try:
+            fecha_raw = r.get("fecha")
+            hora_inicio_raw = r.get("hora_inicio")
+            hora_fin_raw = r.get("hora_fin")
+            if fecha_raw is None or hora_inicio_raw is None or hora_fin_raw is None:
+                raise ValueError("fecha u hora incompleta")
 
-map_prof, map_cur, map_rec, PROFESOR_DATA = {}, {}, {}, {}
-try: 
-    prof_data_db = supabase.table("profesores").select("id, nombre, email").execute().data
-    map_prof = {p["nombre"]: p["id"] for p in prof_data_db}; PROFESOR_DATA = {p["nombre"]: p.get("email", "") for p in prof_data_db}
-except: pass
-try: map_cur = {c["nombre"]: c["id"] for c in supabase.table("cursos").select("id, nombre").execute().data}
-except: pass
-try: map_rec = {r["nombre"]: r["id"] for r in supabase.table("recursos").select("id, nombre").execute().data}
-except: pass
+            profesor_fk = r.get("profesor", r.get("profesor_id"))
+            curso_fk = r.get("curso", r.get("curso_id"))
+            recurso_fk = r.get("recurso", r.get("recurso_id"))
+
+            reservas_limpias.append({
+                "id": r.get("id"),
+                "Fecha": parse_date(fecha_raw),
+                "Hora inicio": as_time(hora_inicio_raw),
+                "Hora fin": as_time(hora_fin_raw),
+                "Profesor": _nombre_relacion(profesor_fk, mapa_prof_id, "Sin profesor"),
+                "Curso": _nombre_relacion(curso_fk, mapa_cur_id, "Sin curso"),
+                "Recurso": _nombre_relacion(recurso_fk, mapa_rec_id, "Sin recurso"),
+                "Observaciones": r.get("observaciones") or "",
+            })
+        except Exception as e:
+            meta["filas_omitidas"] += 1
+            if len(meta["advertencias"]) < 10:
+                meta["advertencias"].append(
+                    f"Reserva ID {r.get('id', 'sin ID')} omitida: {e}"
+                )
+
+    df_res = (
+        pd.DataFrame(reservas_limpias)
+        if reservas_limpias
+        else pd.DataFrame(columns=columnas_vacias)
+    )
+
+    try:
+        mant_data = leer_tabla_completa("mantenimientos", "*")
+        df_mant = pd.DataFrame(mant_data) if mant_data else pd.DataFrame()
+        if not df_mant.empty:
+            if "estado" in df_mant.columns:
+                df_mant = df_mant[df_mant["estado"].fillna("") != "Reparado"]
+            if "fecha" in df_mant.columns:
+                df_mant["FechaInicio_dt"] = df_mant["fecha"].apply(parse_date)
+            else:
+                df_mant["FechaInicio_dt"] = dt.date.today()
+            df_mant["FechaFin_dt"] = df_mant["FechaInicio_dt"]
+            df_mant["HoraInicio"] = dt.time(0, 0)
+            df_mant["HoraFin"] = dt.time(23, 59)
+            df_mant["Recurso"] = df_mant.apply(
+                lambda fila: _nombre_relacion(
+                    fila.get("recurso_id", fila.get("recurso")),
+                    mapa_rec_id,
+                    "Desconocido",
+                ),
+                axis=1,
+            )
+        else:
+            df_mant = pd.DataFrame(
+                columns=['Recurso', 'FechaInicio_dt', 'HoraInicio', 'FechaFin_dt', 'HoraFin']
+            )
+    except Exception as e:
+        meta["errores"].append(f"mantenimientos: {e}")
+        df_mant = pd.DataFrame(
+            columns=['Recurso', 'FechaInicio_dt', 'HoraInicio', 'FechaFin_dt', 'HoraFin']
+        )
+
+    meta["total_reservas_bd"] = len(res_data)
+    meta["total_reservas_cargadas"] = len(df_res)
+    return df_res, horas_corregidas, df_mant, catalogos, meta
+
+
+df, HORAS, df_mantenimiento, CATALOGOS_DB, ESTADO_CARGA = cargar_reservas_y_datos()
+
+MAP_PROF_ID_NOMBRE = {
+    _id_key(p.get("id")): str(p.get("nombre") or "")
+    for p in CATALOGOS_DB["profesores"] if p.get("id") is not None
+}
+MAP_CUR_ID_NOMBRE = {
+    _id_key(c.get("id")): str(c.get("nombre") or "")
+    for c in CATALOGOS_DB["cursos"] if c.get("id") is not None
+}
+MAP_REC_ID_NOMBRE = {
+    _id_key(r.get("id")): str(r.get("nombre") or "")
+    for r in CATALOGOS_DB["recursos"] if r.get("id") is not None
+}
+
+map_prof = {
+    str(p.get("nombre")): p.get("id")
+    for p in CATALOGOS_DB["profesores"] if p.get("nombre")
+}
+map_cur = {
+    str(c.get("nombre")): c.get("id")
+    for c in CATALOGOS_DB["cursos"] if c.get("nombre")
+}
+map_rec = {
+    str(r.get("nombre")): r.get("id")
+    for r in CATALOGOS_DB["recursos"] if r.get("nombre")
+}
+PROFESOR_DATA = {
+    str(p.get("nombre")): str(p.get("email") or "")
+    for p in CATALOGOS_DB["profesores"] if p.get("nombre")
+}
 
 # ------------------------------------------------------------------
 # 4) NAVEGACIÓN Y VISTAS
@@ -960,7 +1239,37 @@ with st.sidebar:
 
     st.sidebar.markdown("---")
 
-    if st.sidebar.button("🔄 Refrescar Pantalla", use_container_width=True):
+    estado_db = diagnosticar_supabase()
+    with st.sidebar.expander("🗄️ Estado de Supabase", expanded=bool(estado_db["errores"])):
+        if estado_db["errores"]:
+            st.error("Conexión incompleta")
+        else:
+            st.success("Conectado correctamente")
+        st.caption(f"Proyecto: {estado_db['proyecto']}")
+        if estado_db["proyecto"] != PROYECTO_SUPABASE_ESPERADO:
+            st.warning(
+                "La app está apuntando a un proyecto distinto del proyecto histórico del sistema. "
+                "Revisa SUPABASE_URL en Secrets."
+            )
+        if estado_db["conteos"]:
+            st.markdown(
+                "  ".join(
+                    f"**{tabla}:** {cantidad}" for tabla, cantidad in estado_db["conteos"].items()
+                )
+            )
+        for tabla, error in estado_db["errores"].items():
+            st.code(f"{tabla}: {error}")
+
+    if ESTADO_CARGA["errores"]:
+        with st.sidebar.expander("⚠️ Errores de carga", expanded=True):
+            for error in ESTADO_CARGA["errores"]:
+                st.code(error)
+    if ESTADO_CARGA["filas_omitidas"]:
+        st.sidebar.warning(
+            f"Se omitieron {ESTADO_CARGA['filas_omitidas']} reservas con datos inválidos."
+        )
+
+    if st.sidebar.button("🔄 Refrescar Datos", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
@@ -1129,7 +1438,7 @@ if page == "Registrar":
                         for rec in recs:
                             id_rec_buscado = map_rec.get(rec)
                             # Pedimos directamente a la base de datos las reservas de ese día y recurso
-                            db_check = supabase.table("reservas").select("hora_inicio, hora_fin, profesores(nombre)").eq("fecha", str(fecha)).eq("recurso", id_rec_buscado).execute()
+                            db_check = supabase.table("reservas").select("*").eq("fecha", str(fecha)).eq("recurso", id_rec_buscado).execute()
                             
                             for registro_db in (db_check.data or []):
                                 h_ini_db = as_time(registro_db['hora_inicio'])
@@ -1137,7 +1446,11 @@ if page == "Registrar":
                                 
                                 # Si hay solapamiento exacto
                                 if overlap(h_inicio, h_fin, h_ini_db, h_fin_db):
-                                    profe_ocupante = registro_db['profesores']['nombre'] if registro_db.get('profesores') else 'Otro usuario'
+                                    profe_ocupante = _nombre_relacion(
+                                        registro_db.get("profesor", registro_db.get("profesor_id")),
+                                        MAP_PROF_ID_NOMBRE,
+                                        "Otro usuario",
+                                    )
                                     mensaje_choque = f"<li>{rec} el {fecha.strftime('%d/%m/%Y')} (Ya reservado por {profe_ocupante} justo ahora)</li>"
                                     if mensaje_choque not in conflictos_r:
                                         conflictos_r.append(mensaje_choque)
@@ -1798,7 +2111,7 @@ elif page == "Dashboard":
             if not heatmap_data.empty:
                 fig_heat = px.density_heatmap(heatmap_data, x='Dia_Semana', y='Bloque_Ordenado', z='Cantidad',
                                              text_auto=True, color_continuous_scale='Viridis')
-                fig_heat.update_layout(xaxis_nticks=5, yaxis={'categoryorder':'category ascending'}, height=450)
+                fig_heat.update_layout(template='plotly_white', xaxis_nticks=5, yaxis={'categoryorder':'category ascending'}, height=450)
                 fig_heat.update_xaxes(tickformat="%A", labelalias={d: d.split('-')[1] for d in dias_map.values()})
                 st.plotly_chart(fig_heat, use_container_width=True, config={'displayModeBar': False})
             else:
@@ -1813,17 +2126,29 @@ elif page == "Dashboard":
             if not top5_recursos.empty:
                 fig_top5 = px.bar(top5_recursos, x='Cantidad', y='Recurso', orientation='h', text='Cantidad',
                                  color='Cantidad', color_continuous_scale='Blues')
-                fig_top5.update_layout(showlegend=False, coloraxis_showscale=False, height=450)
+                fig_top5.update_layout(template='plotly_white', showlegend=False, coloraxis_showscale=False, height=450)
                 fig_top5.update_traces(textposition='outside')
                 st.plotly_chart(fig_top5, use_container_width=True, config={'displayModeBar': False})
 
         st.markdown("<br>### 📊 Distribución Global de Recursos", unsafe_allow_html=True)
         fig_full = px.bar(uso_recursos, x='Recurso', y='Cantidad', color='Recurso', text_auto=True)
-        fig_full.update_layout(showlegend=False, height=350, xaxis_tickangle=-45)
+        fig_full.update_layout(template='plotly_white', showlegend=False, height=350, xaxis_tickangle=-45)
         st.plotly_chart(fig_full, use_container_width=True)
         
     else:
-        st.info("No hay reservas registradas en el sistema todavía.")
+        if ESTADO_CARGA["errores"]:
+            st.error("🚨 No fue posible cargar las reservas desde Supabase.")
+            st.markdown("Revisa **🗄️ Estado de Supabase** en la barra lateral.")
+            with st.expander("Detalles técnicos"):
+                for error in ESTADO_CARGA["errores"]:
+                    st.code(error)
+        else:
+            st.info("No hay reservas registradas en la tabla reservas.")
+
+    st.caption(
+        f"Base de datos: {ESTADO_CARGA.get('total_reservas_bd', 0)} filas · "
+        f"Cargadas en pantalla: {ESTADO_CARGA.get('total_reservas_cargadas', 0)}"
+    )
 # ==============================================================================
 # --- SECCIÓN TÉCNICOS (TICKETS, BAJAS INDEPENDIENTES Y CÓDIGOS QR) ---
 # ==============================================================================
@@ -1855,14 +2180,21 @@ elif page == "Técnicos":
     if modulo_tec == "🎫 Tickets":
         st.subheader("Gestión de Tickets ingresados vía QR")
         try:
-            mant_data = supabase.table("mantenimientos").select("*, recursos(nombre)").order("fecha", desc=True).execute().data
+            mant_data = supabase.table("mantenimientos").select("*").order("fecha", desc=True).execute().data
         except Exception as e:
             st.error(f"Error consultando mantenimientos: {e}")
             mant_data = []
 
         if mant_data:
             df_mant = pd.DataFrame(mant_data)
-            df_mant['Recurso'] = df_mant['recursos'].apply(lambda x: x.get('nombre', 'Desconocido') if isinstance(x, dict) else "Desconocido")
+            df_mant['Recurso'] = df_mant.apply(
+                lambda fila: _nombre_relacion(
+                    fila.get("recurso_id", fila.get("recurso")),
+                    MAP_REC_ID_NOMBRE,
+                    "Desconocido",
+                ),
+                axis=1,
+            )
             
             if 'notas_tecnico' not in df_mant.columns: 
                 df_mant['notas_tecnico'] = ""
@@ -2952,7 +3284,9 @@ if page == "Configuración":
     st.title("⚙️ Configuración del Sistema")
     st.write("Desde aquí puedes administrar los elementos centrales de la aplicación.")
     
-    tab_prof, tab_cur, tab_rec = st.tabs(["Profesores", "Cursos", "Recursos"])
+    tab_prof, tab_cur, tab_rec, tab_conexion = st.tabs(
+        ["Profesores", "Cursos", "Recursos", "Conexión Supabase"]
+    )
     
     with tab_prof:
         st.write("### 👥 Administración de Profesores")
@@ -3042,6 +3376,45 @@ if page == "Configuración":
                             st.success(f"Recurso {rec_borrar} eliminado.")
                             st.cache_data.clear(); time.sleep(0.5); st.rerun()
                         except Exception as e: st.error("No se puede eliminar porque tiene reservas o reportes de mantenimiento asociados.")
+
+
+    with tab_conexion:
+        st.write("### 🗄️ Diagnóstico de conexión con Supabase")
+        estado = diagnosticar_supabase()
+        c_estado, c_proyecto = st.columns(2)
+        with c_estado:
+            if estado["errores"]:
+                st.error("Conexión parcial o con errores")
+            else:
+                st.success("Conexión correcta")
+        with c_proyecto:
+            st.metric("Proyecto activo", estado["proyecto"])
+
+        if estado["proyecto"] != PROYECTO_SUPABASE_ESPERADO:
+            st.warning(
+                f"La aplicación apunta al proyecto **{estado['proyecto']}**, pero el sistema original "
+                f"usaba **{PROYECTO_SUPABASE_ESPERADO}**. Revisa SUPABASE_URL."
+            )
+
+        if estado["conteos"]:
+            df_estado = pd.DataFrame(
+                [{"Tabla": tabla, "Registros visibles": cantidad}
+                 for tabla, cantidad in estado["conteos"].items()]
+            )
+            st.dataframe(df_estado, use_container_width=True, hide_index=True)
+
+        if estado["errores"]:
+            st.write("#### Errores devueltos por Supabase")
+            for tabla, error in estado["errores"].items():
+                st.code(f"{tabla}: {error}")
+
+        st.info(
+            "La clave nunca se muestra en pantalla. Para producción utiliza una anon key con "
+            "políticas RLS adecuadas o conserva la service role únicamente en Secrets."
+        )
+        if st.button("🔄 Probar conexión y recargar", type="primary", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
 
 # ==============================================================================
 # 📺 PÁGINA: GESTIÓN DE TV Y MENSAJERÍA
@@ -3141,16 +3514,22 @@ elif page == "Modo TV":
                 # Se obtienen reservas para el perfil seleccionado
                 perfil_actual = st.session_state.get("tv_profile", "")
                 if "PROFESOR" in perfil_actual.upper() or "INSPECTOR" in perfil_actual.upper() or perfil_actual == "":
-                    res_data = supabase.table("reservas").select("*, recursos(nombre), cursos(nombre), profesores(nombre)").eq("fecha", hoy_str).execute().data or []
+                    res_data = supabase.table("reservas").select("*").eq("fecha", hoy_str).execute().data or []
                     for r in res_data:
                         if hora_actual <= str(r.get("hora_fin", "23:59")):
-                            recurso_nom = r['recursos']['nombre'] if r.get('recursos') else "Recurso"
-                            curso_nom = r['cursos']['nombre'] if r.get('cursos') else "Sin Curso"
-                            prof_nom = r['profesores']['nombre'] if r.get('profesores') else "Docente"
+                            recurso_nom = _nombre_relacion(
+                                r.get("recurso", r.get("recurso_id")), MAP_REC_ID_NOMBRE, "Recurso"
+                            )
+                            curso_nom = _nombre_relacion(
+                                r.get("curso", r.get("curso_id")), MAP_CUR_ID_NOMBRE, "Sin Curso"
+                            )
+                            prof_nom = _nombre_relacion(
+                                r.get("profesor", r.get("profesor_id")), MAP_PROF_ID_NOMBRE, "Docente"
+                            )
                             eventos_hoy.append({
-                                "hora": str(r.get("hora_inicio", "00:00"))[:5], 
-                                "titulo": f"🔒 {recurso_nom} - {curso_nom}", 
-                                "desc": f"Docente: {prof_nom}", 
+                                "hora": str(r.get("hora_inicio", "00:00"))[:5],
+                                "titulo": f"🔒 {recurso_nom} - {curso_nom}",
+                                "desc": f"Docente: {prof_nom}",
                                 "tipo": "reserva"
                             })
             except Exception as e:
