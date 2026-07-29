@@ -758,12 +758,20 @@ if st.session_state.get("ver_pantalla_tv", False):
             border: 1px solid #fde68a;
         }}
         .tv-notice-text {{
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
             margin: 18px 0 0 61px;
             color: #334155;
-            font-size: calc(1.30rem * var(--tv-scale));
-            line-height: 1.38;
+            font-size: calc(1.22rem * var(--tv-scale));
+            line-height: 1.42;
             font-weight: 700;
+            text-align: left;
             overflow-wrap: anywhere;
+        }}
+        .tv-notice-line {{
+            display: block;
+            width: 100%;
         }}
         .tv-notice-footer {{
             display: flex;
@@ -883,6 +891,21 @@ if st.session_state.get("ver_pantalla_tv", False):
         except Exception:
             return "Aviso vigente"
 
+    def formatear_descripcion_aviso_tv(texto):
+        """Conserva los saltos de línea del formulario y genera HTML seguro."""
+        contenido = str(texto or "")
+        contenido = contenido.replace("\r\n", "\n").replace("\r", "\n")
+
+        # Cada renglón escrito en el formulario se muestra como una línea separada.
+        lineas = [linea.strip() for linea in contenido.split("\n") if linea.strip()]
+        if not lineas and contenido.strip():
+            lineas = [contenido.strip()]
+
+        return "".join(
+            f'<div class="tv-notice-line">{html_sanitizer.escape(linea)}</div>'
+            for linea in lineas
+        )
+
     # ==============================================================
     # ÁREA PRINCIPAL: AVISOS DESTACADOS
     # ==============================================================
@@ -950,8 +973,8 @@ if st.session_state.get("ver_pantalla_tv", False):
                 titulo_aviso = html_sanitizer.escape(
                     str(aviso.get("titulo", "Aviso institucional") or "Aviso institucional")
                 )
-                descripcion_aviso = html_sanitizer.escape(
-                    str(aviso.get("descripcion", "") or "")
+                descripcion_aviso = formatear_descripcion_aviso_tv(
+                    aviso.get("descripcion", "")
                 )
                 vigencia_aviso = html_sanitizer.escape(
                     formatear_vigencia_aviso_tv(aviso)
