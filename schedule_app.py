@@ -4383,6 +4383,8 @@ elif page == "Modo TV":
             titulo_aviso = st.text_input(
                 "Título del aviso *",
                 placeholder="Ej. Reemplazos de profesores",
+                max_chars=150,
+                help="Máximo 150 caracteres.",
             )
 
             descripcion_aviso = st.text_area(
