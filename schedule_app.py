@@ -576,18 +576,28 @@ if st.session_state.get("ver_pantalla_tv", False):
             .data or []
         )
 
-        ahora_avisos = dt_datetime.now(tz_chile)
+        ahora_avisos = dt_datetime.now(TZ_CHILE)
+
         for aviso in avisos:
-            exp_dt = pd.to_datetime(aviso.get("expiracion"))
+            inicio_aviso, fin_aviso, estado_aviso = obtener_ventana_alerta(
+                aviso,
+                ahora_avisos,
+            )
 
-            if exp_dt.tzinfo is None:
-                exp_dt = tz_chile.localize(exp_dt.to_pydatetime())
-            else:
-                exp_dt = exp_dt.tz_convert(tz_chile)
-
-            if exp_dt > ahora_avisos:
-                aviso["_expiracion_tv"] = exp_dt
+            if estado_aviso == "EN_CURSO":
+                aviso["_inicio_tv"] = inicio_aviso
+                aviso["_expiracion_tv"] = fin_aviso
+                aviso["_estado_tv"] = estado_aviso
                 avisos_vivos.append(aviso)
+
+            elif estado_aviso in ("FINALIZADA", "INVALIDA"):
+                # Limpieza automática de avisos vencidos o sin fecha válida.
+                try:
+                    supabase.table("anuncios_urgentes").update(
+                        {"is_active": False}
+                    ).eq("id", aviso["id"]).execute()
+                except Exception as error_limpieza:
+                    registrar_error("limpiar_aviso_tv", error_limpieza)
 
         avisos_vivos = sorted(
             avisos_vivos,
@@ -3973,8 +3983,25 @@ elif page == "Modo TV":
             # --- SECCIÓN AVISOS LATERALES ---
             st.markdown("<h3 style='color:#1e3a8a;'>🚨 Avisos Vigentes</h3>", unsafe_allow_html=True)
             try:
-                avisos = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).neq("prioridad", 999).execute().data or []
-                avisos_vivos = [a for a in avisos if pd.to_datetime(a['expiracion']).tz_localize(None) > now_dt]
+                avisos = (
+                    supabase.table("anuncios_urgentes")
+                    .select("*")
+                    .eq("is_active", True)
+                    .neq("prioridad", 999)
+                    .execute()
+                    .data or []
+                )
+
+                avisos_vivos = []
+                ahora_secundario = dt_datetime.now(TZ_CHILE)
+
+                for aviso in avisos:
+                    _, _, estado_aviso = obtener_ventana_alerta(
+                        aviso,
+                        ahora_secundario,
+                    )
+                    if estado_aviso == "EN_CURSO":
+                        avisos_vivos.append(aviso)
                 if not avisos_vivos:
                     st.markdown("<p style='color:#64748b; font-style:italic;'>No hay avisos publicados para hoy.</p>", unsafe_allow_html=True)
                 else:
@@ -4343,14 +4370,175 @@ elif page == "Modo TV":
                         st.error(f"No fue posible guardar el evento: {e}")
 
     with tab3:
-        with st.form("nuevo_anuncio"):
-            t = st.text_input("Título del Aviso")
-            d = st.text_area("Descripción")
-            p = st.selectbox("Prioridad", [1, 2], format_func=lambda x: "🔴 Alta (Rojo)" if x==1 else "🟡 Media (Amarillo)")
-            if st.form_submit_button("Publicar Aviso"):
-                exp = (dt_datetime.now() + dt.timedelta(hours=24)).isoformat()
-                supabase.table("anuncios_urgentes").insert({"titulo": t, "descripcion": d, "prioridad": p, "expiracion": exp, "is_active": True}).execute()
-                st.success("Anuncio publicado")
+        st.subheader("🔔 Programar aviso lateral")
+        st.caption(
+            "El aviso aparecerá en la zona principal de la pantalla solamente "
+            "durante el rango de fecha y hora seleccionado."
+        )
+
+        ahora_aviso = dt_datetime.now(TZ_CHILE).replace(second=0, microsecond=0)
+        fin_aviso_default = ahora_aviso + dt.timedelta(hours=1)
+
+        with st.form("nuevo_anuncio_programado", clear_on_submit=False):
+            titulo_aviso = st.text_input(
+                "Título del aviso *",
+                placeholder="Ej. Reemplazos de profesores",
+            )
+
+            descripcion_aviso = st.text_area(
+                "Descripción *",
+                height=180,
+                placeholder=(
+                    "Puedes escribir cada información en una línea distinta.\n"
+                    "08:00 - 09:30 Curso / Profesor\n"
+                    "09:45 - 11:15 Curso / Profesor"
+                ),
+                help="Los saltos de línea se conservarán en la pantalla TV.",
+            )
+
+            prioridad_aviso = st.selectbox(
+                "Prioridad",
+                [1, 2],
+                format_func=lambda valor: (
+                    "🔴 Alta" if valor == 1 else "🟡 Media"
+                ),
+            )
+
+            st.markdown("#### 📆 Vigencia del aviso")
+            col_inicio_aviso, col_fin_aviso = st.columns(2)
+
+            with col_inicio_aviso:
+                fecha_inicio_aviso = st.date_input(
+                    "Fecha de inicio *",
+                    value=ahora_aviso.date(),
+                    format="DD/MM/YYYY",
+                    key="fecha_inicio_aviso_tv",
+                )
+                hora_inicio_aviso = st.time_input(
+                    "Hora de inicio *",
+                    value=ahora_aviso.time(),
+                    step=dt.timedelta(minutes=5),
+                    key="hora_inicio_aviso_tv",
+                )
+
+            with col_fin_aviso:
+                fecha_fin_aviso = st.date_input(
+                    "Fecha de término *",
+                    value=fin_aviso_default.date(),
+                    format="DD/MM/YYYY",
+                    key="fecha_fin_aviso_tv",
+                )
+                hora_fin_aviso = st.time_input(
+                    "Hora de término *",
+                    value=fin_aviso_default.time(),
+                    step=dt.timedelta(minutes=5),
+                    key="hora_fin_aviso_tv",
+                )
+
+            publicar_aviso = st.form_submit_button(
+                "📢 Guardar y programar aviso",
+                type="primary",
+                use_container_width=True,
+            )
+
+            if publicar_aviso:
+                if not titulo_aviso.strip():
+                    st.warning("Ingresa el título del aviso.")
+                elif not descripcion_aviso.strip():
+                    st.warning("Ingresa la descripción del aviso.")
+                else:
+                    inicio_aviso = combinar_fecha_hora_chile(
+                        fecha_inicio_aviso,
+                        hora_inicio_aviso,
+                    )
+                    fin_aviso = combinar_fecha_hora_chile(
+                        fecha_fin_aviso,
+                        hora_fin_aviso,
+                    )
+
+                    if fin_aviso <= inicio_aviso:
+                        st.warning(
+                            "La fecha y hora de término deben ser posteriores "
+                            "a la fecha y hora de inicio."
+                        )
+                    else:
+                        datos_aviso = {
+                            "titulo": titulo_aviso.strip(),
+                            "descripcion": descripcion_aviso.strip(),
+                            "prioridad": int(prioridad_aviso),
+                            "inicio_programado": inicio_aviso.isoformat(),
+                            "fin_programado": fin_aviso.isoformat(),
+                            # Se mantiene para compatibilidad con registros antiguos.
+                            "expiracion": fin_aviso.isoformat(),
+                            "is_active": True,
+                        }
+
+                        try:
+                            resultado = (
+                                supabase.table("anuncios_urgentes")
+                                .insert(datos_aviso)
+                                .execute()
+                            )
+
+                            registro_id = (
+                                resultado.data[0].get("id")
+                                if resultado.data
+                                else None
+                            )
+
+                            registrar_auditoria(
+                                "programar aviso",
+                                "Modo TV",
+                                registro_id=registro_id,
+                                detalle={
+                                    "titulo": titulo_aviso.strip(),
+                                    "prioridad": int(prioridad_aviso),
+                                    "inicio": inicio_aviso.isoformat(),
+                                    "fin": fin_aviso.isoformat(),
+                                },
+                            )
+
+                            estado_inicial = (
+                                "publicado y visible"
+                                if inicio_aviso <= dt_datetime.now(TZ_CHILE)
+                                else "programado"
+                            )
+
+                            st.success(
+                                f"✅ Aviso {estado_inicial} desde "
+                                f"{inicio_aviso.strftime('%d/%m/%Y %H:%M')} "
+                                f"hasta {fin_aviso.strftime('%d/%m/%Y %H:%M')}."
+                            )
+                            st.balloons()
+
+                        except Exception as e:
+                            registrar_error("crear_aviso_programado", e)
+
+                            detalle_error = str(e)
+                            error_columnas = any(
+                                pista in detalle_error.lower()
+                                for pista in [
+                                    "inicio_programado",
+                                    "fin_programado",
+                                    "pgrst204",
+                                    "schema cache",
+                                ]
+                            )
+
+                            if error_columnas:
+                                st.error(
+                                    "Supabase todavía no reconoce las columnas "
+                                    "`inicio_programado` y `fin_programado`. "
+                                    "Ejecuta el archivo "
+                                    "`migracion_avisos_programados.sql` en "
+                                    "Supabase → SQL Editor y reinicia la app."
+                                )
+                            else:
+                                st.error(
+                                    "No fue posible guardar el aviso en Supabase. "
+                                    "Revisa Manage app → Logs. Detalle técnico: "
+                                    f"{detalle_error}"
+                                )
 
     with tab4:
         st.subheader("🗑️ Gestionar contenido programado")
@@ -4454,8 +4642,25 @@ elif page == "Modo TV":
                             f"{str(aviso.get('descripcion', ''))[:45]}"
                         )
                     else:
-                        icono = "🔴" if str(aviso.get("prioridad")) == "1" else "🟡"
-                        etiqueta = f"{icono} {aviso.get('titulo', 'Aviso')}"
+                        inicio, fin, estado = obtener_ventana_alerta(aviso, ahora)
+                        icono = (
+                            "🔴"
+                            if str(aviso.get("prioridad")) == "1"
+                            else "🟡"
+                        )
+                        estado_legible = {
+                            "EN_CURSO": "EN CURSO",
+                            "PROGRAMADA": "PROGRAMADO",
+                            "FINALIZADA": "FINALIZADO",
+                            "INVALIDA": "SIN FECHA",
+                        }.get(estado, estado)
+
+                        etiqueta = (
+                            f"{icono} {estado_legible} | "
+                            f"{inicio.strftime('%d/%m %H:%M') if inicio else 'Inmediato'} "
+                            f"→ {fin.strftime('%d/%m %H:%M') if fin else 'Sin término'} | "
+                            f"{aviso.get('titulo', 'Aviso')}"
+                        )
 
                     an_dict[etiqueta] = aviso["id"]
 
