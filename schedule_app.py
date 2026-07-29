@@ -24,6 +24,9 @@ import os
 from streamlit_autorefresh import st_autorefresh
 import base64
 import os
+import uuid
+import traceback
+import logging
 
 import requests
 from icalendar import Calendar
@@ -190,11 +193,61 @@ def consultar_gemini(prompt):
 # ------------------------------------------------------------------
 from supabase import create_client, Client, ClientOptions
 
-URL_SUPABASE = "https://zxzpaubemwpwgvswvwjh.supabase.co"
-CLAVE_SUPABASE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4enBhdWJlbXdwd2d2c3d2d2poIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Mzg1NzMzMiwiZXhwIjoyMDg5NDMzMzMyfQ.CGWbTQprQaAhYruqlIkmMAMhx7EzD9hJ8QnJ7wCBxto"
+# Las credenciales se leen exclusivamente desde Streamlit Secrets.
+try:
+    URL_SUPABASE = st.secrets["SUPABASE_URL"]
+    CLAVE_SUPABASE = st.secrets["SUPABASE_KEY"]
+except KeyError as e:
+    st.error(f"🚨 Falta configurar {e} en los Secrets de Streamlit.")
+    st.stop()
 
 opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
 supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
+
+# Registro local de errores para diagnóstico administrativo.
+logging.basicConfig(level=logging.INFO)
+LOGGER = logging.getLogger("sistema_cav")
+
+def registrar_error(contexto, error):
+    LOGGER.error("%s: %s\n%s", contexto, error, traceback.format_exc())
+    st.session_state.setdefault("errores_sistema", [])
+    st.session_state.errores_sistema.append({
+        "fecha": dt_datetime.now().isoformat(timespec="seconds"),
+        "contexto": contexto,
+        "error": str(error),
+    })
+    st.session_state.errores_sistema = st.session_state.errores_sistema[-50:]
+
+def select_paginado(tabla, columnas="*", filtros=None, orden=None, desc=False, pagina=1000):
+    """Lee todos los registros de una tabla evitando el límite por defecto de Supabase."""
+    filas = []
+    desde = 0
+    while True:
+        consulta = supabase.table(tabla).select(columnas)
+        for metodo, campo, valor in (filtros or []):
+            consulta = getattr(consulta, metodo)(campo, valor)
+        if orden:
+            consulta = consulta.order(orden, desc=desc)
+        bloque = consulta.range(desde, desde + pagina - 1).execute().data or []
+        filas.extend(bloque)
+        if len(bloque) < pagina:
+            break
+        desde += pagina
+    return filas
+
+def registrar_auditoria(accion, modulo, registro_id=None, detalle=None):
+    """Registra acciones importantes. Si aún no existe la tabla, no interrumpe la app."""
+    try:
+        supabase.table("auditoria").insert({
+            "usuario": st.session_state.get("profesor_name") or st.session_state.get("role") or "sistema",
+            "accion": accion,
+            "modulo": modulo,
+            "registro_id": str(registro_id) if registro_id is not None else None,
+            "detalle": detalle or {},
+            "fecha": dt_datetime.now().isoformat(),
+        }).execute()
+    except Exception as e:
+        registrar_error("auditoria", e)
 
 # ==============================================================================
 # 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - MOTOR DE SONIDO INTEGRADO
@@ -759,11 +812,24 @@ if not st.session_state.logged:
                                 st.error("Acceso denegado. Credenciales incorrectas.")
                                 
                 elif tipo_user == "Mensajería Interna":
-                    st.info("💡 Acceso rápido para la gestión de las Pantallas Informativas.")
-                    if st.button("ENTRAR AL PANEL DE MENSAJERÍA", use_container_width=True, type="primary"):
-                        st.session_state.logged = True
-                        st.session_state.role = "mensajeria"
-                        st.rerun()
+                    st.info("💡 Acceso protegido para la gestión de Pantallas Informativas.")
+                    with st.form("mensajeria_form"):
+                        u_msg = st.text_input("Nombre del operador", placeholder="Ej. Inspectoría")
+                        p_msg = st.text_input("PIN de Mensajería", type="password", placeholder="••••••")
+                        if st.form_submit_button("ENTRAR AL PANEL DE MENSAJERÍA", use_container_width=True, type="primary"):
+                            try:
+                                clave_msg = st.secrets["passwords"]["mensajeria_pass"]
+                            except KeyError:
+                                st.error("❌ Falta configurar [passwords] mensajeria_pass en Streamlit Secrets.")
+                                st.stop()
+                            if u_msg.strip() and p_msg == clave_msg:
+                                st.session_state.logged = True
+                                st.session_state.role = "mensajeria"
+                                st.session_state.profesor_name = u_msg.strip()
+                                registrar_auditoria("inicio_sesion", "autenticacion", detalle={"rol": "mensajeria"})
+                                st.rerun()
+                            else:
+                                st.error("Acceso denegado. Revisa el nombre y el PIN.")
                         
                 else:
                     with st.form("profe_form", clear_on_submit=True):
@@ -816,7 +882,12 @@ def cargar_reservas_y_datos():
     ]
     
     try:
-        res_data = supabase.table("reservas").select("id, fecha, hora_inicio, hora_fin, observaciones, profesores(nombre), cursos(nombre), recursos(nombre)").execute().data
+        res_data = select_paginado(
+            "reservas",
+            "id, fecha, hora_inicio, hora_fin, observaciones, profesores(nombre), cursos(nombre), recursos(nombre)",
+            orden="fecha",
+            desc=False
+        )
         reservas_limpias = []
         for r in res_data:
             reservas_limpias.append({
@@ -840,7 +911,7 @@ def cargar_reservas_y_datos():
             df_mant = pd.DataFrame(mant_data) if mant_data else pd.DataFrame()
             
             if not df_mant.empty:
-                df_mant = df_mant[df_mant['estado'] != 'Reparado']
+                df_mant = df_mant[df_mant['estado'].isin(['Reportado (Vía QR)', 'En Revisión'])]
                 df_mant['FechaInicio_dt'] = df_mant['fecha'].apply(parse_date) if 'fecha' in df_mant.columns else dt.date.today()
                 df_mant['FechaFin_dt'] = df_mant['FechaInicio_dt']
                 df_mant['HoraInicio'] = dt.time(0, 0)
@@ -928,18 +999,22 @@ with st.sidebar:
     st.markdown("<hr style='margin: 0px 0px 10px 0px; padding: 0;'>", unsafe_allow_html=True)
 
     PAGES_CONFIG = {
+        "Inicio": {"icon": "🏠", "roles": ["admin", "profesor", "mensajeria"]},
         "Mis Reservas": {"icon": "👤", "roles": ["profesor"]},
         "Registrar": {"icon": "📝", "roles": ["admin"]},
         "Base de datos": {"icon": "🗃️", "roles": ["admin"]},
         "Semana": {"icon": "🗓️", "roles": ["admin", "profesor"]},
         "Dashboard": {"icon": "📈", "roles": ["admin"]},
         "Técnicos": {"icon": "🔧", "roles": ["admin"]},
+        "Inventario": {"icon": "💻", "roles": ["admin"]},
+        "Mantención preventiva": {"icon": "🧰", "roles": ["admin"]},
+        "Auditoría": {"icon": "🧾", "roles": ["admin"]},
         "Configuración": {"icon": "⚙️", "roles": ["admin"]},
         "Modo TV": {"icon": "📺", "roles": ["mensajeria"]}, # <-- El nuevo rol ahora tiene acceso
     }
 
     available_pages = [p for p, conf in PAGES_CONFIG.items() if st.session_state.role in conf["roles"]]
-    default_page = "Mis Reservas" if st.session_state.role == 'profesor' else "Registrar"
+    default_page = "Inicio"
     
     # --- AQUÍ ESTÁ LA SOLUCIÓN ---
     # Si la página por defecto ("Registrar") no está permitida para este usuario, 
@@ -1031,7 +1106,55 @@ if st.sidebar.button("💬 Abrir Asistente IA", type="primary", use_container_wi
 # PÁGINAS
 # ------------------------------------------------------------------
 
-if page == "Mis Reservas":
+if page == "Inicio":
+    st.title("🏠 Centro de Operaciones")
+    nombre_corto = (st.session_state.get("profesor_name") or "Usuario").split(" ")[0]
+    st.caption(f"Bienvenido, {nombre_corto}. Resumen actualizado del sistema.")
+
+    hoy_inicio = dt.date.today()
+    reservas_hoy_inicio = df[df["Fecha"] == hoy_inicio] if not df.empty else pd.DataFrame()
+    try:
+        tickets_inicio = select_paginado("mantenimientos", "*", orden="fecha", desc=True)
+    except Exception as e:
+        registrar_error("inicio_tickets", e)
+        tickets_inicio = []
+    tickets_pend = [t for t in tickets_inicio if t.get("estado") == "Reportado (Vía QR)"]
+    tickets_rev = [t for t in tickets_inicio if t.get("estado") == "En Revisión"]
+    try:
+        bajas_inicio = select_paginado("equipos", "*")
+    except Exception as e:
+        registrar_error("inicio_bajas", e)
+        bajas_inicio = []
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("📅 Reservas hoy", len(reservas_hoy_inicio))
+    c2.metric("🔴 Tickets pendientes", len(tickets_pend))
+    c3.metric("🟡 En revisión", len(tickets_rev))
+    c4.metric("🗑️ Bajas registradas", len(bajas_inicio))
+
+    st.markdown("### ⚡ Acciones rápidas")
+    acciones = st.columns(4)
+    with acciones[0]:
+        st.info("📝 **Nueva reserva**\n\nUsa el menú lateral → Registrar.")
+    with acciones[1]:
+        st.info("🎫 **Gestionar tickets**\n\nUsa el menú lateral → Técnicos.")
+    with acciones[2]:
+        st.info("🗑️ **Dar de baja**\n\nTécnicos → Baja de Equipos.")
+    with acciones[3]:
+        st.info("📺 **Publicar aviso**\n\nModo TV → Añadir Aviso.")
+
+    st.markdown("### 🕒 Próximas actividades")
+    if reservas_hoy_inicio.empty:
+        st.info("No hay reservas para hoy.")
+    else:
+        for _, row in reservas_hoy_inicio.sort_values("Hora inicio").head(6).iterrows():
+            with st.container(border=True):
+                st.markdown(
+                    f"**{row['Hora inicio'].strftime('%H:%M')}–{row['Hora fin'].strftime('%H:%M')} · {row['Recurso']}**  \n"
+                    f"👨‍🏫 {row['Profesor']} · 📚 {row['Curso']}"
+                )
+
+elif page == "Mis Reservas":
     st.title("👤 Mis Próximas Reservas")
     if not df.empty:
         prof_df = df[df['Profesor'] == st.session_state.profesor_name]
@@ -2572,13 +2695,237 @@ elif page == "Técnicos":
             st.download_button("⬇️ Descargar Código QR Maestro", data=buf.getvalue(), file_name="QR_Maestro_Fallas.png", mime="image/png", type="primary")
             st.code(final_url, language="html")
 # ------------------------------------------------------------------
+# INVENTARIO TÉCNICO
+# ------------------------------------------------------------------
+if page == "Inventario":
+    st.title("💻 Inventario Técnico")
+    st.caption("Pasaporte digital de equipos, garantías, ubicación y estado.")
+
+    tab_nuevo_inv, tab_listado_inv = st.tabs(["➕ Registrar equipo", "📋 Inventario"])
+
+    with tab_nuevo_inv:
+        with st.form("form_inventario"):
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                nombre_inv = st.text_input("Nombre del equipo *")
+                categoria_inv = st.selectbox("Categoría", ["Computador", "Notebook", "Proyector", "Impresora", "Tablet", "Cámara", "Audio", "Red", "Otro"])
+                codigo_inv = st.text_input("Código patrimonial")
+                serie_inv = st.text_input("Número de serie")
+            with c2:
+                marca_inv = st.text_input("Marca")
+                modelo_inv = st.text_input("Modelo")
+                ubicacion_inv = st.text_input("Ubicación")
+                responsable_inv = st.text_input("Responsable")
+            with c3:
+                fecha_compra_inv = st.date_input("Fecha de compra", value=dt.date.today(), format="DD/MM/YYYY")
+                garantia_inv = st.date_input("Fin de garantía", value=dt.date.today(), format="DD/MM/YYYY")
+                valor_inv = st.number_input("Valor de compra (CLP)", min_value=0, value=0, step=1000)
+                estado_inv = st.selectbox("Estado", ["Operativo", "En revisión", "En reparación", "Prestado", "Dado de baja"])
+
+            observaciones_inv = st.text_area("Observaciones")
+            if st.form_submit_button("💾 Guardar equipo", type="primary", use_container_width=True):
+                if not nombre_inv.strip():
+                    st.warning("El nombre del equipo es obligatorio.")
+                else:
+                    datos_inv = {
+                        "nombre": nombre_inv.strip(),
+                        "categoria": categoria_inv,
+                        "codigo_patrimonial": codigo_inv.strip(),
+                        "serie": serie_inv.strip(),
+                        "marca": marca_inv.strip(),
+                        "modelo": modelo_inv.strip(),
+                        "ubicacion": ubicacion_inv.strip(),
+                        "responsable": responsable_inv.strip(),
+                        "fecha_compra": fecha_compra_inv.isoformat(),
+                        "garantia_hasta": garantia_inv.isoformat(),
+                        "valor_compra": int(valor_inv),
+                        "estado": estado_inv,
+                        "observaciones": observaciones_inv.strip(),
+                    }
+                    try:
+                        res = supabase.table("inventario").insert(datos_inv).execute()
+                        registrar_auditoria("crear", "inventario", detalle=datos_inv)
+                        st.success("✅ Equipo incorporado al inventario.")
+                        st.balloons()
+                    except Exception as e:
+                        registrar_error("crear_inventario", e)
+                        st.error(f"No fue posible guardar el equipo: {e}")
+
+    with tab_listado_inv:
+        try:
+            inventario_db = select_paginado("inventario", "*", orden="nombre")
+        except Exception as e:
+            registrar_error("listar_inventario", e)
+            inventario_db = []
+
+        if inventario_db:
+            df_inv = pd.DataFrame(inventario_db)
+            filtro_estado_inv = st.multiselect("Filtrar por estado", sorted(df_inv["estado"].dropna().unique().tolist()))
+            filtro_texto_inv = st.text_input("🔎 Buscar por nombre, serie, código o ubicación")
+            df_filtrado_inv = df_inv.copy()
+            if filtro_estado_inv:
+                df_filtrado_inv = df_filtrado_inv[df_filtrado_inv["estado"].isin(filtro_estado_inv)]
+            if filtro_texto_inv.strip():
+                patron = filtro_texto_inv.strip().lower()
+                columnas_busqueda = [c for c in ["nombre", "serie", "codigo_patrimonial", "ubicacion", "marca", "modelo"] if c in df_filtrado_inv.columns]
+                mascara = pd.Series(False, index=df_filtrado_inv.index)
+                for col in columnas_busqueda:
+                    mascara |= df_filtrado_inv[col].fillna("").astype(str).str.lower().str.contains(patron, regex=False)
+                df_filtrado_inv = df_filtrado_inv[mascara]
+
+            columnas_vista = [c for c in ["nombre", "categoria", "marca", "modelo", "serie", "ubicacion", "responsable", "estado", "garantia_hasta"] if c in df_filtrado_inv.columns]
+            st.dataframe(df_filtrado_inv[columnas_vista], use_container_width=True, hide_index=True)
+
+            st.markdown("### 🪪 Pasaporte digital")
+            opciones_inv = {
+                f"{r.get('nombre', 'Equipo')} · {r.get('serie') or 'S/N'}": r
+                for r in inventario_db
+            }
+            sel_inv = st.selectbox("Selecciona un equipo", list(opciones_inv.keys()))
+            equipo_inv = opciones_inv[sel_inv]
+            with st.container(border=True):
+                c1, c2 = st.columns([2, 1])
+                with c1:
+                    st.markdown(f"## {equipo_inv.get('nombre', 'Equipo')}")
+                    st.write(f"**Categoría:** {equipo_inv.get('categoria') or '—'}")
+                    st.write(f"**Marca / Modelo:** {equipo_inv.get('marca') or '—'} / {equipo_inv.get('modelo') or '—'}")
+                    st.write(f"**Serie:** {equipo_inv.get('serie') or 'S/N'}")
+                    st.write(f"**Ubicación:** {equipo_inv.get('ubicacion') or '—'}")
+                    st.write(f"**Responsable:** {equipo_inv.get('responsable') or '—'}")
+                with c2:
+                    st.metric("Estado", equipo_inv.get("estado") or "—")
+                    st.metric("Garantía hasta", equipo_inv.get("garantia_hasta") or "—")
+                    st.metric("Valor", f"${int(equipo_inv.get('valor_compra') or 0):,}".replace(",", "."))
+        else:
+            st.info("No hay equipos en la tabla `inventario`.")
+
+# ------------------------------------------------------------------
+# MANTENCIÓN PREVENTIVA
+# ------------------------------------------------------------------
+elif page == "Mantención preventiva":
+    st.title("🧰 Mantención Preventiva")
+    st.caption("Programa, ejecuta y documenta revisiones periódicas.")
+
+    try:
+        inventario_mp = select_paginado("inventario", "id,nombre,serie,estado", orden="nombre")
+    except Exception as e:
+        registrar_error("inventario_preventivo", e)
+        inventario_mp = []
+
+    tab_plan_mp, tab_hist_mp = st.tabs(["📅 Programar", "📋 Plan e historial"])
+
+    with tab_plan_mp:
+        if not inventario_mp:
+            st.warning("Primero registra equipos en el módulo Inventario.")
+        else:
+            opciones_mp = {
+                f"{r['nombre']} · {r.get('serie') or 'S/N'}": r["id"]
+                for r in inventario_mp
+            }
+            with st.form("form_mant_preventiva"):
+                equipo_label_mp = st.selectbox("Equipo", list(opciones_mp.keys()))
+                c1, c2, c3 = st.columns(3)
+                fecha_prog_mp = c1.date_input("Fecha programada", value=dt.date.today(), format="DD/MM/YYYY")
+                frecuencia_mp = c2.selectbox("Frecuencia", ["Única", "Mensual", "Trimestral", "Semestral", "Anual"])
+                prioridad_mp = c3.selectbox("Prioridad", ["Baja", "Media", "Alta"])
+                tarea_mp = st.text_area("Tareas a realizar *", placeholder="Limpieza, actualización, revisión de cables, pruebas...")
+                responsable_mp = st.text_input("Responsable", value=st.session_state.get("profesor_name") or "")
+                if st.form_submit_button("💾 Programar mantención", type="primary", use_container_width=True):
+                    if not tarea_mp.strip():
+                        st.warning("Describe las tareas a realizar.")
+                    else:
+                        datos_mp = {
+                            "inventario_id": opciones_mp[equipo_label_mp],
+                            "fecha_programada": fecha_prog_mp.isoformat(),
+                            "frecuencia": frecuencia_mp,
+                            "prioridad": prioridad_mp,
+                            "tareas": tarea_mp.strip(),
+                            "responsable": responsable_mp.strip(),
+                            "estado": "Pendiente",
+                        }
+                        try:
+                            supabase.table("mantenciones_preventivas").insert(datos_mp).execute()
+                            registrar_auditoria("crear", "mantenciones_preventivas", detalle=datos_mp)
+                            st.success("✅ Mantención programada.")
+                        except Exception as e:
+                            registrar_error("crear_mantencion_preventiva", e)
+                            st.error(f"No fue posible programar: {e}")
+
+    with tab_hist_mp:
+        try:
+            planes_mp = select_paginado(
+                "mantenciones_preventivas",
+                "*, inventario(nombre,serie)",
+                orden="fecha_programada"
+            )
+        except Exception as e:
+            registrar_error("listar_mantenciones_preventivas", e)
+            planes_mp = []
+
+        if planes_mp:
+            for mp in planes_mp:
+                inv = mp.get("inventario") or {}
+                etiqueta = f"{mp.get('fecha_programada')} · {inv.get('nombre', 'Equipo')} · {mp.get('estado')}"
+                with st.expander(etiqueta):
+                    st.write(f"**Tareas:** {mp.get('tareas')}")
+                    st.write(f"**Responsable:** {mp.get('responsable') or '—'}")
+                    st.write(f"**Frecuencia:** {mp.get('frecuencia') or '—'}")
+                    st.write(f"**Prioridad:** {mp.get('prioridad') or '—'}")
+                    nuevo_estado_mp = st.selectbox(
+                        "Estado",
+                        ["Pendiente", "En proceso", "Completada", "Postergada"],
+                        index=["Pendiente", "En proceso", "Completada", "Postergada"].index(mp.get("estado") if mp.get("estado") in ["Pendiente", "En proceso", "Completada", "Postergada"] else "Pendiente"),
+                        key=f"estado_mp_{mp.get('id')}"
+                    )
+                    resultado_mp = st.text_area("Resultado / observaciones", value=mp.get("resultado") or "", key=f"resultado_mp_{mp.get('id')}")
+                    if st.button("💾 Actualizar", key=f"guardar_mp_{mp.get('id')}", use_container_width=True):
+                        cambios_mp = {
+                            "estado": nuevo_estado_mp,
+                            "resultado": resultado_mp.strip(),
+                            "fecha_realizada": dt.date.today().isoformat() if nuevo_estado_mp == "Completada" else mp.get("fecha_realizada"),
+                        }
+                        supabase.table("mantenciones_preventivas").update(cambios_mp).eq("id", mp.get("id")).execute()
+                        registrar_auditoria("actualizar", "mantenciones_preventivas", mp.get("id"), cambios_mp)
+                        st.success("Actualizado.")
+                        st.rerun()
+        else:
+            st.info("No hay mantenciones preventivas programadas.")
+
+# ------------------------------------------------------------------
+# AUDITORÍA
+# ------------------------------------------------------------------
+elif page == "Auditoría":
+    st.title("🧾 Registro de Auditoría")
+    st.caption("Trazabilidad de acciones administrativas y técnicas.")
+    try:
+        auditoria_db = select_paginado("auditoria", "*", orden="fecha", desc=True)
+    except Exception as e:
+        registrar_error("listar_auditoria", e)
+        auditoria_db = []
+
+    if auditoria_db:
+        df_aud = pd.DataFrame(auditoria_db)
+        c1, c2 = st.columns(2)
+        usuarios_aud = sorted(df_aud["usuario"].dropna().unique().tolist()) if "usuario" in df_aud.columns else []
+        modulos_aud = sorted(df_aud["modulo"].dropna().unique().tolist()) if "modulo" in df_aud.columns else []
+        filtro_usuario_aud = c1.multiselect("Usuario", usuarios_aud)
+        filtro_modulo_aud = c2.multiselect("Módulo", modulos_aud)
+        if filtro_usuario_aud:
+            df_aud = df_aud[df_aud["usuario"].isin(filtro_usuario_aud)]
+        if filtro_modulo_aud:
+            df_aud = df_aud[df_aud["modulo"].isin(filtro_modulo_aud)]
+        st.dataframe(df_aud, use_container_width=True, hide_index=True)
+    else:
+        st.info("No hay registros o falta ejecutar la migración de auditoría.")
+
+# ------------------------------------------------------------------
 # SECCIÓN: CONFIGURACIÓN
 # ------------------------------------------------------------------
 if page == "Configuración":
     st.title("⚙️ Configuración del Sistema")
     st.write("Desde aquí puedes administrar los elementos centrales de la aplicación.")
     
-    tab_prof, tab_cur, tab_rec = st.tabs(["Profesores", "Cursos", "Recursos"])
+    tab_prof, tab_cur, tab_rec, tab_estado = st.tabs(["Profesores", "Cursos", "Recursos", "Estado del sistema"])
     
     with tab_prof:
         st.write("### 👥 Administración de Profesores")
@@ -2668,6 +3015,57 @@ if page == "Configuración":
                             st.success(f"Recurso {rec_borrar} eliminado.")
                             st.cache_data.clear(); time.sleep(0.5); st.rerun()
                         except Exception as e: st.error("No se puede eliminar porque tiene reservas o reportes de mantenimiento asociados.")
+
+    with tab_estado:
+        st.write("### 🩺 Estado del sistema")
+        st.caption("Diagnóstico rápido de servicios y tablas principales.")
+
+        servicios = []
+        try:
+            prueba = supabase.table("recursos").select("id").limit(1).execute()
+            servicios.append(("Supabase", "✅ Conectado", "Base de datos disponible"))
+        except Exception as e:
+            registrar_error("estado_supabase", e)
+            servicios.append(("Supabase", "❌ Error", str(e)))
+
+        try:
+            _ = model
+            servicios.append(("Gemini", "✅ Configurado", "Modelo cargado"))
+        except Exception as e:
+            servicios.append(("Gemini", "❌ Error", str(e)))
+
+        try:
+            creds = st.secrets["email_credentials"]
+            servicios.append(("Correo SMTP", "✅ Configurado", creds.get("smtp_server", "Servidor definido")))
+        except Exception:
+            servicios.append(("Correo SMTP", "⚠️ Sin configurar", "Las notificaciones por correo no estarán disponibles"))
+
+        st.dataframe(
+            pd.DataFrame(servicios, columns=["Servicio", "Estado", "Detalle"]),
+            use_container_width=True,
+            hide_index=True
+        )
+
+        st.write("### 📊 Conteo de tablas")
+        conteos = []
+        for nombre_tabla in ["reservas", "recursos", "profesores", "cursos", "mantenimientos", "equipos", "eventos_tv", "anuncios_urgentes"]:
+            try:
+                respuesta = supabase.table(nombre_tabla).select("id", count="exact").limit(1).execute()
+                conteos.append({"Tabla": nombre_tabla, "Registros": respuesta.count or 0, "Estado": "✅"})
+            except Exception as e:
+                registrar_error(f"conteo_{nombre_tabla}", e)
+                conteos.append({"Tabla": nombre_tabla, "Registros": None, "Estado": "❌"})
+        st.dataframe(pd.DataFrame(conteos), use_container_width=True, hide_index=True)
+
+        st.write("### 🧾 Errores recientes")
+        errores = st.session_state.get("errores_sistema", [])
+        if errores:
+            st.dataframe(pd.DataFrame(errores[::-1]), use_container_width=True, hide_index=True)
+            if st.button("🧹 Limpiar registro de errores", use_container_width=True):
+                st.session_state.errores_sistema = []
+                st.rerun()
+        else:
+            st.success("No hay errores registrados en esta sesión.")
 
 # ==============================================================================
 # 📺 PÁGINA: GESTIÓN DE TV Y MENSAJERÍA
@@ -2897,12 +3295,27 @@ elif page == "Modo TV":
         with st.form("nuevo_evento_tv"):
             t = st.text_input("Título del Evento")
             d = st.text_area("Descripción")
-            c1, c2 = st.columns(2)
+            c1, c2, c3 = st.columns(3)
             f = c1.date_input("Fecha")
             h = c2.time_input("Hora Inicio")
+            h_fin = c3.time_input("Hora Término")
             if st.form_submit_button("Guardar Evento"):
-                supabase.table("eventos_tv").insert({"titulo": t, "descripcion": d, "fecha_evento": f.isoformat(), "hora_inicio": h.strftime("%H:%M"), "is_active": True}).execute()
-                st.success("Evento guardado")
+                if not t.strip():
+                    st.warning("Ingresa un título para el evento.")
+                elif h_fin <= h:
+                    st.warning("La hora de término debe ser posterior a la hora de inicio.")
+                else:
+                    datos_evento = {
+                        "titulo": t.strip(),
+                        "descripcion": d.strip(),
+                        "fecha_evento": f.isoformat(),
+                        "hora_inicio": h.strftime("%H:%M"),
+                        "hora_fin": h_fin.strftime("%H:%M"),
+                        "is_active": True
+                    }
+                    resultado = supabase.table("eventos_tv").insert(datos_evento).execute()
+                    registrar_auditoria("crear", "eventos_tv", detalle=datos_evento)
+                    st.success("Evento guardado")
 
     with tab3:
         with st.form("nuevo_anuncio"):
