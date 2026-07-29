@@ -249,14 +249,77 @@ def registrar_auditoria(accion, modulo, registro_id=None, detalle=None):
     except Exception as e:
         registrar_error("auditoria", e)
 
+TZ_CHILE = pytz.timezone("America/Santiago")
+
+def convertir_datetime_chile(valor, por_defecto=None):
+    """Convierte fechas de Supabase a datetime consciente en America/Santiago."""
+    if valor in (None, ""):
+        return por_defecto
+    try:
+        marca = pd.to_datetime(valor)
+        fecha_python = marca.to_pydatetime() if hasattr(marca, "to_pydatetime") else marca
+        if fecha_python.tzinfo is None:
+            return TZ_CHILE.localize(fecha_python)
+        return fecha_python.astimezone(TZ_CHILE)
+    except Exception:
+        return por_defecto
+
+def combinar_fecha_hora_chile(fecha_valor, hora_valor):
+    """Une date + time y aplica la zona horaria de Chile."""
+    combinado = dt_datetime.combine(fecha_valor, hora_valor)
+    return TZ_CHILE.localize(combinado)
+
+def obtener_ventana_alerta(registro, ahora=None):
+    """
+    Devuelve (inicio, fin, estado).
+    estado: EN_CURSO, PROGRAMADA, FINALIZADA o INVALIDA.
+    Mantiene compatibilidad con alertas antiguas que solo tienen expiracion.
+    """
+    ahora = ahora or dt_datetime.now(TZ_CHILE)
+    inicio = convertir_datetime_chile(registro.get("inicio_programado"))
+    fin = convertir_datetime_chile(
+        registro.get("fin_programado") or registro.get("expiracion")
+    )
+
+    if fin is None:
+        return inicio, fin, "INVALIDA"
+
+    if inicio is None:
+        inicio = ahora - dt.timedelta(days=3650)
+
+    if ahora < inicio:
+        estado = "PROGRAMADA"
+    elif inicio <= ahora <= fin:
+        estado = "EN_CURSO"
+    else:
+        estado = "FINALIZADA"
+
+    return inicio, fin, estado
+
+def formato_fecha_hora_chile(valor):
+    fecha = convertir_datetime_chile(valor)
+    return fecha.strftime("%d/%m/%Y %H:%M") if fecha else "Sin fecha"
+
 # ==============================================================================
 # 📺 PANTALLA INFORMATIVA PÚBLICA (MODO KIOSCO) - MOTOR DE SONIDO INTEGRADO
 # ==============================================================================
 if st.session_state.get("ver_pantalla_tv", False):
-    # Configuración de refresco y escala
+    # Configuración de refresco y escala.
+    # La escala real se conserva en una clave que no pertenece al slider.
+    # Así Streamlit no la elimina cuando la alerta ejecuta st.stop().
     refresh_count = st_autorefresh(interval=20000, key="tv_refresh_global")
-    if "tv_scale" not in st.session_state: st.session_state.tv_scale = 100
-    escala = st.session_state.tv_scale / 100.0
+
+    if "tv_scale_saved" not in st.session_state:
+        st.session_state.tv_scale_saved = 100
+
+    escala_pct = int(st.session_state.get("tv_scale_saved", 100))
+    escala_pct = max(50, min(200, escala_pct))
+    st.session_state.tv_scale_saved = escala_pct
+    escala = escala_pct / 100.0
+
+    def guardar_escala_tv():
+        valor = int(st.session_state.get("tv_scale_widget", 100))
+        st.session_state.tv_scale_saved = max(50, min(200, valor))
 
     # 🕒 Sincronización absoluta con la hora local de Chile
     import pytz
@@ -273,40 +336,135 @@ if st.session_state.get("ver_pantalla_tv", False):
             b64 = base64.b64encode(f.read()).decode()
             logo_src = f"<img src='data:image/png;base64,{b64}' class='header-logo-img'/>"
 
-    # 🚨 1. PRIORIDAD ABSOLUTA: ALERTA ROJA (999) - CORRECCIÓN DE TIEMPO ESTRICTA
+    # 🚨 1. PRIORIDAD ABSOLUTA: ALERTA ROJA (999)
+    # Admite alertas inmediatas y programadas por fecha/hora.
+    # Si existen varias superpuestas, se muestra la más reciente.
     try:
-        res_critica = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).eq("prioridad", 999).execute()
-        if res_critica.data:
-            alerta = res_critica.data[0]
-            exp_alerta = pd.to_datetime(alerta['expiracion'])
-            
-            # Limpiamos cualquier zona horaria que la base de datos haya intentado poner
-            if exp_alerta.tzinfo is not None:
-                exp_alerta = exp_alerta.tz_localize(None)
-            
-            # Comparamos hora ingenua del servidor vs hora ingenua del servidor (Precisión absoluta)
-            if exp_alerta > dt_datetime.now():
-                st.markdown(f"""
-                    <style>
-                    .stApp {{ background-color: #ff0000 !important; }}
-                    [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display: none !important; }}
-                    .alerta-total {{ display: flex; flex-direction: column; align-items: center; justify-content: center; height: 95vh; color: white; text-align: center; font-family: 'Inter', sans-serif; }}
-                    .at-titulo {{ font-size: calc(90px * {escala}); font-weight: 900; text-shadow: 4px 4px 10px rgba(0,0,0,0.5); }}
-                    .at-msg {{ font-size: calc(50px * {escala}); margin-top: 30px; font-weight: 600; padding: 0 60px; line-height: 1.1; }}
-                    </style>
-                    <div class="alerta-total">
-                        <div class="at-titulo">⚠️ AVISO URGENTE ⚠️</div>
-                        <div class="at-msg">{alerta['descripcion']}</div>
-                    </div>
-                """, unsafe_allow_html=True)
-                if os.path.exists("alarma.mp3"):
-                    st.audio("alarma.mp3", format="audio/mp3", autoplay=True)
-                st.stop()
-            else:
-                # Limpiador automático: si ya expiró, la desactivamos para que no vuelva a molestar
-                supabase.table("anuncios_urgentes").update({"is_active": False}).eq("id", alerta["id"]).execute()
+        respuesta_alertas = (
+            supabase.table("anuncios_urgentes")
+            .select("*")
+            .eq("is_active", True)
+            .eq("prioridad", 999)
+            .order("id", desc=True)
+            .limit(100)
+            .execute()
+        )
+
+        alerta = None
+        ahora_chile = dt_datetime.now(TZ_CHILE)
+
+        for candidata in (respuesta_alertas.data or []):
+            inicio_alerta, fin_alerta, estado_alerta = obtener_ventana_alerta(
+                candidata,
+                ahora_chile,
+            )
+
+            if estado_alerta == "EN_CURSO" and alerta is None:
+                alerta = candidata
+            elif estado_alerta in ("FINALIZADA", "INVALIDA"):
+                supabase.table("anuncios_urgentes").update(
+                    {"is_active": False}
+                ).eq("id", candidata["id"]).execute()
+
+        if alerta:
+            descripcion_alerta = html_sanitizer.escape(
+                str(alerta.get("descripcion", ""))
+            )
+
+            st.markdown(f"""
+                <style>
+                html, body, .stApp,
+                [data-testid="stAppViewContainer"],
+                [data-testid="stMain"] {{
+                    width: 100% !important;
+                    min-width: 100% !important;
+                    min-height: 100% !important;
+                    zoom: 1 !important;
+                    transform: none !important;
+                }}
+
+                .stApp {{
+                    background: #ff0000 !important;
+                    overflow: hidden !important;
+                }}
+
+                [data-testid="stHeader"],
+                [data-testid="stSidebar"],
+                [data-testid="stToolbar"],
+                #MainMenu,
+                footer {{
+                    display: none !important;
+                }}
+
+                .block-container {{
+                    max-width: none !important;
+                    width: 100% !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                }}
+
+                .alerta-total {{
+                    position: fixed;
+                    inset: 0;
+                    z-index: 999999;
+                    width: 100vw;
+                    height: 100vh;
+                    box-sizing: border-box;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 4vh 5vw;
+                    overflow: hidden;
+                    background: #ff0000;
+                    color: white;
+                    text-align: center;
+                    font-family: Inter, Arial, sans-serif;
+                }}
+
+                .at-titulo {{
+                    font-size: clamp(46px, 7vw, 105px);
+                    line-height: 1;
+                    font-weight: 950;
+                    text-shadow: 4px 4px 10px rgba(0,0,0,0.48);
+                    animation: alertaPulso 1s infinite;
+                }}
+
+                .at-msg {{
+                    width: min(92vw, 1500px);
+                    margin-top: 4vh;
+                    font-size: clamp(28px, 4.2vw, 64px);
+                    line-height: 1.12;
+                    font-weight: 750;
+                    overflow-wrap: anywhere;
+                    text-wrap: balance;
+                    text-shadow: 2px 2px 7px rgba(0,0,0,0.35);
+                }}
+
+                @keyframes alertaPulso {{
+                    0%, 100% {{ opacity: 1; transform: scale(1); }}
+                    50% {{ opacity: .72; transform: scale(.985); }}
+                }}
+                </style>
+
+                <div class="alerta-total">
+                    <div class="at-titulo">⚠️ AVISO URGENTE ⚠️</div>
+                    <div class="at-msg">{descripcion_alerta}</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+            alerta_id = alerta.get("id")
+            if (
+                os.path.exists("alarma.mp3")
+                and st.session_state.get("ultima_alerta_roja_sonada") != alerta_id
+            ):
+                st.audio("alarma.mp3", format="audio/mp3", autoplay=True)
+                st.session_state.ultima_alerta_roja_sonada = alerta_id
+
+            st.stop()
+
     except Exception as e:
-        pass
+        registrar_error("alerta_roja_tv", e)
 
     # 📺 2. PROCESAMIENTO Y FILTRADO DE DATOS (Antes de renderizar)
     eventos = []
@@ -317,17 +475,58 @@ if st.session_state.get("ver_pantalla_tv", False):
     if st.session_state.get('url_calendario_tv'):
         eventos.extend(obtener_eventos_google_calendar(st.session_state.url_calendario_tv))
     try:
-        res_ev = supabase.table("eventos_tv").select("*").eq("fecha_evento", hoy_str).eq("is_active", True).execute()
-        for e in (res_ev.data or []):
+        try:
+            eventos_db = (
+                supabase.table("eventos_tv")
+                .select("*")
+                .eq("is_active", True)
+                .lte("fecha_inicio", hoy_str)
+                .gte("fecha_fin", hoy_str)
+                .order("hora_inicio")
+                .execute()
+                .data or []
+            )
+        except Exception:
+            # Compatibilidad temporal antes de ejecutar la migración.
+            eventos_db = (
+                supabase.table("eventos_tv")
+                .select("*")
+                .eq("fecha_evento", hoy_str)
+                .eq("is_active", True)
+                .order("hora_inicio")
+                .execute()
+                .data or []
+            )
+
+        for e in eventos_db:
             hora_fin_ev = str(e.get("hora_fin", "23:59"))[:5]
             hora_ini_ev = str(e.get("hora_inicio", "00:00"))[:5]
+            fecha_ini_ev = str(e.get("fecha_inicio") or e.get("fecha_evento") or hoy_str)
+            fecha_fin_ev = str(e.get("fecha_fin") or e.get("fecha_evento") or hoy_str)
+
             if hora_actual_str <= hora_fin_ev:
+                descripcion_evento = str(e.get("descripcion", "") or "").strip()
+                if fecha_ini_ev != fecha_fin_ev:
+                    try:
+                        periodo_evento = (
+                            f"Vigente del "
+                            f"{dt_datetime.strptime(fecha_ini_ev, '%Y-%m-%d').strftime('%d/%m')} "
+                            f"al {dt_datetime.strptime(fecha_fin_ev, '%Y-%m-%d').strftime('%d/%m')}"
+                        )
+                    except Exception:
+                        periodo_evento = f"Vigencia: {fecha_ini_ev} al {fecha_fin_ev}"
+                    descripcion_evento = (
+                        f"{descripcion_evento} · {periodo_evento}"
+                        if descripcion_evento
+                        else periodo_evento
+                    )
+
                 eventos.append({
                     "id_unico": f"ev_{e['id']}",
-                    "hora_sort": hora_ini_ev, 
-                    "rango": f"{hora_ini_ev} - {hora_fin_ev}", 
-                    "titulo": f"📢 {e['titulo']}", 
-                    "desc": e.get("descripcion", ""), 
+                    "hora_sort": hora_ini_ev,
+                    "rango": f"{hora_ini_ev} - {hora_fin_ev}",
+                    "titulo": f"📢 {e['titulo']}",
+                    "desc": descripcion_evento,
                     "tipo": "evento"
                 })
         
@@ -478,7 +677,19 @@ if st.session_state.get("ver_pantalla_tv", False):
         # Desplegable de Ajustes oculto por defecto
         with st.expander("⚙️ Ajustes Avanzados"):
             st.selectbox("👁️ Perfil Visual", ["General", "Profesores / PIE", "Inspectoría / UTP"], key="tv_profile")
-            st.slider("🔍 Tamaño Texto (%)", 50, 200, key="tv_scale", step=5)
+            if "tv_scale_widget" not in st.session_state:
+                st.session_state.tv_scale_widget = int(
+                    st.session_state.get("tv_scale_saved", 100)
+                )
+
+            st.slider(
+                "🔍 Tamaño Texto (%)",
+                50,
+                200,
+                key="tv_scale_widget",
+                step=5,
+                on_change=guardar_escala_tv,
+            )
         
         st.write("")
         if st.button("🔙 VOLVER AL MENÚ PRINCIPAL", use_container_width=True, type="primary"):
@@ -3081,9 +3292,17 @@ elif page == "Modo TV":
         # Refresco automático de pantalla cada 20 segundos
         refresh_count = st_autorefresh(interval=20000, key="tv_refresh_timer")
         
-        if "tv_scale" not in st.session_state: 
-            st.session_state.tv_scale = 100
-        escala = st.session_state.tv_scale / 100.0
+        if "tv_scale_saved" not in st.session_state:
+            st.session_state.tv_scale_saved = 100
+
+        escala_pct = int(st.session_state.get("tv_scale_saved", 100))
+        escala_pct = max(50, min(200, escala_pct))
+        st.session_state.tv_scale_saved = escala_pct
+        escala = escala_pct / 100.0
+
+        def guardar_escala_tv_secundaria():
+            valor = int(st.session_state.get("tv_scale_widget_secundario", 100))
+            st.session_state.tv_scale_saved = max(50, min(200, valor))
         
         now_dt = dt_datetime.now()
         hoy_str = now_dt.strftime("%Y-%m-%d")
@@ -3091,26 +3310,83 @@ elif page == "Modo TV":
 
         # --- 🚨 PRIORIDAD MULTIMEDIA: ALERTA ROJA GIGANTE ---
         try:
-            res_urgente = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).eq("prioridad", 999).execute()
-            if res_urgente.data:
-                alerta = res_urgente.data[0]
-                if pd.to_datetime(alerta['expiracion']).tz_localize(None) > now_dt:
-                    st.markdown(f"""
-                        <style>
-                        .stApp {{ background-color: #ff0000 !important; }}
-                        header, [data-testid="stSidebar"] {{ display: none !important; }}
-                        .alerta-total {{ display: flex; flex-direction: column; align-items: center; justify-content: center; height: 95vh; color: white; text-align: center; }}
-                        .at-titulo {{ font-size: calc(90px * {escala}); font-weight: 900; animation: blink 1s infinite; }}
-                        @keyframes blink {{ 0% {{ opacity: 1; }} 50% {{ opacity: 0.3; }} 100% {{ opacity: 1; }} }}
-                        </style>
-                        <div class="alerta-total">
-                            <div class="at-titulo">⚠️ AVISO URGENTE ⚠️</div>
-                            <div style="font-size: calc(50px * {escala}); margin-top:20px; font-weight:bold;">{alerta['descripcion']}</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    st.stop()
+            alertas_criticas = (
+                supabase.table("anuncios_urgentes")
+                .select("*")
+                .eq("is_active", True)
+                .eq("prioridad", 999)
+                .order("id", desc=True)
+                .limit(100)
+                .execute()
+                .data or []
+            )
+
+            alerta = None
+            ahora_tv = dt_datetime.now(TZ_CHILE)
+            for candidata in alertas_criticas:
+                _, _, estado_alerta = obtener_ventana_alerta(candidata, ahora_tv)
+                if estado_alerta == "EN_CURSO" and alerta is None:
+                    alerta = candidata
+                elif estado_alerta in ("FINALIZADA", "INVALIDA"):
+                    supabase.table("anuncios_urgentes").update(
+                        {"is_active": False}
+                    ).eq("id", candidata["id"]).execute()
+
+            if alerta:
+                mensaje_seguro = html_sanitizer.escape(
+                    str(alerta.get("descripcion", ""))
+                )
+                st.markdown(f"""
+                    <style>
+                    html, body, .stApp {{
+                        zoom: 1 !important;
+                        transform: none !important;
+                    }}
+                    .stApp {{ background-color: #ff0000 !important; }}
+                    header, [data-testid="stSidebar"] {{ display: none !important; }}
+                    .block-container {{ max-width:none !important; padding:0 !important; }}
+                    .alerta-total {{
+                        position:fixed;
+                        inset:0;
+                        z-index:999999;
+                        width:100vw;
+                        height:100vh;
+                        display:flex;
+                        flex-direction:column;
+                        align-items:center;
+                        justify-content:center;
+                        padding:4vh 5vw;
+                        box-sizing:border-box;
+                        color:white;
+                        text-align:center;
+                        background:#ff0000;
+                    }}
+                    .at-titulo {{
+                        font-size:clamp(46px,7vw,105px);
+                        font-weight:950;
+                        animation:blink 1s infinite;
+                    }}
+                    .at-msg {{
+                        margin-top:4vh;
+                        width:min(92vw,1500px);
+                        font-size:clamp(28px,4.2vw,64px);
+                        line-height:1.12;
+                        font-weight:750;
+                        overflow-wrap:anywhere;
+                    }}
+                    @keyframes blink {{
+                        0%,100% {{ opacity:1; }}
+                        50% {{ opacity:.45; }}
+                    }}
+                    </style>
+                    <div class="alerta-total">
+                        <div class="at-titulo">⚠️ AVISO URGENTE ⚠️</div>
+                        <div class="at-msg">{mensaje_seguro}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+                st.stop()
         except Exception as e:
-            st.text(f"Error Alerta Roja: {e}")
+            registrar_error("alerta_roja_tv_secundaria", e)
 
         # --- 🎨 ESTILOS INYECTADOS ANTIBUGS (FUERZA COLORES DE CONTROLES) ---
         st.markdown(f"""
@@ -3157,10 +3433,50 @@ elif page == "Modo TV":
             
             # --- CARGA DE DATOS DE SUPABASE (CON ALERTA DE ERROR VISIBLE SI FALLA) ---
             try:
-                ev_data = supabase.table("eventos_tv").select("*").eq("fecha_evento", hoy_str).eq("is_active", True).execute().data or []
+                try:
+                    ev_data = (
+                        supabase.table("eventos_tv")
+                        .select("*")
+                        .eq("is_active", True)
+                        .lte("fecha_inicio", hoy_str)
+                        .gte("fecha_fin", hoy_str)
+                        .order("hora_inicio")
+                        .execute()
+                        .data or []
+                    )
+                except Exception:
+                    ev_data = (
+                        supabase.table("eventos_tv")
+                        .select("*")
+                        .eq("fecha_evento", hoy_str)
+                        .eq("is_active", True)
+                        .order("hora_inicio")
+                        .execute()
+                        .data or []
+                    )
+
                 for e in ev_data:
                     if hora_actual <= str(e.get("hora_fin", "23:59")):
-                        eventos_hoy.append({"hora": str(e.get("hora_inicio", "00:00"))[:5], "titulo": e['titulo'], "desc": e.get("descripcion", ""), "tipo": "evento"})
+                        fecha_ini_ev = str(e.get("fecha_inicio") or e.get("fecha_evento") or hoy_str)
+                        fecha_fin_ev = str(e.get("fecha_fin") or e.get("fecha_evento") or hoy_str)
+                        desc_evento = str(e.get("descripcion", "") or "").strip()
+                        if fecha_ini_ev != fecha_fin_ev:
+                            try:
+                                periodo = (
+                                    f"Vigente del "
+                                    f"{dt_datetime.strptime(fecha_ini_ev, '%Y-%m-%d').strftime('%d/%m')} "
+                                    f"al {dt_datetime.strptime(fecha_fin_ev, '%Y-%m-%d').strftime('%d/%m')}"
+                                )
+                            except Exception:
+                                periodo = f"Vigencia: {fecha_ini_ev} al {fecha_fin_ev}"
+                            desc_evento = f"{desc_evento} · {periodo}" if desc_evento else periodo
+
+                        eventos_hoy.append({
+                            "hora": str(e.get("hora_inicio", "00:00"))[:5],
+                            "titulo": e["titulo"],
+                            "desc": desc_evento,
+                            "tipo": "evento",
+                        })
                 
                 # Se obtienen reservas para el perfil seleccionado
                 perfil_actual = st.session_state.get("tv_profile", "")
@@ -3209,7 +3525,19 @@ elif page == "Modo TV":
             st.markdown("<h4 style='margin-top:0; color:#0f172a; font-weight:900;'>⚙️ Panel de Pantalla</h4>", unsafe_allow_html=True)
             
             st.selectbox("👁️ Perfil Visual", ["Inspectoría / UTP", "Profesores / PIE", "Apoderados"], key="tv_profile")
-            st.slider("🔍 Tamaño Texto (%)", 50, 200, key="tv_scale", step=5)
+            if "tv_scale_widget_secundario" not in st.session_state:
+                st.session_state.tv_scale_widget_secundario = int(
+                    st.session_state.get("tv_scale_saved", 100)
+                )
+
+            st.slider(
+                "🔍 Tamaño Texto (%)",
+                50,
+                200,
+                key="tv_scale_widget_secundario",
+                step=5,
+                on_change=guardar_escala_tv_secundaria,
+            )
             
             st.markdown("</div>", unsafe_allow_html=True) # Cierre del contenedor estilizado
             
@@ -3277,45 +3605,326 @@ elif page == "Modo TV":
     tab1, tab2, tab3, tab4 = st.tabs(["🔴 Alerta Roja", "🗓️ Añadir Evento", "🔔 Añadir Aviso", "🗑️ Gestionar y Eliminar"])
     
     with tab1:
-        st.warning("Esto interrumpirá la TV con un mensaje a pantalla completa de inmediato.")
-        msg_rojo = st.text_area("Mensaje Urgente (Alerta Roja)")
-        minutos = st.number_input("Duración (minutos)", 1, 120, 5)
-        c_r1, c_r2 = st.columns(2)
-        with c_r1:
-            if st.button("🚨 LANZAR ALERTA ROJA", type="primary", use_container_width=True):
-                exp = (dt_datetime.now() + dt.timedelta(minutes=minutos)).isoformat()
-                supabase.table("anuncios_urgentes").insert({"titulo": "ALERTA", "descripcion": msg_rojo, "prioridad": 999, "expiracion": exp, "is_active": True}).execute()
-                st.success("Alerta enviada a todas las pantallas")
-        with c_r2:
-            if st.button("🛑 Apagar Alerta Activa", use_container_width=True):
-                supabase.table("anuncios_urgentes").update({"is_active": False}).eq("prioridad", 999).execute()
+        st.warning(
+            "Las alertas rojas interrumpen la pantalla completa. "
+            "Puedes activarlas de inmediato o dejarlas programadas."
+        )
+
+        sub_alerta_ahora, sub_alerta_programar = st.tabs(
+            ["🚨 Activar ahora", "🗓️ Programar alerta"]
+        )
+
+        with sub_alerta_ahora:
+            with st.form("form_alerta_roja_inmediata"):
+                msg_rojo_ahora = st.text_area(
+                    "Mensaje urgente",
+                    placeholder="Ej. Evacuar hacia la zona de seguridad.",
+                    key="msg_rojo_ahora",
+                )
+                minutos = st.number_input(
+                    "Duración (minutos)",
+                    min_value=1,
+                    max_value=240,
+                    value=5,
+                    step=1,
+                )
+
+                if st.form_submit_button(
+                    "🚨 ACTIVAR ALERTA AHORA",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    if not msg_rojo_ahora.strip():
+                        st.warning("Escribe el mensaje de la alerta.")
+                    else:
+                        try:
+                            inicio = dt_datetime.now(TZ_CHILE)
+                            fin = inicio + dt.timedelta(minutes=int(minutos))
+
+                            datos_alerta = {
+                                "titulo": "ALERTA",
+                                "descripcion": msg_rojo_ahora.strip(),
+                                "prioridad": 999,
+                                "inicio_programado": inicio.isoformat(),
+                                "fin_programado": fin.isoformat(),
+                                # Se conserva para compatibilidad con el sistema anterior.
+                                "expiracion": fin.isoformat(),
+                                "is_active": True,
+                            }
+
+                            resultado = (
+                                supabase.table("anuncios_urgentes")
+                                .insert(datos_alerta)
+                                .execute()
+                            )
+
+                            registro_id = (
+                                resultado.data[0].get("id")
+                                if resultado.data
+                                else None
+                            )
+                            registrar_auditoria(
+                                "activar alerta roja inmediata",
+                                "Modo TV",
+                                registro_id=registro_id,
+                                detalle={
+                                    "inicio": inicio.isoformat(),
+                                    "fin": fin.isoformat(),
+                                },
+                            )
+
+                            st.success(
+                                f"Alerta activada hasta las {fin.strftime('%H:%M')}."
+                            )
+                            time.sleep(0.5)
+                            st.rerun()
+
+                        except Exception as e:
+                            registrar_error("activar_alerta_roja", e)
+                            st.error(f"No fue posible activar la alerta: {e}")
+
+        with sub_alerta_programar:
+            with st.form("form_alerta_roja_programada"):
+                msg_rojo_programado = st.text_area(
+                    "Mensaje de la alerta programada",
+                    placeholder="Ej. Simulacro de evacuación.",
+                    key="msg_rojo_programado",
+                )
+
+                hoy_chile = dt_datetime.now(TZ_CHILE).date()
+                ahora_redondeada = (
+                    dt_datetime.now(TZ_CHILE)
+                    + dt.timedelta(minutes=5)
+                ).replace(second=0, microsecond=0)
+                fin_sugerido = ahora_redondeada + dt.timedelta(minutes=15)
+
+                col_ai, col_ahi, col_af, col_ahf = st.columns(4)
+                fecha_inicio_alerta = col_ai.date_input(
+                    "Fecha de inicio",
+                    value=hoy_chile,
+                    format="DD/MM/YYYY",
+                    key="fecha_inicio_alerta",
+                )
+                hora_inicio_alerta = col_ahi.time_input(
+                    "Hora de inicio",
+                    value=ahora_redondeada.time(),
+                    key="hora_inicio_alerta",
+                )
+                fecha_fin_alerta = col_af.date_input(
+                    "Fecha de término",
+                    value=hoy_chile,
+                    format="DD/MM/YYYY",
+                    key="fecha_fin_alerta",
+                )
+                hora_fin_alerta = col_ahf.time_input(
+                    "Hora de término",
+                    value=fin_sugerido.time(),
+                    key="hora_fin_alerta",
+                )
+
+                if st.form_submit_button(
+                    "🗓️ GUARDAR PROGRAMACIÓN",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    inicio = combinar_fecha_hora_chile(
+                        fecha_inicio_alerta,
+                        hora_inicio_alerta,
+                    )
+                    fin = combinar_fecha_hora_chile(
+                        fecha_fin_alerta,
+                        hora_fin_alerta,
+                    )
+
+                    if not msg_rojo_programado.strip():
+                        st.warning("Escribe el mensaje de la alerta.")
+                    elif fin <= inicio:
+                        st.warning(
+                            "La fecha y hora de término deben ser posteriores "
+                            "a la fecha y hora de inicio."
+                        )
+                    else:
+                        try:
+                            datos_alerta = {
+                                "titulo": "ALERTA PROGRAMADA",
+                                "descripcion": msg_rojo_programado.strip(),
+                                "prioridad": 999,
+                                "inicio_programado": inicio.isoformat(),
+                                "fin_programado": fin.isoformat(),
+                                "expiracion": fin.isoformat(),
+                                "is_active": True,
+                            }
+
+                            resultado = (
+                                supabase.table("anuncios_urgentes")
+                                .insert(datos_alerta)
+                                .execute()
+                            )
+                            registro_id = (
+                                resultado.data[0].get("id")
+                                if resultado.data
+                                else None
+                            )
+
+                            registrar_auditoria(
+                                "programar alerta roja",
+                                "Modo TV",
+                                registro_id=registro_id,
+                                detalle={
+                                    "inicio": inicio.isoformat(),
+                                    "fin": fin.isoformat(),
+                                },
+                            )
+
+                            st.success(
+                                "Alerta programada desde "
+                                f"{inicio.strftime('%d/%m/%Y %H:%M')} hasta "
+                                f"{fin.strftime('%d/%m/%Y %H:%M')}."
+                            )
+
+                        except Exception as e:
+                            registrar_error("programar_alerta_roja", e)
+                            st.error(f"No fue posible programar la alerta: {e}")
+
+        st.markdown("#### 🛑 Control de alertas en curso")
+        if st.button(
+            "Apagar únicamente las alertas que están activas ahora",
+            use_container_width=True,
+        ):
+            try:
+                ahora = dt_datetime.now(TZ_CHILE)
+                alertas = (
+                    supabase.table("anuncios_urgentes")
+                    .select("*")
+                    .eq("prioridad", 999)
+                    .eq("is_active", True)
+                    .execute()
+                    .data or []
+                )
+                ids_apagados = []
+                for alerta_actual in alertas:
+                    _, _, estado = obtener_ventana_alerta(alerta_actual, ahora)
+                    if estado == "EN_CURSO":
+                        supabase.table("anuncios_urgentes").update(
+                            {"is_active": False}
+                        ).eq("id", alerta_actual["id"]).execute()
+                        ids_apagados.append(alerta_actual["id"])
+
+                registrar_auditoria(
+                    "apagar alertas rojas en curso",
+                    "Modo TV",
+                    detalle={"ids": ids_apagados},
+                )
+
+                if ids_apagados:
+                    st.success("Las alertas en curso fueron apagadas.")
+                else:
+                    st.info("No había alertas rojas activas en este momento.")
                 st.rerun()
 
+            except Exception as e:
+                registrar_error("apagar_alertas_rojas", e)
+                st.error(f"No fue posible apagar las alertas: {e}")
+
     with tab2:
+        st.info(
+            "El evento aparecerá cada día comprendido entre la fecha inicial "
+            "y la fecha final, dentro del horario indicado."
+        )
+
         with st.form("nuevo_evento_tv"):
-            t = st.text_input("Título del Evento")
-            d = st.text_area("Descripción")
-            c1, c2, c3 = st.columns(3)
-            f = c1.date_input("Fecha")
-            h = c2.time_input("Hora Inicio")
-            h_fin = c3.time_input("Hora Término")
-            if st.form_submit_button("Guardar Evento"):
-                if not t.strip():
+            titulo_evento = st.text_input(
+                "Título del evento",
+                placeholder="Ej. Semana de la Educación Técnico Profesional",
+            )
+            descripcion_evento = st.text_area(
+                "Descripción",
+                placeholder="Información que se mostrará en la pantalla.",
+            )
+
+            hoy_chile = dt_datetime.now(TZ_CHILE).date()
+            col_fi, col_ff, col_hi, col_hf = st.columns(4)
+            fecha_inicio_evento = col_fi.date_input(
+                "Fecha de inicio",
+                value=hoy_chile,
+                format="DD/MM/YYYY",
+                key="fecha_inicio_evento_tv",
+            )
+            fecha_fin_evento = col_ff.date_input(
+                "Fecha de término",
+                value=hoy_chile,
+                format="DD/MM/YYYY",
+                key="fecha_fin_evento_tv",
+            )
+            hora_inicio_evento = col_hi.time_input(
+                "Hora de inicio diaria",
+                value=dt.time(8, 0),
+                key="hora_inicio_evento_tv",
+            )
+            hora_fin_evento = col_hf.time_input(
+                "Hora de término diaria",
+                value=dt.time(17, 0),
+                key="hora_fin_evento_tv",
+            )
+
+            if st.form_submit_button(
+                "💾 Guardar evento",
+                type="primary",
+                use_container_width=True,
+            ):
+                if not titulo_evento.strip():
                     st.warning("Ingresa un título para el evento.")
-                elif h_fin <= h:
-                    st.warning("La hora de término debe ser posterior a la hora de inicio.")
+                elif fecha_fin_evento < fecha_inicio_evento:
+                    st.warning(
+                        "La fecha de término no puede ser anterior a la fecha de inicio."
+                    )
+                elif hora_fin_evento <= hora_inicio_evento:
+                    st.warning(
+                        "La hora de término debe ser posterior a la hora de inicio."
+                    )
                 else:
-                    datos_evento = {
-                        "titulo": t.strip(),
-                        "descripcion": d.strip(),
-                        "fecha_evento": f.isoformat(),
-                        "hora_inicio": h.strftime("%H:%M"),
-                        "hora_fin": h_fin.strftime("%H:%M"),
-                        "is_active": True
-                    }
-                    resultado = supabase.table("eventos_tv").insert(datos_evento).execute()
-                    registrar_auditoria("crear", "eventos_tv", detalle=datos_evento)
-                    st.success("Evento guardado")
+                    try:
+                        datos_evento = {
+                            "titulo": titulo_evento.strip(),
+                            "descripcion": descripcion_evento.strip(),
+                            # Se conserva fecha_evento para compatibilidad.
+                            "fecha_evento": fecha_inicio_evento.isoformat(),
+                            "fecha_inicio": fecha_inicio_evento.isoformat(),
+                            "fecha_fin": fecha_fin_evento.isoformat(),
+                            "hora_inicio": hora_inicio_evento.strftime("%H:%M"),
+                            "hora_fin": hora_fin_evento.strftime("%H:%M"),
+                            "is_active": True,
+                        }
+
+                        resultado = (
+                            supabase.table("eventos_tv")
+                            .insert(datos_evento)
+                            .execute()
+                        )
+                        registro_id = (
+                            resultado.data[0].get("id")
+                            if resultado.data
+                            else None
+                        )
+
+                        registrar_auditoria(
+                            "crear evento con rango",
+                            "eventos_tv",
+                            registro_id=registro_id,
+                            detalle=datos_evento,
+                        )
+
+                        st.success(
+                            "Evento guardado desde "
+                            f"{fecha_inicio_evento.strftime('%d/%m/%Y')} hasta "
+                            f"{fecha_fin_evento.strftime('%d/%m/%Y')}, "
+                            f"de {hora_inicio_evento.strftime('%H:%M')} a "
+                            f"{hora_fin_evento.strftime('%H:%M')}."
+                        )
+
+                    except Exception as e:
+                        registrar_error("crear_evento_tv", e)
+                        st.error(f"No fue posible guardar el evento: {e}")
 
     with tab3:
         with st.form("nuevo_anuncio"):
@@ -3328,48 +3937,225 @@ elif page == "Modo TV":
                 st.success("Anuncio publicado")
 
     with tab4:
-        st.subheader("Eliminar Contenido Manual")
+        st.subheader("🗑️ Gestionar contenido programado")
         col_del1, col_del2 = st.columns(2)
+
         with col_del1:
-            evs = supabase.table("eventos_tv").select("id, titulo, fecha_evento").eq("is_active", True).execute().data or []
+            st.markdown("#### Eventos")
+            try:
+                evs = (
+                    supabase.table("eventos_tv")
+                    .select(
+                        "id, titulo, fecha_evento, fecha_inicio, fecha_fin, "
+                        "hora_inicio, hora_fin"
+                    )
+                    .eq("is_active", True)
+                    .order("fecha_inicio")
+                    .execute()
+                    .data or []
+                )
+            except Exception:
+                evs = (
+                    supabase.table("eventos_tv")
+                    .select("id, titulo, fecha_evento, hora_inicio, hora_fin")
+                    .eq("is_active", True)
+                    .order("fecha_evento")
+                    .execute()
+                    .data or []
+                )
+
             if evs:
-                ev_dict = {f"{e['titulo']} ({e['fecha_evento']})": e['id'] for e in evs}
-                sel_ev = st.selectbox("Borrar Evento:", ["-- Seleccionar --"] + list(ev_dict.keys()))
-                if st.button("🗑️ Eliminar Evento", use_container_width=True) and sel_ev != "-- Seleccionar --":
-                    supabase.table("eventos_tv").update({"is_active": False}).eq("id", ev_dict[sel_ev]).execute()
-                    st.success("Evento eliminado"); st.rerun()
-            else: st.info("No hay eventos activos.")
-            
+                ev_dict = {}
+                for evento in evs:
+                    fecha_i = evento.get("fecha_inicio") or evento.get("fecha_evento")
+                    fecha_f = evento.get("fecha_fin") or evento.get("fecha_evento")
+                    etiqueta = (
+                        f"{evento.get('titulo', 'Evento')} | "
+                        f"{fecha_i} al {fecha_f} | "
+                        f"{str(evento.get('hora_inicio', ''))[:5]}-"
+                        f"{str(evento.get('hora_fin', ''))[:5]}"
+                    )
+                    ev_dict[etiqueta] = evento["id"]
+
+                sel_ev = st.selectbox(
+                    "Selecciona un evento:",
+                    ["-- Seleccionar --"] + list(ev_dict.keys()),
+                    key="eliminar_evento_programado",
+                )
+                if (
+                    st.button(
+                        "🗑️ Desactivar evento",
+                        use_container_width=True,
+                        key="btn_desactivar_evento",
+                    )
+                    and sel_ev != "-- Seleccionar --"
+                ):
+                    evento_id = ev_dict[sel_ev]
+                    supabase.table("eventos_tv").update(
+                        {"is_active": False}
+                    ).eq("id", evento_id).execute()
+                    registrar_auditoria(
+                        "desactivar evento",
+                        "eventos_tv",
+                        registro_id=evento_id,
+                    )
+                    st.success("Evento desactivado.")
+                    st.rerun()
+            else:
+                st.info("No hay eventos activos o programados.")
+
         with col_del2:
-            # CORRECCIÓN: Quitamos .neq("prioridad", 999) para que aparezca la alerta roja en la lista
-            anns = supabase.table("anuncios_urgentes").select("id, titulo, prioridad").eq("is_active", True).execute().data or []
+            st.markdown("#### Avisos y alertas")
+            anns = (
+                supabase.table("anuncios_urgentes")
+                .select(
+                    "id, titulo, descripcion, prioridad, expiracion, "
+                    "inicio_programado, fin_programado"
+                )
+                .eq("is_active", True)
+                .order("id", desc=True)
+                .execute()
+                .data or []
+            )
+
             if anns:
-                def formatear_aviso_borrar(a):
-                    if str(a['prioridad']) == "999":
-                        return "🚨 [ALERTA ROJA ACTIVA INTERRUPCIÓN]"
-                    icono = "🔴" if str(a['prioridad']) == "1" else "🟡"
-                    return f"{icono} {a['titulo']}"
-                
-                an_dict = {formatear_aviso_borrar(a): a['id'] for a in anns}
-                sel_an = st.selectbox("Borrar Aviso o Alerta:", ["-- Seleccionar --"] + list(an_dict.keys()))
-                if st.button("🗑️ Eliminar Aviso / Alerta", use_container_width=True) and sel_an != "-- Seleccionar --":
-                    supabase.table("anuncios_urgentes").update({"is_active": False}).eq("id", an_dict[sel_an]).execute()
-                    st.success("Contenido desactivado correctamente"); st.rerun()
-            else: st.info("No hay avisos ni alertas activas.")
+                ahora = dt_datetime.now(TZ_CHILE)
+                an_dict = {}
+
+                for aviso in anns:
+                    if str(aviso.get("prioridad")) == "999":
+                        inicio, fin, estado = obtener_ventana_alerta(aviso, ahora)
+                        icono_estado = {
+                            "EN_CURSO": "🚨 EN CURSO",
+                            "PROGRAMADA": "🗓️ PROGRAMADA",
+                            "FINALIZADA": "⚫ FINALIZADA",
+                            "INVALIDA": "⚠️ SIN FECHA",
+                        }.get(estado, estado)
+                        etiqueta = (
+                            f"{icono_estado} | "
+                            f"{inicio.strftime('%d/%m %H:%M') if inicio else 'Sin inicio'} "
+                            f"→ {fin.strftime('%d/%m %H:%M') if fin else 'Sin fin'} | "
+                            f"{str(aviso.get('descripcion', ''))[:45]}"
+                        )
+                    else:
+                        icono = "🔴" if str(aviso.get("prioridad")) == "1" else "🟡"
+                        etiqueta = f"{icono} {aviso.get('titulo', 'Aviso')}"
+
+                    an_dict[etiqueta] = aviso["id"]
+
+                sel_an = st.selectbox(
+                    "Selecciona un aviso o alerta:",
+                    ["-- Seleccionar --"] + list(an_dict.keys()),
+                    key="eliminar_aviso_programado",
+                )
+                if (
+                    st.button(
+                        "🗑️ Desactivar aviso / alerta",
+                        use_container_width=True,
+                        key="btn_desactivar_aviso",
+                    )
+                    and sel_an != "-- Seleccionar --"
+                ):
+                    aviso_id = an_dict[sel_an]
+                    supabase.table("anuncios_urgentes").update(
+                        {"is_active": False}
+                    ).eq("id", aviso_id).execute()
+                    registrar_auditoria(
+                        "desactivar aviso o alerta",
+                        "Modo TV",
+                        registro_id=aviso_id,
+                    )
+                    st.success("Contenido desactivado.")
+                    st.rerun()
+            else:
+                st.info("No hay avisos ni alertas activas o programadas.")
 
         st.divider()
-        st.subheader("📋 Registros Activos")
-        hoy_str_t = dt.date.today().strftime("%Y-%m-%d")
-        
-        df_ev = pd.DataFrame(supabase.table("eventos_tv").select("titulo, descripcion, fecha_evento, hora_inicio").gte("fecha_evento", hoy_str_t).eq("is_active", True).execute().data or [])
-        if not df_ev.empty:
-            st.write("**Eventos del Cronograma:**")
+        st.subheader("📋 Calendario de publicaciones")
+
+        try:
+            eventos_resumen = (
+                supabase.table("eventos_tv")
+                .select(
+                    "titulo, descripcion, fecha_inicio, fecha_fin, "
+                    "hora_inicio, hora_fin, is_active"
+                )
+                .eq("is_active", True)
+                .order("fecha_inicio")
+                .execute()
+                .data or []
+            )
+        except Exception:
+            eventos_resumen = (
+                supabase.table("eventos_tv")
+                .select(
+                    "titulo, descripcion, fecha_evento, "
+                    "hora_inicio, hora_fin, is_active"
+                )
+                .eq("is_active", True)
+                .order("fecha_evento")
+                .execute()
+                .data or []
+            )
+
+        if eventos_resumen:
+            df_ev = pd.DataFrame(eventos_resumen)
+            df_ev.rename(columns={
+                "titulo": "Evento",
+                "descripcion": "Descripción",
+                "fecha_inicio": "Desde",
+                "fecha_fin": "Hasta",
+                "fecha_evento": "Fecha",
+                "hora_inicio": "Hora inicio",
+                "hora_fin": "Hora fin",
+                "is_active": "Activo",
+            }, inplace=True)
+            st.write("**Eventos del cronograma:**")
             st.dataframe(df_ev, use_container_width=True, hide_index=True)
-            
-        # CORRECCIÓN: Quitamos .neq("prioridad", 999) para ver la Alerta Roja en la tabla resumen
-        df_an = pd.DataFrame(supabase.table("anuncios_urgentes").select("titulo, descripcion, prioridad").eq("is_active", True).execute().data or [])
-        if not df_an.empty:
-            df_an["prioridad"] = df_an["prioridad"].apply(lambda x: "🚨 CRÍTICA (Alerta Roja)" if str(x) == "999" else ("🔴 Alta" if str(x) == "1" else "🟡 Media"))
-            df_an.rename(columns={"prioridad": "Nivel"}, inplace=True)
-            st.write("**Avisos Laterales y Alertas del Sistema:**")
-            st.dataframe(df_an, use_container_width=True, hide_index=True)
+        else:
+            st.info("No hay eventos activos.")
+
+        alertas_resumen = (
+            supabase.table("anuncios_urgentes")
+            .select(
+                "titulo, descripcion, prioridad, inicio_programado, "
+                "fin_programado, expiracion, is_active"
+            )
+            .eq("is_active", True)
+            .order("id", desc=True)
+            .execute()
+            .data or []
+        )
+
+        if alertas_resumen:
+            filas_alertas = []
+            ahora = dt_datetime.now(TZ_CHILE)
+            for aviso in alertas_resumen:
+                inicio, fin, estado = obtener_ventana_alerta(aviso, ahora)
+                nivel = (
+                    "🚨 Crítica"
+                    if str(aviso.get("prioridad")) == "999"
+                    else (
+                        "🔴 Alta"
+                        if str(aviso.get("prioridad")) == "1"
+                        else "🟡 Media"
+                    )
+                )
+                filas_alertas.append({
+                    "Nivel": nivel,
+                    "Título": aviso.get("titulo"),
+                    "Mensaje": aviso.get("descripcion"),
+                    "Inicio": inicio.strftime("%d/%m/%Y %H:%M") if inicio else "Inmediato",
+                    "Fin": fin.strftime("%d/%m/%Y %H:%M") if fin else "Sin término",
+                    "Estado": estado,
+                })
+
+            st.write("**Avisos y alertas:**")
+            st.dataframe(
+                pd.DataFrame(filas_alertas),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("No hay avisos o alertas activas/programadas.")
+
