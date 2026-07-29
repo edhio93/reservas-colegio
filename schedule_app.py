@@ -472,8 +472,23 @@ if st.session_state.get("ver_pantalla_tv", False):
     perfil = st.session_state.get("tv_profile", "General")
 
     # A. Cargar Cronograma (Eventos Generales)
-    if st.session_state.get('url_calendario_tv'):
-        eventos.extend(obtener_eventos_google_calendar(st.session_state.url_calendario_tv))
+    if st.session_state.get("url_calendario_tv"):
+        for indice_cal, evento_cal in enumerate(
+            obtener_eventos_google_calendar(st.session_state.url_calendario_tv)
+        ):
+            hora_cal = str(
+                evento_cal.get("display_hora")
+                or evento_cal.get("hora_sort")
+                or "TODO EL DÍA"
+            )
+            eventos.append({
+                "id_unico": f"cal_{indice_cal}_{evento_cal.get('titulo', 'evento')}",
+                "hora_sort": str(evento_cal.get("hora_sort", "00:00")),
+                "rango": hora_cal,
+                "titulo": f"🗓️ {evento_cal.get('titulo', 'Evento especial')}",
+                "desc": str(evento_cal.get("descripcion", "") or ""),
+                "tipo": "calendario",
+            })
     try:
         try:
             eventos_db = (
@@ -550,18 +565,39 @@ if st.session_state.get("ver_pantalla_tv", False):
 
     eventos = sorted(eventos, key=lambda x: x['hora_sort'])
 
-    # C. Cargar Columna de Avisos Laterales (Con la misma lógica corregida de tiempo)
+    # C. Cargar avisos vigentes. Se ordenan por prioridad y por registro reciente.
     try:
-        avisos = supabase.table("anuncios_urgentes").select("*").eq("is_active", True).neq("prioridad", 999).execute().data or []
-        for a in avisos:
-            exp_dt = pd.to_datetime(a['expiracion'])
-            if exp_dt.tzinfo is not None:
-                exp_dt = exp_dt.tz_localize(None)
-            
-            if exp_dt > dt_datetime.now():
-                avisos_vivos.append(a)
+        avisos = (
+            supabase.table("anuncios_urgentes")
+            .select("*")
+            .eq("is_active", True)
+            .neq("prioridad", 999)
+            .execute()
+            .data or []
+        )
+
+        ahora_avisos = dt_datetime.now(tz_chile)
+        for aviso in avisos:
+            exp_dt = pd.to_datetime(aviso.get("expiracion"))
+
+            if exp_dt.tzinfo is None:
+                exp_dt = tz_chile.localize(exp_dt.to_pydatetime())
+            else:
+                exp_dt = exp_dt.tz_convert(tz_chile)
+
+            if exp_dt > ahora_avisos:
+                aviso["_expiracion_tv"] = exp_dt
+                avisos_vivos.append(aviso)
+
+        avisos_vivos = sorted(
+            avisos_vivos,
+            key=lambda aviso: (
+                int(aviso.get("prioridad", 2) or 2),
+                -int(aviso.get("id", 0) or 0),
+            ),
+        )
     except Exception as e:
-        pass
+        registrar_error("cargar_avisos_tv", e)
 
     # 🎵 3. DETECTOR INTELIGENTE DE NUEVOS ELEMENTOS (SISTEMA DE AUDIO)
     if "tv_elementos_vistos" not in st.session_state:
@@ -606,6 +642,214 @@ if st.session_state.get("ver_pantalla_tv", False):
         .stExpander {{ background-color: #1e293b !important; border: 1px solid #3b82f640 !important; border-radius: 14px !important; margin-top: 20px !important; }}
         .stExpander * {{ color: #f8fafc !important; }}
         .stExpander summary {{ font-weight: 800 !important; font-size: 1.05rem !important; }}
+
+        /* ==============================================================
+           NUEVA COMPOSICIÓN: AVISOS DESTACADOS + AGENDA COMPACTA
+           ============================================================== */
+        .tv-section-head {{
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            margin: 0 0 14px 0;
+        }}
+        .tv-section-title {{
+            margin: 0;
+            color: #f8fafc;
+            font-size: calc(1.72rem * var(--tv-scale));
+            line-height: 1.1;
+            font-weight: 900;
+            text-shadow: 2px 2px 5px rgba(0,0,0,.34);
+        }}
+        .tv-section-subtitle {{
+            margin-top: 5px;
+            color: #94a3b8;
+            font-size: calc(.92rem * var(--tv-scale));
+            font-weight: 650;
+        }}
+        .tv-count-badge {{
+            flex-shrink: 0;
+            border: 1px solid rgba(255,255,255,.16);
+            border-radius: 999px;
+            padding: 7px 12px;
+            background: rgba(255,255,255,.08);
+            color: #e2e8f0;
+            font-size: calc(.82rem * var(--tv-scale));
+            font-weight: 850;
+            white-space: nowrap;
+        }}
+
+        .tv-notice-card {{
+            position: relative;
+            overflow: hidden;
+            min-height: 205px;
+            margin-bottom: 18px;
+            padding: 25px 28px 22px 30px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,.78);
+            box-shadow: 0 12px 28px rgba(0,0,0,.28);
+            animation: slideIn .48s ease-out;
+        }}
+        .tv-notice-card::before {{
+            content: "";
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: 11px;
+        }}
+        .tv-notice-high {{
+            background: linear-gradient(135deg, #fff1f2 0%, #ffffff 72%);
+            color: #1e293b;
+        }}
+        .tv-notice-high::before {{ background: #e11d48; }}
+        .tv-notice-medium {{
+            background: linear-gradient(135deg, #fffbeb 0%, #ffffff 72%);
+            color: #1e293b;
+        }}
+        .tv-notice-medium::before {{ background: #d97706; }}
+
+        .tv-notice-top {{
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 18px;
+        }}
+        .tv-notice-heading {{
+            display: flex;
+            align-items: center;
+            gap: 13px;
+            min-width: 0;
+        }}
+        .tv-notice-symbol {{
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 48px;
+            height: 48px;
+            flex: 0 0 48px;
+            border-radius: 14px;
+            background: rgba(255,255,255,.82);
+            border: 1px solid rgba(15,23,42,.08);
+            font-size: calc(1.35rem * var(--tv-scale));
+        }}
+        .tv-notice-title {{
+            color: #0f172a;
+            font-size: calc(1.62rem * var(--tv-scale));
+            line-height: 1.13;
+            font-weight: 950;
+            overflow-wrap: anywhere;
+        }}
+        .tv-priority-pill {{
+            flex-shrink: 0;
+            border-radius: 999px;
+            padding: 7px 12px;
+            font-size: calc(.72rem * var(--tv-scale));
+            font-weight: 950;
+            letter-spacing: .04em;
+            white-space: nowrap;
+        }}
+        .tv-priority-high {{
+            background: #ffe4e6;
+            color: #9f1239;
+            border: 1px solid #fecdd3;
+        }}
+        .tv-priority-medium {{
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fde68a;
+        }}
+        .tv-notice-text {{
+            margin: 18px 0 0 61px;
+            color: #334155;
+            font-size: calc(1.30rem * var(--tv-scale));
+            line-height: 1.38;
+            font-weight: 700;
+            overflow-wrap: anywhere;
+        }}
+        .tv-notice-footer {{
+            display: flex;
+            justify-content: flex-end;
+            margin: 18px 0 0 61px;
+            color: #64748b;
+            font-size: calc(.79rem * var(--tv-scale));
+            font-weight: 750;
+        }}
+
+        .tv-agenda-card {{
+            margin-bottom: 11px;
+            padding: 13px 14px;
+            border-radius: 14px;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-left: 7px solid #3b82f6;
+            box-shadow: 0 5px 15px rgba(0,0,0,.20);
+            animation: slideIn .42s ease-out;
+        }}
+        .tv-agenda-card.reserva {{ border-left-color: #10b981; }}
+        .tv-agenda-card.calendario {{ border-left-color: #8b5cf6; }}
+        .tv-agenda-time {{
+            display: inline-flex;
+            align-items: center;
+            margin-bottom: 7px;
+            padding: 4px 8px;
+            border-radius: 8px;
+            background: #eff6ff;
+            color: #1e40af;
+            border: 1px solid #bfdbfe;
+            font-size: calc(.76rem * var(--tv-scale));
+            font-weight: 900;
+        }}
+        .tv-agenda-title {{
+            color: #0f172a;
+            font-size: calc(1rem * var(--tv-scale));
+            line-height: 1.22;
+            font-weight: 900;
+            overflow-wrap: anywhere;
+        }}
+        .tv-agenda-desc {{
+            margin-top: 5px;
+            color: #64748b;
+            font-size: calc(.79rem * var(--tv-scale));
+            line-height: 1.25;
+            font-weight: 650;
+            overflow-wrap: anywhere;
+        }}
+        .tv-empty-state {{
+            display: flex;
+            min-height: 210px;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 8px;
+            padding: 28px;
+            border-radius: 18px;
+            border: 1px dashed rgba(148,163,184,.45);
+            background: rgba(30,41,59,.72);
+            color: #cbd5e1;
+            text-align: center;
+        }}
+        .tv-empty-icon {{ font-size: calc(2rem * var(--tv-scale)); }}
+        .tv-empty-title {{
+            color: #f8fafc;
+            font-size: calc(1.05rem * var(--tv-scale));
+            font-weight: 900;
+        }}
+        .tv-empty-text {{
+            color: #94a3b8;
+            font-size: calc(.83rem * var(--tv-scale));
+            font-weight: 650;
+        }}
+
+        @media (max-width: 900px) {{
+            .tv-notice-card {{
+                min-height: 0;
+                padding: 19px 20px 18px 23px;
+            }}
+            .tv-notice-text,
+            .tv-notice-footer {{
+                margin-left: 0;
+            }}
+            .tv-priority-pill {{ display: none; }}
+        }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -623,76 +867,225 @@ if st.session_state.get("ver_pantalla_tv", False):
     </div><div class="progress-bar"></div>
     """, unsafe_allow_html=True)
 
-    col_izq, col_der = st.columns([2.3, 1], gap="large")
+    # Los avisos ocupan el espacio principal. La agenda queda como resumen lateral.
+    col_avisos, col_agenda = st.columns([2.35, 1], gap="large")
 
-    # --- COLUMNA CRONOGRAMA ---
-    with col_izq:
-        if not eventos:
-            st.info(f"No hay actividades programadas para el perfil '{perfil}' en lo que queda de día.")
+    def formatear_vigencia_aviso_tv(aviso):
+        try:
+            expira = aviso.get("_expiracion_tv")
+            if expira is None:
+                expira = pd.to_datetime(aviso.get("expiracion"))
+                if expira.tzinfo is None:
+                    expira = tz_chile.localize(expira.to_pydatetime())
+                else:
+                    expira = expira.tz_convert(tz_chile)
+            return expira.strftime("Vigente hasta %d/%m · %H:%M")
+        except Exception:
+            return "Aviso vigente"
+
+    # ==============================================================
+    # ÁREA PRINCIPAL: AVISOS DESTACADOS
+    # ==============================================================
+    with col_avisos:
+        total_avisos = len(avisos_vivos)
+
+        if total_avisos:
+            AVISOS_POR_PAGINA = 2
+            paginas_avisos = max(
+                1,
+                (total_avisos + AVISOS_POR_PAGINA - 1) // AVISOS_POR_PAGINA,
+            )
+            pagina_avisos = refresh_count % paginas_avisos
+            avisos_pagina = avisos_vivos[
+                pagina_avisos * AVISOS_POR_PAGINA:
+                (pagina_avisos + 1) * AVISOS_POR_PAGINA
+            ]
+            indicador_avisos = (
+                f"{pagina_avisos + 1}/{paginas_avisos}"
+                if paginas_avisos > 1
+                else f"{total_avisos} vigente(s)"
+            )
         else:
-            PAG_SIZE = 4
-            total_pag = max(1, (len(eventos) + PAG_SIZE - 1) // PAG_SIZE)
-            items = eventos[(refresh_count % total_pag)*PAG_SIZE : ((refresh_count % total_pag)+1)*PAG_SIZE]
-            
-            st.markdown(f"<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>📅 Cronograma <span style='font-size:1.1rem; color:#94a3b8; font-weight:500;'>({ (refresh_count % total_pag)+1 }/{total_pag})</span></h2>", unsafe_allow_html=True)
-            
-            for idx, it in enumerate(items):
-                colores_pestana = ["#3b82f6", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6"]
-                colores_titulo = ["#1e3a8a", "#064e3b", "#7c2d12", "#831843", "#4c1d95"]
-                colores_fondo_hora = ["#eff6ff", "#ecfdf5", "#fff7ed", "#fdf2f8", "#f5f3ff"]
-                
-                c_pestana = colores_pestana[idx % len(colores_pestana)]
-                c_titulo = colores_titulo[idx % len(colores_titulo)]
-                c_f_hora = colores_fondo_hora[idx % len(colores_fondo_hora)]
-                
-                html_tarjeta = f"""
-                <div style="display: flex; background-color: white; border-radius: 14px; margin-bottom: 16px; box-shadow: 0 6px 20px rgba(0,0,0,0.25); overflow: hidden; animation: slideIn 0.5s ease-out;">
-                    <div style="width: 15px; background-color: {c_pestana}; flex-shrink: 0;"></div>
-                    <div style="padding: 18px 24px; flex-grow: 1;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px;">
-                            <div style="font-weight: 800; font-size: calc(1.35rem * var(--tv-scale)); color: #0f172a; line-height: 1.2;">{it['titulo']}</div>
-                            <div style="background-color: {c_f_hora}; color: {c_titulo}; font-weight: 900; font-size: calc(1.05rem * var(--tv-scale)); padding: 6px 14px; border-radius: 8px; border: 1px solid {c_pestana}; white-space: nowrap;">
-                                <i class="ph-fill ph-clock" style="vertical-align: middle;"></i> {it['rango']}
-                            </div>
-                        </div>
-                        <div style="margin-top: 8px; color: #475569; font-weight: 600; font-size: calc(1.1rem * var(--tv-scale)); line-height: 1.3;">{it['desc']}</div>
+            avisos_pagina = []
+            indicador_avisos = "Sin avisos"
+
+        st.markdown(
+            f"""
+            <div class="tv-section-head">
+                <div>
+                    <h2 class="tv-section-title">🚨 Avisos importantes</h2>
+                    <div class="tv-section-subtitle">
+                        Información prioritaria para la comunidad educativa
                     </div>
                 </div>
-                """
-                st.markdown(html_tarjeta, unsafe_allow_html=True)
+                <div class="tv-count-badge">{indicador_avisos}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    # --- COLUMNA AVISOS LATERALES ---
-    with col_der:
-        st.markdown("<h2 style='color:white; margin-top:0; font-weight:800; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);'>🚨 Avisos</h2>", unsafe_allow_html=True)
-        
-        if not avisos_vivos:
-            st.caption("No hay avisos secundarios vigentes.")
+        if not avisos_pagina:
+            st.markdown(
+                """
+                <div class="tv-empty-state">
+                    <div class="tv-empty-icon">✅</div>
+                    <div class="tv-empty-title">No hay avisos pendientes</div>
+                    <div class="tv-empty-text">
+                        La comunidad se encuentra sin comunicaciones especiales vigentes.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         else:
-            for a in avisos_vivos[:3]:
-                color = "#f43f5e" if a['prioridad'] == 1 else "#eab308"
-                bg_color = "#fff1f2" if a['prioridad'] == 1 else "#fef9c3"
-                text_color = "#9f1239" if a['prioridad'] == 1 else "#854d0e"
-                st.markdown(f"<div style='background:{bg_color}; padding:18px; border-radius:14px; border-left:8px solid {color}; margin-bottom:15px; box-shadow:0 6px 16px rgba(0,0,0,0.25);'><div style='font-weight:900; color:{text_color}; text-transform:uppercase; font-size:0.95rem; letter-spacing:0.5px;'>⚠️ {a['titulo']}</div><div style='color:#1e293b; margin-top:8px; font-weight:700; font-size:1.1rem; line-height:1.4;'>{a['descripcion']}</div></div>", unsafe_allow_html=True)
-        
-        # Desplegable de Ajustes oculto por defecto
-        with st.expander("⚙️ Ajustes Avanzados"):
-            st.selectbox("👁️ Perfil Visual", ["General", "Profesores / PIE", "Inspectoría / UTP"], key="tv_profile")
+            for aviso in avisos_pagina:
+                es_alta = str(aviso.get("prioridad", 2)) == "1"
+                clase_tarjeta = "tv-notice-high" if es_alta else "tv-notice-medium"
+                clase_prioridad = (
+                    "tv-priority-high" if es_alta else "tv-priority-medium"
+                )
+                texto_prioridad = "PRIORIDAD ALTA" if es_alta else "INFORMACIÓN"
+                simbolo = "⚠️" if es_alta else "📣"
+
+                titulo_aviso = html_sanitizer.escape(
+                    str(aviso.get("titulo", "Aviso institucional") or "Aviso institucional")
+                )
+                descripcion_aviso = html_sanitizer.escape(
+                    str(aviso.get("descripcion", "") or "")
+                )
+                vigencia_aviso = html_sanitizer.escape(
+                    formatear_vigencia_aviso_tv(aviso)
+                )
+
+                st.markdown(
+                    f"""
+                    <article class="tv-notice-card {clase_tarjeta}">
+                        <div class="tv-notice-top">
+                            <div class="tv-notice-heading">
+                                <div class="tv-notice-symbol">{simbolo}</div>
+                                <div class="tv-notice-title">{titulo_aviso}</div>
+                            </div>
+                            <div class="tv-priority-pill {clase_prioridad}">
+                                {texto_prioridad}
+                            </div>
+                        </div>
+                        <div class="tv-notice-text">{descripcion_aviso}</div>
+                        <div class="tv-notice-footer">🕒 {vigencia_aviso}</div>
+                    </article>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+    # ==============================================================
+    # COLUMNA LATERAL: CRONOGRAMA COMPACTO + CONTROLES
+    # ==============================================================
+    with col_agenda:
+        total_eventos = len(eventos)
+
+        if total_eventos:
+            AGENDA_POR_PAGINA = 4
+            paginas_agenda = max(
+                1,
+                (total_eventos + AGENDA_POR_PAGINA - 1) // AGENDA_POR_PAGINA,
+            )
+            pagina_agenda = refresh_count % paginas_agenda
+            items_agenda = eventos[
+                pagina_agenda * AGENDA_POR_PAGINA:
+                (pagina_agenda + 1) * AGENDA_POR_PAGINA
+            ]
+            indicador_agenda = (
+                f"{pagina_agenda + 1}/{paginas_agenda}"
+                if paginas_agenda > 1
+                else f"{total_eventos} actividad(es)"
+            )
+        else:
+            items_agenda = []
+            indicador_agenda = "Sin actividades"
+
+        st.markdown(
+            f"""
+            <div class="tv-section-head">
+                <div>
+                    <h2 class="tv-section-title">📅 Cronograma</h2>
+                    <div class="tv-section-subtitle">Próximas actividades de hoy</div>
+                </div>
+                <div class="tv-count-badge">{indicador_agenda}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if not items_agenda:
+            st.markdown(
+                f"""
+                <div class="tv-empty-state" style="min-height:150px;">
+                    <div class="tv-empty-icon">🗓️</div>
+                    <div class="tv-empty-title">Sin actividades próximas</div>
+                    <div class="tv-empty-text">
+                        Perfil actual: {html_sanitizer.escape(str(perfil))}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            for item in items_agenda:
+                tipo_item = str(item.get("tipo", "evento"))
+                clase_item = (
+                    "reserva"
+                    if tipo_item == "reserva"
+                    else "calendario"
+                    if tipo_item == "calendario"
+                    else ""
+                )
+                titulo_item = html_sanitizer.escape(
+                    str(item.get("titulo", "Actividad"))
+                )
+                rango_item = html_sanitizer.escape(
+                    str(item.get("rango", item.get("hora_sort", "")))
+                )
+                descripcion_item = html_sanitizer.escape(
+                    str(item.get("desc", "") or "")
+                )
+
+                st.markdown(
+                    f"""
+                    <div class="tv-agenda-card {clase_item}">
+                        <div class="tv-agenda-time">🕒 {rango_item}</div>
+                        <div class="tv-agenda-title">{titulo_item}</div>
+                        <div class="tv-agenda-desc">{descripcion_item}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        with st.expander("⚙️ Ajustes de pantalla"):
+            st.selectbox(
+                "👁️ Perfil visual",
+                ["General", "Profesores / PIE", "Inspectoría / UTP"],
+                key="tv_profile",
+            )
+
             if "tv_scale_widget" not in st.session_state:
                 st.session_state.tv_scale_widget = int(
                     st.session_state.get("tv_scale_saved", 100)
                 )
 
             st.slider(
-                "🔍 Tamaño Texto (%)",
+                "🔍 Tamaño de texto (%)",
                 50,
                 200,
                 key="tv_scale_widget",
                 step=5,
                 on_change=guardar_escala_tv,
             )
-        
+
         st.write("")
-        if st.button("🔙 VOLVER AL MENÚ PRINCIPAL", use_container_width=True, type="primary"):
+        if st.button(
+            "🔙 VOLVER AL MENÚ PRINCIPAL",
+            use_container_width=True,
+            type="primary",
+        ):
             st.session_state.ver_pantalla_tv = False
             st.rerun()
 
