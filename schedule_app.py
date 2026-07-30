@@ -1643,6 +1643,7 @@ with st.sidebar:
         "Semana": {"icon": "🗓️", "roles": ["admin", "profesor"]},
         "Dashboard": {"icon": "📈", "roles": ["admin"]},
         "Técnicos": {"icon": "🔧", "roles": ["admin"]},
+        "Diplomas": {"icon": "🎓", "roles": ["admin"]},
         "Inventario": {"icon": "💻", "roles": ["admin"]},
         "Mantención preventiva": {"icon": "🧰", "roles": ["admin"]},
         "Auditoría": {"icon": "🧾", "roles": ["admin"]},
@@ -1695,7 +1696,8 @@ def abrir_ventana_chat():
         3. Dashboard: Panel de estadísticas donde vemos gráficos de uso, métricas de fallas, equipos con más problemas y profesores que más reservan.
         4. Base de Datos: Nuestro motor es Supabase. Ahí se guarda todo nuestro inventario, los usuarios, el historial de reservas y los reportes de mantenimiento.
         5. Panel Técnico: El centro de mando. Aquí gestionamos los Tickets (fallas reportadas por QR que pasan a Pendiente, Revisión o Resuelto), creamos Códigos QR para pegar en los equipos nuevos, y procesamos las Bajas de Equipos obsoletos generando informes automáticos en Word.
-        6. Configuración: Módulo de administración para agregar/eliminar recursos del inventario o gestionar usuarios.
+        6. Diplomas Digitales: Generador institucional de diplomas individuales en PDF y PNG, con diseños por área, logo del colegio, firma del profesor opcional y firma del director con sello incorporado.
+        7. Configuración: Módulo de administración para agregar/eliminar recursos del inventario o gestionar usuarios.
         
         Tu tono y personalidad:
         Háblame como un colega informático más del equipo. Sé directo, empático, resolutivo y nada robótico. Puedes usar términos informáticos y modismos chilenos de forma natural (ej: 'apañar', 'la pega', 'dar jugo', 'sacar el cacho'). 
@@ -3555,6 +3557,1058 @@ elif page == "Auditoría":
     else:
         st.info("No hay registros o falta ejecutar la migración de auditoría.")
 
+
+elif page == "Diplomas":
+    from PIL import Image, ImageDraw, ImageFont, ImageOps
+    import unicodedata
+
+    st.title("🎓 Generador de Diplomas Digitales")
+    st.caption(
+        "Crea diplomas institucionales descargables en PDF y PNG. "
+        "Los datos se procesan solo durante la sesión y no se almacenan."
+    )
+
+    BASE_DIPLOMAS = Path(__file__).parent
+    RUTA_LOGO_DIPLOMA = BASE_DIPLOMAS / "logocav.png"
+    RUTA_FIRMA_DIRECTOR = BASE_DIPLOMAS / "firma_director.png"
+
+    ESTILOS_DIPLOMA = {
+        "Institucional general": {
+            "primario": "#800020",
+            "secundario": "#C7A44A",
+            "fondo": "#FFFDF8",
+            "suave": "#F5E9E2",
+            "acento": "#5E0017",
+            "motivo": "institucional",
+        },
+        "Lenguaje": {
+            "primario": "#7A1734",
+            "secundario": "#D7A642",
+            "fondo": "#FFF9F1",
+            "suave": "#F6E5DA",
+            "acento": "#4F0E22",
+            "motivo": "lenguaje",
+        },
+        "Matemática": {
+            "primario": "#173B73",
+            "secundario": "#D3A62E",
+            "fondo": "#F8FBFF",
+            "suave": "#E7EFFA",
+            "acento": "#0B2851",
+            "motivo": "matematica",
+        },
+        "Ciencias": {
+            "primario": "#126B70",
+            "secundario": "#A8B83D",
+            "fondo": "#F7FFFC",
+            "suave": "#DFF3EC",
+            "acento": "#084C50",
+            "motivo": "ciencias",
+        },
+        "Artes": {
+            "primario": "#A23B72",
+            "secundario": "#E39A37",
+            "fondo": "#FFF9FC",
+            "suave": "#F8E4EF",
+            "acento": "#6F1E4A",
+            "motivo": "artes",
+        },
+        "Música": {
+            "primario": "#5D3A8E",
+            "secundario": "#D6A83B",
+            "fondo": "#FCF9FF",
+            "suave": "#EEE6FA",
+            "acento": "#3A1E65",
+            "motivo": "musica",
+        },
+        "Tecnología": {
+            "primario": "#1769AA",
+            "secundario": "#31A8A0",
+            "fondo": "#F7FBFF",
+            "suave": "#E3F1FA",
+            "acento": "#0E4778",
+            "motivo": "tecnologia",
+        },
+        "Educación Física": {
+            "primario": "#237A57",
+            "secundario": "#E1A833",
+            "fondo": "#F8FFF9",
+            "suave": "#E2F3E8",
+            "acento": "#14533B",
+            "motivo": "educacion_fisica",
+        },
+        "Reconocimiento especial": {
+            "primario": "#6F1027",
+            "secundario": "#B9912E",
+            "fondo": "#FFFDF5",
+            "suave": "#F3E8D0",
+            "acento": "#430817",
+            "motivo": "especial",
+        },
+    }
+
+    TEXTOS_RECONOCIMIENTO = {
+        "Diploma de reconocimiento": (
+            "Por su destacada participación, compromiso y dedicación, "
+            "demostrando valores que contribuyen positivamente a nuestra comunidad educativa."
+        ),
+        "Mérito académico": (
+            "Por su sobresaliente desempeño académico, responsabilidad y constancia "
+            "durante el proceso educativo."
+        ),
+        "Participación destacada": (
+            "Por su valiosa y entusiasta participación, demostrando compromiso, "
+            "responsabilidad y espíritu de colaboración."
+        ),
+        "Convivencia escolar": (
+            "Por promover una sana convivencia, el respeto y el compañerismo, "
+            "siendo un aporte significativo para su comunidad escolar."
+        ),
+        "Superación personal": (
+            "Por su esfuerzo, perseverancia y permanente espíritu de superación, "
+            "constituyéndose en un ejemplo para la comunidad educativa."
+        ),
+        "Texto personalizado": "",
+    }
+
+    def color_rgb(hex_color):
+        valor = hex_color.lstrip("#")
+        return tuple(int(valor[i:i + 2], 16) for i in (0, 2, 4))
+
+    def archivo_seguro_diploma(texto):
+        texto = unicodedata.normalize("NFKD", str(texto or "Diploma"))
+        texto = "".join(c for c in texto if not unicodedata.combining(c))
+        texto = re.sub(r"[^A-Za-z0-9_-]+", "_", texto)
+        return texto.strip("_") or "Diploma"
+
+    def buscar_fuente_diploma(negrita=False, cursiva=False):
+        candidatos = []
+        if negrita and cursiva:
+            candidatos = [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
+                "/usr/share/fonts/truetype/liberation2/LiberationSans-BoldItalic.ttf",
+            ]
+        elif negrita:
+            candidatos = [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            ]
+        elif cursiva:
+            candidatos = [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
+                "/usr/share/fonts/truetype/liberation2/LiberationSans-Italic.ttf",
+            ]
+        else:
+            candidatos = [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            ]
+
+        for ruta in candidatos:
+            if Path(ruta).exists():
+                return ruta
+        return None
+
+    def fuente_diploma(tamano, negrita=False, cursiva=False):
+        ruta = buscar_fuente_diploma(negrita=negrita, cursiva=cursiva)
+        if ruta:
+            return ImageFont.truetype(ruta, tamano)
+        return ImageFont.load_default()
+
+    def medir_texto(draw, texto, font):
+        caja = draw.textbbox((0, 0), texto, font=font)
+        return caja[2] - caja[0], caja[3] - caja[1]
+
+    def ajustar_fuente(draw, texto, max_ancho, tamano_max, tamano_min=28, negrita=False):
+        for tamano in range(tamano_max, tamano_min - 1, -2):
+            font = fuente_diploma(tamano, negrita=negrita)
+            ancho, _ = medir_texto(draw, texto, font)
+            if ancho <= max_ancho:
+                return font
+        return fuente_diploma(tamano_min, negrita=negrita)
+
+    def envolver_por_ancho(draw, texto, font, max_ancho):
+        parrafos = str(texto or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        lineas_finales = []
+
+        for parrafo in parrafos:
+            parrafo = parrafo.strip()
+            if not parrafo:
+                lineas_finales.append("")
+                continue
+
+            palabras = parrafo.split()
+            linea = ""
+
+            for palabra in palabras:
+                prueba = palabra if not linea else f"{linea} {palabra}"
+                ancho, _ = medir_texto(draw, prueba, font)
+                if ancho <= max_ancho:
+                    linea = prueba
+                else:
+                    if linea:
+                        lineas_finales.append(linea)
+                    linea = palabra
+
+            if linea:
+                lineas_finales.append(linea)
+
+        return lineas_finales
+
+    def dibujar_texto_centrado(draw, texto, y, font, fill, ancho_total):
+        ancho, alto = medir_texto(draw, texto, font)
+        draw.text(
+            ((ancho_total - ancho) / 2, y),
+            texto,
+            font=font,
+            fill=fill,
+        )
+        return y + alto
+
+    def dibujar_multilinea_centrada(
+        draw,
+        texto,
+        y,
+        font,
+        fill,
+        ancho_total,
+        max_ancho,
+        separacion=18,
+    ):
+        lineas = envolver_por_ancho(draw, texto, font, max_ancho)
+        y_actual = y
+
+        for linea in lineas:
+            if not linea:
+                y_actual += separacion
+                continue
+
+            ancho, alto = medir_texto(draw, linea, font)
+            draw.text(
+                ((ancho_total - ancho) / 2, y_actual),
+                linea,
+                font=font,
+                fill=fill,
+            )
+            y_actual += alto + separacion
+
+        return y_actual
+
+    def abrir_imagen_diploma(origen):
+        if origen is None:
+            return None
+        try:
+            if isinstance(origen, (str, Path)):
+                imagen = Image.open(origen)
+            else:
+                imagen = Image.open(BytesIO(origen))
+            return ImageOps.exif_transpose(imagen).convert("RGBA")
+        except Exception:
+            return None
+
+    def eliminar_fondo_blanco_firma(imagen):
+        if imagen is None:
+            return None
+
+        rgba = imagen.convert("RGBA")
+        pixeles = rgba.load()
+
+        for y in range(rgba.height):
+            for x in range(rgba.width):
+                r, g, b, a = pixeles[x, y]
+                promedio = (r + g + b) / 3
+                if promedio > 247 and max(r, g, b) - min(r, g, b) < 12:
+                    pixeles[x, y] = (255, 255, 255, 0)
+
+        return rgba
+
+    def pegar_imagen_contenida(canvas, imagen, caja, limpiar_blanco=False):
+        if imagen is None:
+            return
+
+        if limpiar_blanco:
+            imagen = eliminar_fondo_blanco_firma(imagen)
+
+        x1, y1, x2, y2 = caja
+        max_w = max(1, x2 - x1)
+        max_h = max(1, y2 - y1)
+
+        copia = imagen.copy()
+        copia.thumbnail((max_w, max_h), Image.Resampling.LANCZOS)
+
+        x = x1 + (max_w - copia.width) // 2
+        y = y1 + (max_h - copia.height) // 2
+        canvas.alpha_composite(copia, (x, y))
+
+    def dibujar_decoracion_area(draw, estilo, w, h):
+        primario = color_rgb(estilo["primario"])
+        secundario = color_rgb(estilo["secundario"])
+        suave = color_rgb(estilo["suave"])
+        motivo = estilo["motivo"]
+
+        # Motivos muy sutiles en los laterales.
+        if motivo == "matematica":
+            for desplazamiento in (0, 1):
+                draw.ellipse(
+                    (140 + desplazamiento * 2700, 760, 390 + desplazamiento * 2700, 1010),
+                    outline=secundario,
+                    width=9,
+                )
+                draw.line(
+                    (170 + desplazamiento * 2700, 885, 360 + desplazamiento * 2700, 885),
+                    fill=primario,
+                    width=8,
+                )
+                draw.line(
+                    (265 + desplazamiento * 2700, 790, 265 + desplazamiento * 2700, 980),
+                    fill=primario,
+                    width=8,
+                )
+
+        elif motivo == "ciencias":
+            puntos = [(190, 760), (330, 840), (210, 970)]
+            for espejo in (False, True):
+                transformados = [
+                    ((w - x) if espejo else x, y)
+                    for x, y in puntos
+                ]
+                for x, y in transformados:
+                    draw.ellipse((x - 28, y - 28, x + 28, y + 28), fill=secundario)
+                draw.line((*transformados[0], *transformados[1]), fill=primario, width=10)
+                draw.line((*transformados[1], *transformados[2]), fill=primario, width=10)
+                draw.line((*transformados[2], *transformados[0]), fill=primario, width=10)
+
+        elif motivo == "musica":
+            for x in (200, w - 330):
+                draw.line((x + 70, 720, x + 70, 930), fill=primario, width=13)
+                draw.line((x + 70, 720, x + 190, 690), fill=primario, width=13)
+                draw.ellipse((x, 900, x + 90, 970), fill=secundario)
+                draw.ellipse((x + 120, 870, x + 210, 940), fill=secundario)
+                draw.line((x + 190, 690, x + 190, 900), fill=primario, width=13)
+
+        elif motivo == "tecnologia":
+            for espejo in (False, True):
+                x_base = 125 if not espejo else w - 475
+                draw.rounded_rectangle(
+                    (x_base, 735, x_base + 350, 1010),
+                    radius=28,
+                    outline=primario,
+                    width=9,
+                )
+                for y in (790, 870, 950):
+                    draw.line((x_base + 45, y, x_base + 160, y), fill=secundario, width=10)
+                    draw.ellipse((x_base + 155, y - 12, x_base + 179, y + 12), fill=secundario)
+                    draw.line((x_base + 179, y, x_base + 305, y), fill=primario, width=8)
+
+        elif motivo == "educacion_fisica":
+            for espejo in (False, True):
+                x = 145 if not espejo else w - 425
+                draw.arc((x, 740, x + 280, 1020), 25, 335, fill=primario, width=15)
+                draw.arc((x + 35, 775, x + 245, 985), 205, 515, fill=secundario, width=12)
+
+        elif motivo == "artes":
+            for espejo in (False, True):
+                x = 170 if not espejo else w - 400
+                for i, radio in enumerate((105, 76, 48)):
+                    color = primario if i % 2 == 0 else secundario
+                    draw.ellipse(
+                        (x - radio, 880 - radio, x + radio, 880 + radio),
+                        outline=color,
+                        width=12,
+                    )
+
+        elif motivo == "lenguaje":
+            for espejo in (False, True):
+                x = 145 if not espejo else w - 465
+                draw.rounded_rectangle(
+                    (x, 760, x + 320, 1010),
+                    radius=22,
+                    outline=primario,
+                    width=10,
+                )
+                draw.line((x + 160, 770, x + 160, 1000), fill=secundario, width=8)
+                for y in (820, 875, 930):
+                    draw.line((x + 35, y, x + 130, y), fill=suave, width=12)
+                    draw.line((x + 190, y, x + 285, y), fill=suave, width=12)
+
+        else:
+            # Laurel abstracto para estilos institucionales.
+            for espejo in (False, True):
+                x = 250 if not espejo else w - 250
+                for i in range(7):
+                    y = 760 + i * 48
+                    desplazamiento = i * 12
+                    if espejo:
+                        draw.ellipse(
+                            (x - 85 + desplazamiento, y, x - 20 + desplazamiento, y + 38),
+                            fill=suave,
+                            outline=secundario,
+                            width=4,
+                        )
+                    else:
+                        draw.ellipse(
+                            (x + 20 - desplazamiento, y, x + 85 - desplazamiento, y + 38),
+                            fill=suave,
+                            outline=secundario,
+                            width=4,
+                        )
+
+    def crear_diploma_imagen(
+        datos,
+        logo_bytes=None,
+        firma_director_bytes=None,
+        firma_profesor_bytes=None,
+    ):
+        w, h = 3300, 2550
+        estilo = ESTILOS_DIPLOMA[datos["estilo"]]
+
+        primario = color_rgb(estilo["primario"])
+        secundario = color_rgb(estilo["secundario"])
+        fondo = color_rgb(estilo["fondo"])
+        suave = color_rgb(estilo["suave"])
+        acento = color_rgb(estilo["acento"])
+        gris = (72, 82, 93)
+        blanco = (255, 255, 255)
+
+        canvas = Image.new("RGBA", (w, h), fondo + (255,))
+        draw = ImageDraw.Draw(canvas)
+
+        # Fondo con bandas y marcos.
+        draw.rectangle((0, 0, w, 135), fill=primario)
+        draw.rectangle((0, h - 90, w, h), fill=primario)
+        draw.rectangle((48, 48, w - 48, h - 48), outline=secundario, width=18)
+        draw.rectangle((82, 82, w - 82, h - 82), outline=primario, width=7)
+        draw.rectangle((118, 118, w - 118, h - 118), outline=secundario, width=3)
+
+        # Esquinas decorativas.
+        largo_esquina = 220
+        for x, y, sx, sy in [
+            (120, 120, 1, 1),
+            (w - 120, 120, -1, 1),
+            (120, h - 120, 1, -1),
+            (w - 120, h - 120, -1, -1),
+        ]:
+            draw.line((x, y, x + sx * largo_esquina, y), fill=secundario, width=18)
+            draw.line((x, y, x, y + sy * largo_esquina), fill=secundario, width=18)
+            draw.ellipse((x - 18, y - 18, x + 18, y + 18), fill=primario)
+
+        # Marca de agua.
+        draw.ellipse(
+            (w // 2 - 610, h // 2 - 610, w // 2 + 610, h // 2 + 610),
+            outline=suave,
+            width=20,
+        )
+        draw.ellipse(
+            (w // 2 - 520, h // 2 - 520, w // 2 + 520, h // 2 + 520),
+            outline=suave,
+            width=8,
+        )
+
+        dibujar_decoracion_area(draw, estilo, w, h)
+
+        # Logo institucional.
+        logo = abrir_imagen_diploma(logo_bytes)
+        if logo is None and RUTA_LOGO_DIPLOMA.exists():
+            logo = abrir_imagen_diploma(RUTA_LOGO_DIPLOMA)
+
+        if logo:
+            pegar_imagen_contenida(
+                canvas,
+                logo,
+                (w // 2 - 215, 155, w // 2 + 215, 500),
+            )
+
+        # Encabezado.
+        y = 500
+        f_institucion = fuente_diploma(53, negrita=True)
+        y = dibujar_texto_centrado(
+            draw,
+            "LICEO BICENTENARIO DE EXCELENCIA",
+            y,
+            f_institucion,
+            primario,
+            w,
+        ) + 12
+
+        f_colegio = fuente_diploma(48, negrita=True)
+        y = dibujar_texto_centrado(
+            draw,
+            "COLEGIO ANTONIO VARAS",
+            y,
+            f_colegio,
+            acento,
+            w,
+        ) + 25
+
+        draw.line((760, y, w - 760, y), fill=secundario, width=8)
+        y += 50
+
+        # Título.
+        titulo = datos["titulo"].upper()
+        f_titulo = ajustar_fuente(
+            draw,
+            titulo,
+            max_ancho=2500,
+            tamano_max=100,
+            tamano_min=60,
+            negrita=True,
+        )
+        y = dibujar_texto_centrado(draw, titulo, y, f_titulo, primario, w) + 42
+
+        f_otorga = fuente_diploma(42, cursiva=True)
+        y = dibujar_texto_centrado(
+            draw,
+            "Se otorga el presente diploma a:",
+            y,
+            f_otorga,
+            gris,
+            w,
+        ) + 32
+
+        # Nombre del estudiante.
+        estudiante = datos["estudiante"].upper()
+        f_estudiante = ajustar_fuente(
+            draw,
+            estudiante,
+            max_ancho=2650,
+            tamano_max=105,
+            tamano_min=52,
+            negrita=True,
+        )
+        y = dibujar_texto_centrado(
+            draw,
+            estudiante,
+            y,
+            f_estudiante,
+            acento,
+            w,
+        ) + 18
+
+        ancho_nombre, _ = medir_texto(draw, estudiante, f_estudiante)
+        ancho_linea_nombre = min(max(ancho_nombre + 160, 1100), 2700)
+        draw.line(
+            (
+                (w - ancho_linea_nombre) / 2,
+                y,
+                (w + ancho_linea_nombre) / 2,
+                y,
+            ),
+            fill=secundario,
+            width=6,
+        )
+        y += 38
+
+        # Curso y área.
+        subtitulo = f"{datos['curso']} · {datos['area']}"
+        f_subtitulo = ajustar_fuente(
+            draw,
+            subtitulo,
+            max_ancho=2350,
+            tamano_max=48,
+            tamano_min=34,
+            negrita=True,
+        )
+        y = dibujar_texto_centrado(
+            draw,
+            subtitulo,
+            y,
+            f_subtitulo,
+            primario,
+            w,
+        ) + 36
+
+        # Motivo.
+        f_motivo = fuente_diploma(41)
+        y = dibujar_multilinea_centrada(
+            draw,
+            datos["motivo"],
+            y,
+            f_motivo,
+            gris,
+            w,
+            max_ancho=2380,
+            separacion=15,
+        )
+
+        # Fecha.
+        y_fecha = max(y + 34, 1675)
+        f_fecha = fuente_diploma(34, cursiva=True)
+        dibujar_texto_centrado(
+            draw,
+            f"Vicuña, {format_date_es(datos['fecha'])}",
+            y_fecha,
+            f_fecha,
+            gris,
+            w,
+        )
+
+        # Firmas.
+        y_firmas = 1880
+        firma_profesor = abrir_imagen_diploma(firma_profesor_bytes)
+        firma_director = abrir_imagen_diploma(firma_director_bytes)
+
+        if firma_director is None and RUTA_FIRMA_DIRECTOR.exists():
+            firma_director = abrir_imagen_diploma(RUTA_FIRMA_DIRECTOR)
+
+        # Firma profesor, opcional.
+        if firma_profesor:
+            pegar_imagen_contenida(
+                canvas,
+                firma_profesor,
+                (460, y_firmas - 70, 1320, y_firmas + 260),
+                limpiar_blanco=True,
+            )
+
+        # Firma del director con sello incorporado.
+        if firma_director:
+            pegar_imagen_contenida(
+                canvas,
+                firma_director,
+                (w - 1320, y_firmas - 120, w - 420, y_firmas + 290),
+                limpiar_blanco=True,
+            )
+
+        linea_y = 2190
+        draw.line((450, linea_y, 1390, linea_y), fill=gris, width=4)
+        draw.line((w - 1390, linea_y, w - 450, linea_y), fill=gris, width=4)
+
+        f_firma_nombre = ajustar_fuente(
+            draw,
+            datos["profesor"],
+            max_ancho=900,
+            tamano_max=34,
+            tamano_min=24,
+            negrita=True,
+        )
+        ancho_prof, _ = medir_texto(draw, datos["profesor"], f_firma_nombre)
+        draw.text(
+            (920 - ancho_prof / 2, linea_y + 18),
+            datos["profesor"],
+            font=f_firma_nombre,
+            fill=acento,
+        )
+
+        f_cargo = fuente_diploma(27)
+        cargo_profesor = datos["cargo_profesor"]
+        ancho_cargo, _ = medir_texto(draw, cargo_profesor, f_cargo)
+        draw.text(
+            (920 - ancho_cargo / 2, linea_y + 62),
+            cargo_profesor,
+            font=f_cargo,
+            fill=gris,
+        )
+
+        f_director = ajustar_fuente(
+            draw,
+            datos["director"],
+            max_ancho=900,
+            tamano_max=34,
+            tamano_min=24,
+            negrita=True,
+        )
+        ancho_dir, _ = medir_texto(draw, datos["director"], f_director)
+        draw.text(
+            (w - 920 - ancho_dir / 2, linea_y + 18),
+            datos["director"],
+            font=f_director,
+            fill=acento,
+        )
+
+        cargo_director = "Director"
+        ancho_cd, _ = medir_texto(draw, cargo_director, f_cargo)
+        draw.text(
+            (w - 920 - ancho_cd / 2, linea_y + 62),
+            cargo_director,
+            font=f_cargo,
+            fill=gris,
+        )
+
+        # Pie institucional.
+        f_pie = fuente_diploma(22)
+        pie = "Diploma generado digitalmente por el Sistema Institucional CAV"
+        ancho_pie, _ = medir_texto(draw, pie, f_pie)
+        draw.text(
+            ((w - ancho_pie) / 2, h - 72),
+            pie,
+            font=f_pie,
+            fill=blanco,
+        )
+
+        return canvas.convert("RGB")
+
+    def exportar_diploma(imagen):
+        png_buffer = BytesIO()
+        imagen.save(png_buffer, format="PNG", optimize=True)
+        png_bytes = png_buffer.getvalue()
+
+        pdf_buffer = BytesIO()
+        imagen.save(
+            pdf_buffer,
+            format="PDF",
+            resolution=300.0,
+            quality=95,
+        )
+        pdf_bytes = pdf_buffer.getvalue()
+
+        return png_bytes, pdf_bytes
+
+    if "diploma_png" not in st.session_state:
+        st.session_state.diploma_png = None
+    if "diploma_pdf" not in st.session_state:
+        st.session_state.diploma_pdf = None
+    if "diploma_nombre_archivo" not in st.session_state:
+        st.session_state.diploma_nombre_archivo = "Diploma_CAV"
+
+    col_formulario, col_info = st.columns([1.4, 0.8], gap="large")
+
+    with col_info:
+        st.markdown(
+            """
+            <div style="
+                background:#FFF8E8;
+                border:1px solid #E6C66B;
+                border-left:6px solid #800020;
+                border-radius:14px;
+                padding:16px 18px;
+                margin-bottom:16px;">
+                <b>📄 Formato del diploma</b><br>
+                Carta horizontal, alta resolución y listo para imprimir.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if RUTA_LOGO_DIPLOMA.exists():
+            st.success("✅ Logo institucional detectado.")
+        else:
+            st.warning("⚠️ No se encontró `logocav.png`.")
+
+        if RUTA_FIRMA_DIRECTOR.exists():
+            st.success("✅ Firma del director con sello detectada.")
+            st.caption("Archivo utilizado: `firma_director.png`")
+        else:
+            st.warning(
+                "⚠️ No se encontró `firma_director.png`. "
+                "Puedes cargarla temporalmente en el formulario."
+            )
+
+        st.info(
+            "La firma del director debe incluir el sello dentro de la misma imagen. "
+            "No se utiliza un archivo de sello separado."
+        )
+
+        st.markdown("#### 🎨 Diseños disponibles")
+        for nombre_estilo in ESTILOS_DIPLOMA:
+            st.markdown(f"- {nombre_estilo}")
+
+    with col_formulario:
+        with st.form("form_generador_diploma", clear_on_submit=False):
+            st.markdown("### 👤 Datos del reconocimiento")
+
+            estudiante = st.text_input(
+                "Nombre completo del estudiante *",
+                placeholder="Ej. Martina González Rojas",
+                max_chars=120,
+            )
+
+            c1, c2 = st.columns(2)
+
+            opciones_curso = list(CURSOS) if CURSOS else []
+            opciones_curso = opciones_curso + ["OTRO / SIN CURSO"]
+            curso_seleccionado = c1.selectbox(
+                "Curso *",
+                opciones_curso,
+                index=0 if opciones_curso else None,
+            )
+
+            curso_personalizado = ""
+            if curso_seleccionado == "OTRO / SIN CURSO":
+                curso_personalizado = c1.text_input(
+                    "Escribe el curso",
+                    placeholder="Ej. Taller de Robótica",
+                )
+
+            area = c2.selectbox(
+                "Área o asignatura *",
+                [
+                    "Reconocimiento institucional",
+                    "Lenguaje",
+                    "Matemática",
+                    "Ciencias",
+                    "Artes",
+                    "Música",
+                    "Tecnología",
+                    "Educación Física",
+                    "Convivencia Escolar",
+                    "Otra",
+                ],
+            )
+
+            if area == "Otra":
+                area = c2.text_input(
+                    "Escribe el área",
+                    placeholder="Ej. Taller de Debate",
+                )
+
+            tipo_reconocimiento = st.selectbox(
+                "Tipo de reconocimiento",
+                list(TEXTOS_RECONOCIMIENTO.keys()),
+            )
+
+            titulo_default = (
+                "Diploma de Reconocimiento"
+                if tipo_reconocimiento == "Texto personalizado"
+                else tipo_reconocimiento
+            )
+
+            titulo_diploma = st.text_input(
+                "Título del diploma *",
+                value=titulo_default,
+                max_chars=90,
+            )
+
+            motivo_default = TEXTOS_RECONOCIMIENTO[tipo_reconocimiento]
+            motivo = st.text_area(
+                "Texto del reconocimiento *",
+                value=motivo_default,
+                height=130,
+                max_chars=650,
+                placeholder="Describe el motivo del reconocimiento.",
+            )
+
+            c3, c4 = st.columns(2)
+            fecha_diploma = c3.date_input(
+                "Fecha del diploma",
+                value=dt.date.today(),
+                format="DD/MM/YYYY",
+            )
+
+            estilo_diploma = c4.selectbox(
+                "Diseño visual",
+                list(ESTILOS_DIPLOMA.keys()),
+            )
+
+            st.markdown("### ✍️ Firmas")
+
+            c5, c6 = st.columns(2)
+            profesor = c5.text_input(
+                "Nombre del profesor responsable *",
+                value=st.session_state.get("profesor_name") or "",
+                max_chars=90,
+            )
+            cargo_profesor = c5.text_input(
+                "Cargo del profesor",
+                value="Profesor responsable",
+                max_chars=70,
+            )
+
+            director = c6.text_input(
+                "Nombre del director *",
+                value="Director(a)",
+                max_chars=90,
+            )
+
+            firma_profesor_archivo = st.file_uploader(
+                "Firma del profesor (opcional)",
+                type=["png", "jpg", "jpeg"],
+                help="Preferentemente PNG con fondo transparente.",
+                key="firma_profesor_diploma",
+            )
+
+            firma_director_archivo = st.file_uploader(
+                "Firma del director con sello (opcional, reemplaza el archivo local)",
+                type=["png", "jpg", "jpeg"],
+                help=(
+                    "Si no cargas una imagen, se utilizará automáticamente "
+                    "`firma_director.png` cuando exista en el repositorio."
+                ),
+                key="firma_director_diploma",
+            )
+
+            logo_archivo = st.file_uploader(
+                "Logo institucional alternativo (opcional)",
+                type=["png", "jpg", "jpeg"],
+                help=(
+                    "Si no cargas un logo, se utilizará automáticamente "
+                    "`logocav.png`."
+                ),
+                key="logo_diploma",
+            )
+
+            generar_diploma = st.form_submit_button(
+                "✨ Generar vista previa y archivos",
+                type="primary",
+                use_container_width=True,
+            )
+
+            if generar_diploma:
+                curso_final = (
+                    curso_personalizado.strip()
+                    if curso_seleccionado == "OTRO / SIN CURSO"
+                    else curso_seleccionado
+                )
+
+                faltantes = []
+                if not estudiante.strip():
+                    faltantes.append("nombre del estudiante")
+                if not curso_final:
+                    faltantes.append("curso")
+                if not str(area).strip():
+                    faltantes.append("área")
+                if not titulo_diploma.strip():
+                    faltantes.append("título")
+                if not motivo.strip():
+                    faltantes.append("texto del reconocimiento")
+                if not profesor.strip():
+                    faltantes.append("profesor responsable")
+                if not director.strip():
+                    faltantes.append("director")
+
+                firma_director_disponible = (
+                    firma_director_archivo is not None
+                    or RUTA_FIRMA_DIRECTOR.exists()
+                )
+
+                if faltantes:
+                    st.warning(
+                        "Completa los campos obligatorios: "
+                        + ", ".join(faltantes)
+                        + "."
+                    )
+                elif not firma_director_disponible:
+                    st.warning(
+                        "Falta la firma del director con sello. "
+                        "Carga la imagen o agrega `firma_director.png` "
+                        "al repositorio."
+                    )
+                else:
+                    datos_diploma = {
+                        "estudiante": estudiante.strip(),
+                        "curso": curso_final.strip(),
+                        "area": str(area).strip(),
+                        "titulo": titulo_diploma.strip(),
+                        "motivo": motivo.strip(),
+                        "fecha": fecha_diploma,
+                        "estilo": estilo_diploma,
+                        "profesor": profesor.strip(),
+                        "cargo_profesor": cargo_profesor.strip() or "Profesor responsable",
+                        "director": director.strip(),
+                    }
+
+                    logo_bytes = (
+                        logo_archivo.getvalue()
+                        if logo_archivo is not None
+                        else None
+                    )
+                    firma_profesor_bytes = (
+                        firma_profesor_archivo.getvalue()
+                        if firma_profesor_archivo is not None
+                        else None
+                    )
+                    firma_director_bytes = (
+                        firma_director_archivo.getvalue()
+                        if firma_director_archivo is not None
+                        else None
+                    )
+
+                    try:
+                        with st.spinner(
+                            "Diseñando el diploma en alta resolución..."
+                        ):
+                            imagen_diploma = crear_diploma_imagen(
+                                datos_diploma,
+                                logo_bytes=logo_bytes,
+                                firma_director_bytes=firma_director_bytes,
+                                firma_profesor_bytes=firma_profesor_bytes,
+                            )
+                            png_bytes, pdf_bytes = exportar_diploma(
+                                imagen_diploma
+                            )
+
+                        nombre_base = (
+                            "Diploma_"
+                            + archivo_seguro_diploma(estudiante)
+                            + "_"
+                            + archivo_seguro_diploma(str(area))
+                        )
+
+                        st.session_state.diploma_png = png_bytes
+                        st.session_state.diploma_pdf = pdf_bytes
+                        st.session_state.diploma_nombre_archivo = nombre_base
+
+                        registrar_auditoria(
+                            "generó diploma",
+                            "Diplomas",
+                            detalle={
+                                "estudiante": estudiante.strip(),
+                                "curso": curso_final.strip(),
+                                "area": str(area).strip(),
+                                "estilo": estilo_diploma,
+                            },
+                        )
+
+                        st.success(
+                            "✅ Diploma generado correctamente. "
+                            "Revisa la vista previa y descarga el formato deseado."
+                        )
+                        st.balloons()
+
+                    except Exception as e:
+                        registrar_error("generar_diploma", e)
+                        st.error(
+                            "No fue posible generar el diploma. "
+                            f"Detalle técnico: {e}"
+                        )
+
+    if st.session_state.diploma_png:
+        st.markdown("---")
+        st.markdown("## 👁️ Vista previa")
+
+        st.image(
+            st.session_state.diploma_png,
+            caption="Vista previa del diploma institucional",
+            use_container_width=True,
+        )
+
+        col_pdf, col_png, col_limpiar = st.columns([1, 1, 0.8])
+
+        with col_pdf:
+            st.download_button(
+                "📄 Descargar diploma PDF",
+                data=st.session_state.diploma_pdf,
+                file_name=(
+                    st.session_state.diploma_nombre_archivo + ".pdf"
+                ),
+                mime="application/pdf",
+                type="primary",
+                use_container_width=True,
+            )
+
+        with col_png:
+            st.download_button(
+                "🖼️ Descargar diploma PNG",
+                data=st.session_state.diploma_png,
+                file_name=(
+                    st.session_state.diploma_nombre_archivo + ".png"
+                ),
+                mime="image/png",
+                use_container_width=True,
+            )
+
+        with col_limpiar:
+            if st.button(
+                "🧹 Limpiar",
+                use_container_width=True,
+                key="limpiar_diploma",
+            ):
+                st.session_state.diploma_png = None
+                st.session_state.diploma_pdf = None
+                st.session_state.diploma_nombre_archivo = "Diploma_CAV"
+                st.rerun()
+
+
 # ------------------------------------------------------------------
 # SECCIÓN: CONFIGURACIÓN
 # ------------------------------------------------------------------
@@ -4383,8 +5437,6 @@ elif page == "Modo TV":
             titulo_aviso = st.text_input(
                 "Título del aviso *",
                 placeholder="Ej. Reemplazos de profesores",
-                max_chars=150,
-                help="Máximo 150 caracteres.",
             )
 
             descripcion_aviso = st.text_area(
