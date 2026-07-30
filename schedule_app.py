@@ -3560,12 +3560,15 @@ elif page == "Auditoría":
 
 elif page == "Diplomas":
     from PIL import Image, ImageDraw, ImageFont, ImageOps
+    from email.message import EmailMessage
+    from email.utils import formataddr
     import unicodedata
+    import ssl
 
-    st.title("🎓 Generador de Diplomas Digitales")
+    st.title("🎓 Diplomas Digitales CAV")
     st.caption(
-        "Crea diplomas institucionales descargables en PDF y PNG. "
-        "Los datos se procesan solo durante la sesión y no se almacenan."
+        "Genera diplomas institucionales legibles, descárgalos en PDF o PNG "
+        "y envíalos directamente al correo institucional mediante Google Workspace."
     )
 
     BASE_DIPLOMAS = Path(__file__).parent
@@ -3961,6 +3964,7 @@ elif page == "Diplomas":
         firma_director_bytes=None,
         firma_profesor_bytes=None,
     ):
+        # Tamaño carta horizontal a 300 DPI: 11 x 8,5 pulgadas.
         w, h = 3300, 2550
         estilo = ESTILOS_DIPLOMA[datos["estilo"]]
 
@@ -3969,21 +3973,22 @@ elif page == "Diplomas":
         fondo = color_rgb(estilo["fondo"])
         suave = color_rgb(estilo["suave"])
         acento = color_rgb(estilo["acento"])
-        gris = (72, 82, 93)
+        gris = (61, 72, 86)
+        gris_suave = (112, 122, 134)
         blanco = (255, 255, 255)
 
         canvas = Image.new("RGBA", (w, h), fondo + (255,))
         draw = ImageDraw.Draw(canvas)
 
-        # Fondo con bandas y marcos.
-        draw.rectangle((0, 0, w, 135), fill=primario)
-        draw.rectangle((0, h - 90, w, h), fill=primario)
-        draw.rectangle((48, 48, w - 48, h - 48), outline=secundario, width=18)
-        draw.rectangle((82, 82, w - 82, h - 82), outline=primario, width=7)
+        # Marco institucional.
+        draw.rectangle((0, 0, w, 150), fill=primario)
+        draw.rectangle((0, h - 105, w, h), fill=primario)
+        draw.rectangle((46, 46, w - 46, h - 46), outline=secundario, width=19)
+        draw.rectangle((82, 82, w - 82, h - 82), outline=primario, width=8)
         draw.rectangle((118, 118, w - 118, h - 118), outline=secundario, width=3)
 
-        # Esquinas decorativas.
-        largo_esquina = 220
+        # Esquinas elegantes.
+        largo_esquina = 245
         for x, y, sx, sy in [
             (120, 120, 1, 1),
             (w - 120, 120, -1, 1),
@@ -3992,37 +3997,36 @@ elif page == "Diplomas":
         ]:
             draw.line((x, y, x + sx * largo_esquina, y), fill=secundario, width=18)
             draw.line((x, y, x, y + sy * largo_esquina), fill=secundario, width=18)
-            draw.ellipse((x - 18, y - 18, x + 18, y + 18), fill=primario)
-
-        # Marca de agua.
-        draw.ellipse(
-            (w // 2 - 610, h // 2 - 610, w // 2 + 610, h // 2 + 610),
-            outline=suave,
-            width=20,
-        )
-        draw.ellipse(
-            (w // 2 - 520, h // 2 - 520, w // 2 + 520, h // 2 + 520),
-            outline=suave,
-            width=8,
-        )
+            draw.ellipse((x - 19, y - 19, x + 19, y + 19), fill=primario)
 
         dibujar_decoracion_area(draw, estilo, w, h)
 
-        # Logo institucional.
+        # Logo institucional y marca de agua.
         logo = abrir_imagen_diploma(logo_bytes)
         if logo is None and RUTA_LOGO_DIPLOMA.exists():
             logo = abrir_imagen_diploma(RUTA_LOGO_DIPLOMA)
 
         if logo:
+            # Marca de agua muy suave, sin competir con el texto.
+            marca = logo.copy()
+            marca.thumbnail((840, 840), Image.Resampling.LANCZOS)
+            alpha = marca.getchannel("A").point(lambda valor: int(valor * 0.055))
+            marca.putalpha(alpha)
+            canvas.alpha_composite(
+                marca,
+                ((w - marca.width) // 2, 1180),
+            )
+
+            # Logo principal.
             pegar_imagen_contenida(
                 canvas,
                 logo,
-                (w // 2 - 215, 155, w // 2 + 215, 500),
+                (w // 2 - 230, 165, w // 2 + 230, 530),
             )
 
-        # Encabezado.
-        y = 500
-        f_institucion = fuente_diploma(53, negrita=True)
+        # Encabezado institucional.
+        y = 515
+        f_institucion = fuente_diploma(64, negrita=True)
         y = dibujar_texto_centrado(
             draw,
             "LICEO BICENTENARIO DE EXCELENCIA",
@@ -4030,9 +4034,9 @@ elif page == "Diplomas":
             f_institucion,
             primario,
             w,
-        ) + 12
+        ) + 10
 
-        f_colegio = fuente_diploma(48, negrita=True)
+        f_colegio = fuente_diploma(58, negrita=True)
         y = dibujar_texto_centrado(
             draw,
             "COLEGIO ANTONIO VARAS",
@@ -4040,41 +4044,48 @@ elif page == "Diplomas":
             f_colegio,
             acento,
             w,
-        ) + 25
+        ) + 30
 
-        draw.line((760, y, w - 760, y), fill=secundario, width=8)
-        y += 50
+        draw.line((660, y, w - 660, y), fill=secundario, width=9)
+        y += 52
 
-        # Título.
+        # Título principal.
         titulo = datos["titulo"].upper()
         f_titulo = ajustar_fuente(
             draw,
             titulo,
-            max_ancho=2500,
-            tamano_max=100,
-            tamano_min=60,
+            max_ancho=2550,
+            tamano_max=138,
+            tamano_min=78,
             negrita=True,
         )
-        y = dibujar_texto_centrado(draw, titulo, y, f_titulo, primario, w) + 42
-
-        f_otorga = fuente_diploma(42, cursiva=True)
         y = dibujar_texto_centrado(
             draw,
-            "Se otorga el presente diploma a:",
+            titulo,
+            y,
+            f_titulo,
+            primario,
+            w,
+        ) + 48
+
+        f_otorga = fuente_diploma(55, cursiva=True)
+        y = dibujar_texto_centrado(
+            draw,
+            "Se otorga el presente diploma a",
             y,
             f_otorga,
-            gris,
+            gris_suave,
             w,
-        ) + 32
+        ) + 35
 
-        # Nombre del estudiante.
+        # Nombre del estudiante: elemento visual principal.
         estudiante = datos["estudiante"].upper()
         f_estudiante = ajustar_fuente(
             draw,
             estudiante,
-            max_ancho=2650,
-            tamano_max=105,
-            tamano_min=52,
+            max_ancho=2700,
+            tamano_max=150,
+            tamano_min=72,
             negrita=True,
         )
         y = dibujar_texto_centrado(
@@ -4084,10 +4095,10 @@ elif page == "Diplomas":
             f_estudiante,
             acento,
             w,
-        ) + 18
+        ) + 22
 
         ancho_nombre, _ = medir_texto(draw, estudiante, f_estudiante)
-        ancho_linea_nombre = min(max(ancho_nombre + 160, 1100), 2700)
+        ancho_linea_nombre = min(max(ancho_nombre + 190, 1250), 2780)
         draw.line(
             (
                 (w - ancho_linea_nombre) / 2,
@@ -4096,18 +4107,18 @@ elif page == "Diplomas":
                 y,
             ),
             fill=secundario,
-            width=6,
+            width=7,
         )
-        y += 38
+        y += 45
 
         # Curso y área.
-        subtitulo = f"{datos['curso']} · {datos['area']}"
+        subtitulo = f"{datos['curso']}  •  {datos['area']}"
         f_subtitulo = ajustar_fuente(
             draw,
             subtitulo,
-            max_ancho=2350,
-            tamano_max=48,
-            tamano_min=34,
+            max_ancho=2450,
+            tamano_max=62,
+            tamano_min=40,
             negrita=True,
         )
         y = dibujar_texto_centrado(
@@ -4117,24 +4128,58 @@ elif page == "Diplomas":
             f_subtitulo,
             primario,
             w,
-        ) + 36
+        ) + 45
 
-        # Motivo.
-        f_motivo = fuente_diploma(41)
-        y = dibujar_multilinea_centrada(
-            draw,
-            datos["motivo"],
-            y,
-            f_motivo,
-            gris,
-            w,
-            max_ancho=2380,
-            separacion=15,
-        )
+        # Motivo del reconocimiento con ajuste vertical automático.
+        max_ancho_motivo = 2380
+        max_altura_motivo = 420
+        f_motivo = fuente_diploma(58)
+        lineas_motivo = []
 
-        # Fecha.
-        y_fecha = max(y + 34, 1675)
-        f_fecha = fuente_diploma(34, cursiva=True)
+        for tamano in range(58, 39, -2):
+            fuente_prueba = fuente_diploma(tamano)
+            lineas_prueba = envolver_por_ancho(
+                draw,
+                datos["motivo"],
+                fuente_prueba,
+                max_ancho_motivo,
+            )
+            alturas = [
+                medir_texto(draw, linea or " ", fuente_prueba)[1]
+                for linea in lineas_prueba
+            ]
+            altura_total = sum(alturas) + max(0, len(lineas_prueba) - 1) * 19
+            if altura_total <= max_altura_motivo and len(lineas_prueba) <= 6:
+                f_motivo = fuente_prueba
+                lineas_motivo = lineas_prueba
+                break
+
+        if not lineas_motivo:
+            lineas_motivo = envolver_por_ancho(
+                draw,
+                datos["motivo"],
+                f_motivo,
+                max_ancho_motivo,
+            )
+
+        y_motivo = y
+        for linea in lineas_motivo:
+            if not linea:
+                y_motivo += 20
+                continue
+            ancho_linea, alto_linea = medir_texto(draw, linea, f_motivo)
+            draw.text(
+                ((w - ancho_linea) / 2, y_motivo),
+                linea,
+                font=f_motivo,
+                fill=gris,
+            )
+            y_motivo += alto_linea + 19
+
+        # Fecha separada del bloque de firmas.
+        y_fecha = max(y_motivo + 45, 1740)
+        y_fecha = min(y_fecha, 1830)
+        f_fecha = fuente_diploma(43, cursiva=True)
         dibujar_texto_centrado(
             draw,
             f"Vicuña, {format_date_es(datos['fecha'])}",
@@ -4145,56 +4190,56 @@ elif page == "Diplomas":
         )
 
         # Firmas.
-        y_firmas = 1880
+        y_firmas = 1900
         firma_profesor = abrir_imagen_diploma(firma_profesor_bytes)
         firma_director = abrir_imagen_diploma(firma_director_bytes)
 
         if firma_director is None and RUTA_FIRMA_DIRECTOR.exists():
             firma_director = abrir_imagen_diploma(RUTA_FIRMA_DIRECTOR)
 
-        # Firma profesor, opcional.
+        # La firma del profesor es opcional.
         if firma_profesor:
             pegar_imagen_contenida(
                 canvas,
                 firma_profesor,
-                (460, y_firmas - 70, 1320, y_firmas + 260),
+                (410, y_firmas - 100, 1430, y_firmas + 260),
                 limpiar_blanco=True,
             )
 
-        # Firma del director con sello incorporado.
+        # La firma del director contiene el sello.
         if firma_director:
             pegar_imagen_contenida(
                 canvas,
                 firma_director,
-                (w - 1320, y_firmas - 120, w - 420, y_firmas + 290),
+                (w - 1480, y_firmas - 145, w - 370, y_firmas + 300),
                 limpiar_blanco=True,
             )
 
-        linea_y = 2190
-        draw.line((450, linea_y, 1390, linea_y), fill=gris, width=4)
-        draw.line((w - 1390, linea_y, w - 450, linea_y), fill=gris, width=4)
+        linea_y = 2240
+        draw.line((410, linea_y, 1440, linea_y), fill=gris, width=5)
+        draw.line((w - 1440, linea_y, w - 410, linea_y), fill=gris, width=5)
 
         f_firma_nombre = ajustar_fuente(
             draw,
             datos["profesor"],
-            max_ancho=900,
-            tamano_max=34,
-            tamano_min=24,
+            max_ancho=970,
+            tamano_max=40,
+            tamano_min=27,
             negrita=True,
         )
         ancho_prof, _ = medir_texto(draw, datos["profesor"], f_firma_nombre)
         draw.text(
-            (920 - ancho_prof / 2, linea_y + 18),
+            (925 - ancho_prof / 2, linea_y + 20),
             datos["profesor"],
             font=f_firma_nombre,
             fill=acento,
         )
 
-        f_cargo = fuente_diploma(27)
+        f_cargo = fuente_diploma(31)
         cargo_profesor = datos["cargo_profesor"]
         ancho_cargo, _ = medir_texto(draw, cargo_profesor, f_cargo)
         draw.text(
-            (920 - ancho_cargo / 2, linea_y + 62),
+            (925 - ancho_cargo / 2, linea_y + 70),
             cargo_profesor,
             font=f_cargo,
             fill=gris,
@@ -4203,14 +4248,14 @@ elif page == "Diplomas":
         f_director = ajustar_fuente(
             draw,
             datos["director"],
-            max_ancho=900,
-            tamano_max=34,
-            tamano_min=24,
+            max_ancho=970,
+            tamano_max=40,
+            tamano_min=27,
             negrita=True,
         )
         ancho_dir, _ = medir_texto(draw, datos["director"], f_director)
         draw.text(
-            (w - 920 - ancho_dir / 2, linea_y + 18),
+            (w - 925 - ancho_dir / 2, linea_y + 20),
             datos["director"],
             font=f_director,
             fill=acento,
@@ -4219,18 +4264,18 @@ elif page == "Diplomas":
         cargo_director = "Director"
         ancho_cd, _ = medir_texto(draw, cargo_director, f_cargo)
         draw.text(
-            (w - 920 - ancho_cd / 2, linea_y + 62),
+            (w - 925 - ancho_cd / 2, linea_y + 70),
             cargo_director,
             font=f_cargo,
             fill=gris,
         )
 
         # Pie institucional.
-        f_pie = fuente_diploma(22)
-        pie = "Diploma generado digitalmente por el Sistema Institucional CAV"
+        f_pie = fuente_diploma(24)
+        pie = "Diploma digital emitido por el Sistema Institucional CAV"
         ancho_pie, _ = medir_texto(draw, pie, f_pie)
         draw.text(
-            ((w - ancho_pie) / 2, h - 72),
+            ((w - ancho_pie) / 2, h - 82),
             pie,
             font=f_pie,
             fill=blanco,
@@ -4254,12 +4299,243 @@ elif page == "Diplomas":
 
         return png_bytes, pdf_bytes
 
+    try:
+        CONFIG_DIPLOMAS = st.secrets["diplomas"]
+    except Exception:
+        CONFIG_DIPLOMAS = {}
+
+    DOMINIO_INSTITUCIONAL = str(
+        CONFIG_DIPLOMAS.get(
+            "institutional_domain",
+            "colegioantoniovaras.cl",
+        )
+    ).strip().lower()
+
+    def validar_correo_institucional(correo):
+        correo = str(correo or "").strip().lower()
+        patron = r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
+
+        if not re.fullmatch(patron, correo):
+            return False, "El formato del correo no es válido."
+
+        dominio = correo.rsplit("@", 1)[-1]
+        if dominio != DOMINIO_INSTITUCIONAL:
+            return (
+                False,
+                "El destinatario debe utilizar el dominio institucional "
+                f"@{DOMINIO_INSTITUCIONAL}.",
+            )
+
+        return True, ""
+
+    def correo_enmascarado(correo):
+        correo = str(correo or "")
+        if "@" not in correo:
+            return "***"
+        usuario, dominio = correo.split("@", 1)
+        visible = usuario[:2] if len(usuario) >= 2 else usuario[:1]
+        return f"{visible}***@{dominio}"
+
+    def enviar_diploma_workspace(
+        destinatario,
+        datos,
+        pdf_bytes,
+        png_bytes,
+        nombre_base,
+        incluir_png=False,
+    ):
+        try:
+            creds = st.secrets["email_credentials"]
+        except Exception as exc:
+            raise RuntimeError(
+                "No existe la sección [email_credentials] en Streamlit Secrets."
+            ) from exc
+
+        smtp_server = str(
+            creds.get("smtp_server", "smtp.gmail.com")
+        ).strip()
+        smtp_port = int(creds.get("smtp_port", 587))
+        smtp_username = str(creds.get("smtp_username", "")).strip()
+        smtp_password = str(creds.get("smtp_password", "")).replace(" ", "")
+        sender_email = str(
+            creds.get("sender_email", smtp_username)
+        ).strip()
+        sender_name = str(
+            creds.get(
+                "sender_name",
+                "Liceo Bicentenario de Excelencia Colegio Antonio Varas",
+            )
+        ).strip()
+        reply_to = str(
+            creds.get("reply_to", sender_email)
+        ).strip()
+        usar_tls = bool(creds.get("use_tls", smtp_port != 465))
+        usar_ssl = bool(creds.get("use_ssl", smtp_port == 465))
+
+        if not smtp_server:
+            raise RuntimeError("Falta smtp_server en [email_credentials].")
+        if not sender_email:
+            raise RuntimeError(
+                "Falta sender_email o smtp_username en [email_credentials]."
+            )
+
+        # Para smtp.gmail.com se requiere autenticación.
+        if smtp_server.lower() == "smtp.gmail.com":
+            if not smtp_username or not smtp_password:
+                raise RuntimeError(
+                    "Para smtp.gmail.com debes configurar smtp_username y "
+                    "smtp_password con una contraseña de aplicación."
+                )
+
+        asunto = (
+            f"{datos['titulo']} – {datos['estudiante']} | "
+            "Colegio Antonio Varas"
+        )
+
+        texto_plano = f"""Estimada/o {datos['estudiante']}:
+
+Junto con saludar, el Liceo Bicentenario de Excelencia Colegio Antonio Varas
+hace entrega de su diploma digital: {datos['titulo']}.
+
+Curso: {datos['curso']}
+Área: {datos['area']}
+Fecha: {format_date_es(datos['fecha'])}
+
+El diploma se encuentra adjunto en formato PDF. Este documento puede
+descargarse, guardarse o imprimirse cuando sea necesario.
+
+El uso de diplomas digitales contribuye a reducir el consumo de papel,
+tóner y residuos asociados a la impresión.
+
+Atentamente,
+Liceo Bicentenario de Excelencia
+Colegio Antonio Varas
+"""
+
+        html = f"""
+        <div style="font-family:Arial,sans-serif;color:#1f2937;line-height:1.6">
+            <div style="
+                max-width:680px;
+                margin:auto;
+                border:1px solid #e5e7eb;
+                border-radius:16px;
+                overflow:hidden;
+                background:#ffffff;">
+                <div style="
+                    background:#800020;
+                    color:white;
+                    padding:22px 28px;">
+                    <div style="font-size:22px;font-weight:700">
+                        Colegio Antonio Varas
+                    </div>
+                    <div style="opacity:.9">
+                        Liceo Bicentenario de Excelencia
+                    </div>
+                </div>
+
+                <div style="padding:28px">
+                    <p>Estimada/o <strong>{html_sanitizer.escape(datos['estudiante'])}</strong>:</p>
+
+                    <p>
+                        Junto con saludar, hacemos entrega de su
+                        <strong>{html_sanitizer.escape(datos['titulo'])}</strong>.
+                    </p>
+
+                    <div style="
+                        background:#fff8e8;
+                        border-left:5px solid #c7a44a;
+                        padding:14px 18px;
+                        margin:20px 0;">
+                        <div><strong>Curso:</strong> {html_sanitizer.escape(datos['curso'])}</div>
+                        <div><strong>Área:</strong> {html_sanitizer.escape(datos['area'])}</div>
+                        <div><strong>Fecha:</strong> {html_sanitizer.escape(format_date_es(datos['fecha']))}</div>
+                    </div>
+
+                    <p>
+                        El diploma está adjunto en formato PDF y puede descargarse,
+                        guardarse o imprimirse cuando sea necesario.
+                    </p>
+
+                    <p style="color:#4b5563">
+                        La entrega digital contribuye a reducir el consumo de papel,
+                        tóner y residuos de impresión.
+                    </p>
+
+                    <p style="margin-top:28px">
+                        Atentamente,<br>
+                        <strong>Liceo Bicentenario de Excelencia<br>
+                        Colegio Antonio Varas</strong>
+                    </p>
+                </div>
+            </div>
+        </div>
+        """
+
+        mensaje = EmailMessage()
+        mensaje["Subject"] = asunto
+        mensaje["From"] = formataddr((sender_name, sender_email))
+        mensaje["To"] = destinatario
+        if reply_to:
+            mensaje["Reply-To"] = reply_to
+
+        mensaje.set_content(texto_plano)
+        mensaje.add_alternative(html, subtype="html")
+
+        mensaje.add_attachment(
+            pdf_bytes,
+            maintype="application",
+            subtype="pdf",
+            filename=f"{nombre_base}.pdf",
+        )
+
+        if incluir_png:
+            mensaje.add_attachment(
+                png_bytes,
+                maintype="image",
+                subtype="png",
+                filename=f"{nombre_base}.png",
+            )
+
+        contexto_ssl = ssl.create_default_context()
+
+        if usar_ssl or smtp_port == 465:
+            with smtplib.SMTP_SSL(
+                smtp_server,
+                smtp_port,
+                context=contexto_ssl,
+                timeout=45,
+            ) as servidor:
+                if smtp_username and smtp_password:
+                    servidor.login(smtp_username, smtp_password)
+                servidor.send_message(mensaje)
+        else:
+            with smtplib.SMTP(
+                smtp_server,
+                smtp_port,
+                timeout=45,
+            ) as servidor:
+                servidor.ehlo()
+                if usar_tls:
+                    servidor.starttls(context=contexto_ssl)
+                    servidor.ehlo()
+                if smtp_username and smtp_password:
+                    servidor.login(smtp_username, smtp_password)
+                servidor.send_message(mensaje)
+
+        return True
+
     if "diploma_png" not in st.session_state:
         st.session_state.diploma_png = None
     if "diploma_pdf" not in st.session_state:
         st.session_state.diploma_pdf = None
     if "diploma_nombre_archivo" not in st.session_state:
         st.session_state.diploma_nombre_archivo = "Diploma_CAV"
+    if "diploma_datos" not in st.session_state:
+        st.session_state.diploma_datos = None
+    if "diploma_correo" not in st.session_state:
+        st.session_state.diploma_correo = ""
+    if "diploma_ultimo_envio" not in st.session_state:
+        st.session_state.diploma_ultimo_envio = None
 
     col_formulario, col_info = st.columns([1.4, 0.8], gap="large")
 
@@ -4299,6 +4575,19 @@ elif page == "Diplomas":
             "No se utiliza un archivo de sello separado."
         )
 
+        try:
+            correo_config = st.secrets["email_credentials"]
+            servidor_config = correo_config.get("smtp_server", "smtp.gmail.com")
+            st.success(f"✅ Correo configurado: {servidor_config}")
+        except Exception:
+            st.warning(
+                "⚠️ Falta configurar [email_credentials] para enviar diplomas."
+            )
+
+        st.caption(
+            f"Los destinatarios deben usar @{DOMINIO_INSTITUCIONAL}."
+        )
+
         st.markdown("#### 🎨 Diseños disponibles")
         for nombre_estilo in ESTILOS_DIPLOMA:
             st.markdown(f"- {nombre_estilo}")
@@ -4311,6 +4600,17 @@ elif page == "Diplomas":
                 "Nombre completo del estudiante *",
                 placeholder="Ej. Martina González Rojas",
                 max_chars=120,
+            )
+
+            correo_destinatario = st.text_input(
+                "Correo institucional del destinatario",
+                value=st.session_state.get("diploma_correo", ""),
+                placeholder=f"nombre@{DOMINIO_INSTITUCIONAL}",
+                help=(
+                    "Puede dejarse vacío para generar solamente el diploma. "
+                    "Será obligatorio al momento de enviarlo."
+                ),
+                max_chars=180,
             )
 
             c1, c2 = st.columns(2)
@@ -4471,12 +4771,21 @@ elif page == "Diplomas":
                     or RUTA_FIRMA_DIRECTOR.exists()
                 )
 
+                correo_valido = True
+                mensaje_correo = ""
+                if correo_destinatario.strip():
+                    correo_valido, mensaje_correo = validar_correo_institucional(
+                        correo_destinatario
+                    )
+
                 if faltantes:
                     st.warning(
                         "Completa los campos obligatorios: "
                         + ", ".join(faltantes)
                         + "."
                     )
+                elif not correo_valido:
+                    st.warning(mensaje_correo)
                 elif not firma_director_disponible:
                     st.warning(
                         "Falta la firma del director con sello. "
@@ -4537,6 +4846,11 @@ elif page == "Diplomas":
                         st.session_state.diploma_png = png_bytes
                         st.session_state.diploma_pdf = pdf_bytes
                         st.session_state.diploma_nombre_archivo = nombre_base
+                        st.session_state.diploma_datos = datos_diploma
+                        st.session_state.diploma_correo = (
+                            correo_destinatario.strip().lower()
+                        )
+                        st.session_state.diploma_ultimo_envio = None
 
                         registrar_auditoria(
                             "generó diploma",
@@ -4551,7 +4865,8 @@ elif page == "Diplomas":
 
                         st.success(
                             "✅ Diploma generado correctamente. "
-                            "Revisa la vista previa y descarga el formato deseado."
+                            "Revisa la vista previa, descárgalo o envíalo "
+                            "al correo institucional."
                         )
                         st.balloons()
 
@@ -4568,11 +4883,14 @@ elif page == "Diplomas":
 
         st.image(
             st.session_state.diploma_png,
-            caption="Vista previa del diploma institucional",
+            caption=(
+                "Vista previa del diploma institucional. "
+                "El archivo PDF mantiene tamaño carta horizontal a 300 DPI."
+            ),
             use_container_width=True,
         )
 
-        col_pdf, col_png, col_limpiar = st.columns([1, 1, 0.8])
+        col_pdf, col_png, col_limpiar = st.columns([1, 1, 0.75])
 
         with col_pdf:
             st.download_button(
@@ -4605,8 +4923,136 @@ elif page == "Diplomas":
             ):
                 st.session_state.diploma_png = None
                 st.session_state.diploma_pdf = None
+                st.session_state.diploma_datos = None
+                st.session_state.diploma_correo = ""
+                st.session_state.diploma_ultimo_envio = None
                 st.session_state.diploma_nombre_archivo = "Diploma_CAV"
                 st.rerun()
+
+        st.markdown("---")
+        st.markdown("## 📧 Enviar por Google Workspace")
+        st.caption(
+            "El sistema adjuntará el diploma PDF a un correo institucional. "
+            "El envío se realiza solamente al presionar el botón de confirmación."
+        )
+
+        datos_generados = st.session_state.get("diploma_datos") or {}
+
+        with st.form("form_enviar_diploma_workspace", clear_on_submit=False):
+            correo_envio = st.text_input(
+                "Correo institucional del destinatario *",
+                value=st.session_state.get("diploma_correo", ""),
+                placeholder=f"nombre@{DOMINIO_INSTITUCIONAL}",
+                max_chars=180,
+            )
+
+            incluir_png_correo = st.checkbox(
+                "Adjuntar también la imagen PNG",
+                value=False,
+                help=(
+                    "El PDF es suficiente para la mayoría de los destinatarios. "
+                    "La imagen PNG aumenta el tamaño del correo."
+                ),
+            )
+
+            confirmar_envio = st.checkbox(
+                "Confirmo que el nombre y el correo del destinatario son correctos.",
+                value=False,
+            )
+
+            enviar_correo_diploma = st.form_submit_button(
+                "📨 Enviar diploma al correo institucional",
+                type="primary",
+                use_container_width=True,
+            )
+
+            if enviar_correo_diploma:
+                valido, mensaje_validacion = validar_correo_institucional(
+                    correo_envio
+                )
+
+                if not datos_generados:
+                    st.error(
+                        "No se encontraron los datos del diploma. "
+                        "Vuelve a generarlo antes de enviarlo."
+                    )
+                elif not valido:
+                    st.warning(mensaje_validacion)
+                elif not confirmar_envio:
+                    st.warning(
+                        "Marca la casilla de confirmación antes de enviar."
+                    )
+                else:
+                    token_envio = hashlib.sha256(
+                        st.session_state.diploma_pdf
+                        + correo_envio.strip().lower().encode("utf-8")
+                    ).hexdigest()
+
+                    if (
+                        st.session_state.diploma_ultimo_envio == token_envio
+                    ):
+                        st.warning(
+                            "Este mismo diploma ya fue enviado a ese correo "
+                            "durante la sesión. Genera nuevamente el diploma "
+                            "o cambia el destinatario para realizar otro envío."
+                        )
+                    else:
+                        try:
+                            with st.spinner(
+                                "Enviando diploma mediante Google Workspace..."
+                            ):
+                                enviar_diploma_workspace(
+                                    destinatario=correo_envio.strip().lower(),
+                                    datos=datos_generados,
+                                    pdf_bytes=st.session_state.diploma_pdf,
+                                    png_bytes=st.session_state.diploma_png,
+                                    nombre_base=(
+                                        st.session_state.diploma_nombre_archivo
+                                    ),
+                                    incluir_png=incluir_png_correo,
+                                )
+
+                            st.session_state.diploma_correo = (
+                                correo_envio.strip().lower()
+                            )
+                            st.session_state.diploma_ultimo_envio = token_envio
+
+                            registrar_auditoria(
+                                "envió diploma por correo",
+                                "Diplomas",
+                                detalle={
+                                    "destinatario": correo_enmascarado(
+                                        correo_envio
+                                    ),
+                                    "area": datos_generados.get("area"),
+                                    "adjunto_png": incluir_png_correo,
+                                },
+                            )
+
+                            st.success(
+                                "✅ Diploma enviado correctamente a "
+                                f"{correo_enmascarado(correo_envio)}."
+                            )
+                            st.balloons()
+
+                        except smtplib.SMTPAuthenticationError:
+                            st.error(
+                                "Google rechazó la autenticación SMTP. "
+                                "Verifica el correo emisor y utiliza una "
+                                "contraseña de aplicación, no la contraseña "
+                                "normal de la cuenta."
+                            )
+                        except smtplib.SMTPRecipientsRefused:
+                            st.error(
+                                "El servidor rechazó el correo destinatario. "
+                                "Comprueba que la cuenta institucional exista."
+                            )
+                        except Exception as e:
+                            registrar_error("enviar_diploma_workspace", e)
+                            st.error(
+                                "No fue posible enviar el diploma. "
+                                f"Detalle técnico: {e}"
+                            )
 
 
 # ------------------------------------------------------------------
