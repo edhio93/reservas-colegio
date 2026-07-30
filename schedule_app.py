@@ -3559,13 +3559,19 @@ elif page == "Auditoría":
 
 
 elif page == "Diplomas":
-    from PIL import Image, ImageDraw, ImageFont, ImageOps
+    from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageChops
     from email.message import EmailMessage
     from email.utils import formataddr
+    from reportlab.pdfgen import canvas as rl_canvas
+    from reportlab.lib.pagesizes import landscape, letter
+    from reportlab.lib.colors import HexColor
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    import fitz
     import unicodedata
     import ssl
 
-    st.title("🎓 Diplomas Digitales CAV · V12 Premium Final")
+    st.title("🎓 Diplomas Digitales CAV · V13 ReportLab")
     st.caption(
         "Genera diplomas institucionales legibles, descárgalos en PDF o PNG "
         "y envíalos directamente al correo institucional mediante Google Workspace."
@@ -3936,81 +3942,114 @@ elif page == "Diplomas":
                     draw.line((x + 12, y, x + 31, y), fill=suave, width=4)
                     draw.line((x + 55, y, x + 74, y), fill=suave, width=4)
 
-    def crear_diploma_imagen(
+    DIPLOMA_RENDER_VERSION = "V13-REPORTLAB-2026-07-30"
+
+    def preparar_imagen_para_pdf(origen, quitar_blanco=False):
+        """Convierte logo o firma a PNG en memoria, recortado y transparente."""
+        imagen = abrir_imagen_diploma(origen)
+        if imagen is None:
+            return None
+
+        imagen = imagen.convert("RGBA")
+
+        if quitar_blanco:
+            datos = []
+            for r, g, b, a in imagen.getdata():
+                if r > 244 and g > 244 and b > 244:
+                    datos.append((255, 255, 255, 0))
+                else:
+                    datos.append((r, g, b, a))
+            imagen.putdata(datos)
+
+        alpha = imagen.getchannel("A")
+        bbox = alpha.getbbox()
+        if bbox:
+            imagen = imagen.crop(bbox)
+
+        salida = BytesIO()
+        imagen.save(salida, format="PNG", optimize=True)
+        return salida.getvalue()
+
+    def ajustar_tamano_pdf(texto, fuente, maximo, minimo, ancho_maximo):
+        texto = limpiar_texto_diploma(texto)
+        tamano = float(maximo)
+        while tamano > minimo and stringWidth(texto, fuente, tamano) > ancho_maximo:
+            tamano -= 1
+        return max(tamano, minimo)
+
+    def envolver_texto_pdf(texto, fuente, tamano, ancho_maximo):
+        texto = limpiar_texto_diploma(texto)
+        palabras = texto.split()
+        lineas = []
+        linea = ""
+
+        for palabra in palabras:
+            prueba = palabra if not linea else f"{linea} {palabra}"
+            if stringWidth(prueba, fuente, tamano) <= ancho_maximo:
+                linea = prueba
+            else:
+                if linea:
+                    lineas.append(linea)
+                linea = palabra
+
+        if linea:
+            lineas.append(linea)
+
+        return lineas or [""]
+
+    def dibujar_texto_centrado_pdf(pdf, texto, y, fuente, tamano, color):
+        texto = limpiar_texto_diploma(texto)
+        pdf.setFillColor(color)
+        pdf.setFont(fuente, tamano)
+        pdf.drawCentredString(396, y, texto)
+
+    def dibujar_imagen_contenida_pdf(pdf, imagen_bytes, x, y, ancho, alto):
+        if not imagen_bytes:
+            return
+
+        imagen = Image.open(BytesIO(imagen_bytes)).convert("RGBA")
+        iw, ih = imagen.size
+        proporcion = min(ancho / iw, alto / ih)
+        nuevo_ancho = iw * proporcion
+        nuevo_alto = ih * proporcion
+        pos_x = x + (ancho - nuevo_ancho) / 2
+        pos_y = y + (alto - nuevo_alto) / 2
+
+        pdf.drawImage(
+            ImageReader(BytesIO(imagen_bytes)),
+            pos_x,
+            pos_y,
+            width=nuevo_ancho,
+            height=nuevo_alto,
+            preserveAspectRatio=True,
+            mask="auto",
+        )
+
+    def crear_diploma_pdf(
         datos,
         logo_bytes=None,
         firma_director_bytes=None,
         firma_profesor_bytes=None,
     ):
-        # Diseño premium final - carta horizontal 300 DPI
-        w, h = 3300, 2550
+        """
+        Genera el diploma directamente como PDF vectorial.
+        Esto elimina los problemas de fuentes, caracteres y escala de Pillow.
+        """
+        salida = BytesIO()
+        pdf = rl_canvas.Canvas(salida, pagesize=landscape(letter))
+        page_w, page_h = landscape(letter)  # 792 x 612 puntos
+
         estilo = ESTILOS_DIPLOMA[datos["estilo"]]
+        primario = HexColor(estilo["primario"])
+        dorado = HexColor("#C7A44A")
+        fondo = HexColor("#FFFDF8")
+        gris = HexColor("#434852")
+        gris_suave = HexColor("#777D87")
+        blanco = HexColor("#FFFFFF")
+        caja = HexColor("#FBF8F0")
+        borde_caja = HexColor("#DED2B5")
 
-        primario = color_rgb(estilo["primario"])
-        secundario = color_rgb(estilo["secundario"])
-        fondo = color_rgb(estilo["fondo"])
-        acento = color_rgb(estilo["acento"])
-        gris = (68, 72, 80)
-        gris_suave = (120, 124, 132)
-        blanco = (255, 255, 255)
-
-        canvas = Image.new("RGBA", (w, h), fondo + (255,))
-        draw = ImageDraw.Draw(canvas)
-
-        # ------------------------------------------------------------------
-        # MARCO
-        # ------------------------------------------------------------------
-        draw.rectangle((0, 0, w, 104), fill=primario)
-        draw.rectangle((0, h - 72, w, h), fill=primario)
-
-        draw.rectangle((42, 42, w - 42, h - 42), outline=secundario, width=15)
-        draw.rectangle((76, 76, w - 76, h - 76), outline=primario, width=6)
-        draw.rectangle((102, 102, w - 102, h - 102), outline=secundario, width=2)
-
-        # esquinas
-        largo = 86
-        for x, y, sx, sy in [
-            (106, 106, 1, 1),
-            (w - 106, 106, -1, 1),
-            (106, h - 106, 1, -1),
-            (w - 106, h - 106, -1, -1),
-        ]:
-            draw.line((x, y, x + sx * largo, y), fill=secundario, width=8)
-            draw.line((x, y, x, y + sy * largo), fill=secundario, width=8)
-
-        # panel interior
-        draw.rounded_rectangle(
-            (235, 170, w - 235, h - 205),
-            radius=26,
-            fill=(255, 255, 255, 18),
-            outline=(228, 216, 188),
-            width=2,
-        )
-
-        # ------------------------------------------------------------------
-        # LOGO
-        # ------------------------------------------------------------------
-        logo = abrir_imagen_diploma(logo_bytes)
-        if logo is None and RUTA_LOGO_DIPLOMA.exists():
-            logo = abrir_imagen_diploma(RUTA_LOGO_DIPLOMA)
-
-        if logo:
-            # marca de agua mucho más tenue y más abajo
-            marca = logo.copy()
-            marca.thumbnail((420, 420), Image.Resampling.LANCZOS)
-            alpha = marca.getchannel("A").point(lambda v: int(v * 0.028))
-            marca.putalpha(alpha)
-            canvas.alpha_composite(marca, ((w - marca.width) // 2, 1380))
-
-            pegar_imagen_contenida(
-                canvas,
-                logo,
-                (w // 2 - 118, 128, w // 2 + 118, 332),
-            )
-
-        # ------------------------------------------------------------------
-        # TEXTOS LIMPIOS
-        # ------------------------------------------------------------------
+        # Textos normalizados.
         titulo = limpiar_texto_diploma(datos["titulo"], mayusculas=True)
         estudiante = limpiar_texto_diploma(datos["estudiante"], mayusculas=True)
         curso = limpiar_texto_diploma(datos["curso"])
@@ -4019,211 +4058,300 @@ elif page == "Diplomas":
         profesor = limpiar_texto_diploma(datos["profesor"])
         cargo_profesor = limpiar_texto_diploma(datos["cargo_profesor"])
         director = limpiar_texto_diploma(datos["director"])
+        fecha_texto = limpiar_texto_diploma(format_date_es(datos["fecha"]))
 
-        # ------------------------------------------------------------------
-        # ENCABEZADO
-        # ------------------------------------------------------------------
-        y = 356
+        # Fondo.
+        pdf.setFillColor(fondo)
+        pdf.rect(0, 0, page_w, page_h, fill=1, stroke=0)
 
-        f_inst = fuente_diploma(38, negrita=True)
-        y = dibujar_texto_centrado(
-            draw,
+        # Franjas institucionales.
+        pdf.setFillColor(primario)
+        pdf.rect(0, page_h - 25, page_w, 25, fill=1, stroke=0)
+        pdf.rect(0, 0, page_w, 18, fill=1, stroke=0)
+
+        # Marcos.
+        pdf.setStrokeColor(dorado)
+        pdf.setLineWidth(3.2)
+        pdf.rect(14, 14, page_w - 28, page_h - 28, fill=0, stroke=1)
+
+        pdf.setStrokeColor(primario)
+        pdf.setLineWidth(1.4)
+        pdf.rect(24, 24, page_w - 48, page_h - 48, fill=0, stroke=1)
+
+        pdf.setStrokeColor(dorado)
+        pdf.setLineWidth(0.7)
+        pdf.rect(31, 31, page_w - 62, page_h - 62, fill=0, stroke=1)
+
+        # Esquinas doradas discretas.
+        pdf.setStrokeColor(dorado)
+        pdf.setLineWidth(2.4)
+        largo = 22
+        for x, y, sx, sy in [
+            (32, page_h - 32, 1, -1),
+            (page_w - 32, page_h - 32, -1, -1),
+            (32, 32, 1, 1),
+            (page_w - 32, 32, -1, 1),
+        ]:
+            pdf.line(x, y, x + sx * largo, y)
+            pdf.line(x, y, x, y + sy * largo)
+
+        # Logo.
+        logo_preparado = preparar_imagen_para_pdf(logo_bytes)
+        if logo_preparado is None and RUTA_LOGO_DIPLOMA.exists():
+            logo_preparado = preparar_imagen_para_pdf(RUTA_LOGO_DIPLOMA)
+
+        dibujar_imagen_contenida_pdf(
+            pdf,
+            logo_preparado,
+            x=356,
+            y=506,
+            ancho=80,
+            alto=78,
+        )
+
+        # Encabezado.
+        dibujar_texto_centrado_pdf(
+            pdf,
             "LICEO BICENTENARIO DE EXCELENCIA",
-            y,
-            f_inst,
+            493,
+            "Helvetica-Bold",
+            11.5,
             primario,
-            w,
-        ) + 2
-
-        f_colegio = fuente_diploma(56, negrita=True)
-        y = dibujar_texto_centrado(
-            draw,
+        )
+        dibujar_texto_centrado_pdf(
+            pdf,
             "COLEGIO ANTONIO VARAS",
-            y,
-            f_colegio,
+            476,
+            "Helvetica-Bold",
+            16.5,
             primario,
-            w,
-        ) + 12
+        )
 
-        draw.line((900, y, w - 900, y), fill=secundario, width=4)
-        y += 56
+        pdf.setStrokeColor(dorado)
+        pdf.setLineWidth(1.2)
+        pdf.line(225, 464, 567, 464)
 
-        # ------------------------------------------------------------------
-        # TÍTULO
-        # ------------------------------------------------------------------
-        f_titulo = ajustar_fuente(
-            draw,
+        # Título.
+        tam_titulo = ajustar_tamano_pdf(
             titulo,
-            max_ancho=2200,
-            tamano_max=86,
-            tamano_min=56,
-            negrita=True,
+            "Helvetica-Bold",
+            maximo=29,
+            minimo=21,
+            ancho_maximo=590,
         )
-        y = dibujar_texto_centrado(draw, titulo, y, f_titulo, primario, w) + 18
+        dibujar_texto_centrado_pdf(
+            pdf,
+            titulo,
+            430,
+            "Helvetica-Bold",
+            tam_titulo,
+            primario,
+        )
 
-        f_intro = fuente_diploma(34, cursiva=True)
-        y = dibujar_texto_centrado(
-            draw,
+        dibujar_texto_centrado_pdf(
+            pdf,
             "Se otorga el presente diploma a",
-            y,
-            f_intro,
+            407,
+            "Helvetica-Oblique",
+            11.5,
             gris_suave,
-            w,
-        ) + 34
+        )
 
-        # ------------------------------------------------------------------
-        # ESTUDIANTE
-        # ------------------------------------------------------------------
-        f_estudiante = ajustar_fuente(
-            draw,
+        # Nombre.
+        tam_nombre = ajustar_tamano_pdf(
             estudiante,
-            max_ancho=2440,
-            tamano_max=102,
-            tamano_min=66,
-            negrita=True,
+            "Helvetica-Bold",
+            maximo=37,
+            minimo=24,
+            ancho_maximo=620,
         )
-        y = dibujar_texto_centrado(draw, estudiante, y, f_estudiante, acento, w) + 16
-
-        ancho_nombre, _ = medir_texto(draw, estudiante, f_estudiante)
-        ancho_linea = min(max(ancho_nombre + 120, 1020), 2360)
-        draw.line(
-            ((w - ancho_linea) / 2, y, (w + ancho_linea) / 2, y),
-            fill=secundario,
-            width=4,
+        dibujar_texto_centrado_pdf(
+            pdf,
+            estudiante,
+            368,
+            "Helvetica-Bold",
+            tam_nombre,
+            primario,
         )
-        y += 24
 
-        subtitulo = f"{curso} · {area}"
-        f_sub = ajustar_fuente(
-            draw,
+        ancho_nombre = min(
+            max(stringWidth(estudiante, "Helvetica-Bold", tam_nombre) + 34, 260),
+            620,
+        )
+        pdf.setStrokeColor(dorado)
+        pdf.setLineWidth(1.2)
+        pdf.line(
+            (page_w - ancho_nombre) / 2,
+            356,
+            (page_w + ancho_nombre) / 2,
+            356,
+        )
+
+        # Curso y área.
+        subtitulo = f"{curso}  |  {area}"
+        tam_sub = ajustar_tamano_pdf(
             subtitulo,
-            max_ancho=1700,
-            tamano_max=38,
-            tamano_min=28,
-            negrita=True,
+            "Helvetica-Bold",
+            maximo=14,
+            minimo=10,
+            ancho_maximo=500,
         )
-        y = dibujar_texto_centrado(draw, subtitulo, y, f_sub, primario, w) + 38
-
-        # ------------------------------------------------------------------
-        # BLOQUE CENTRAL DEL MENSAJE
-        # ------------------------------------------------------------------
-        bloque_ancho = 2040
-        bloque_izq = (w - bloque_ancho) // 2
-        bloque_der = w - bloque_izq
-        bloque_top = y - 6
-
-        fuente_motivo = None
-        lineas_finales = None
-        alto_final = None
-
-        for tam in range(40, 26, -2):
-            f_try = fuente_diploma(tam)
-            lineas_try = envolver_por_ancho(draw, motivo, f_try, 1880)
-            alturas = [medir_texto(draw, ln or " ", f_try)[1] for ln in lineas_try]
-            alto_total = sum(alturas) + max(0, len(lineas_try) - 1) * 12
-            if alto_total <= 185 and len(lineas_try) <= 3:
-                fuente_motivo = f_try
-                lineas_finales = lineas_try
-                alto_final = alto_total
-                break
-
-        if fuente_motivo is None:
-            fuente_motivo = fuente_diploma(28)
-            lineas_finales = envolver_por_ancho(draw, motivo, fuente_motivo, 1880)
-            alturas = [medir_texto(draw, ln or " ", fuente_motivo)[1] for ln in lineas_finales]
-            alto_final = sum(alturas) + max(0, len(lineas_finales) - 1) * 10
-
-        bloque_bottom = bloque_top + alto_final + 54
-
-        draw.rounded_rectangle(
-            (bloque_izq, bloque_top, bloque_der, bloque_bottom),
-            radius=18,
-            fill=(255, 255, 255, 135),
-            outline=(231, 220, 196),
-            width=2,
+        dibujar_texto_centrado_pdf(
+            pdf,
+            subtitulo,
+            337,
+            "Helvetica-Bold",
+            tam_sub,
+            primario,
         )
 
-        y_texto = bloque_top + 24
-        for linea in lineas_finales:
-            if not linea:
-                y_texto += 8
-                continue
-            ancho, alto = medir_texto(draw, linea, fuente_motivo)
-            draw.text(
-                ((w - ancho) / 2, y_texto),
-                linea,
-                font=fuente_motivo,
-                fill=gris,
+        # Caja de reconocimiento.
+        caja_x = 132
+        caja_y = 236
+        caja_w = 528
+        caja_h = 76
+
+        pdf.setFillColor(caja)
+        pdf.setStrokeColor(borde_caja)
+        pdf.setLineWidth(0.8)
+        pdf.roundRect(caja_x, caja_y, caja_w, caja_h, 8, fill=1, stroke=1)
+
+        tam_motivo = 14.5
+        lineas = envolver_texto_pdf(
+            motivo,
+            "Helvetica",
+            tam_motivo,
+            caja_w - 56,
+        )
+        while len(lineas) > 3 and tam_motivo > 11:
+            tam_motivo -= 0.5
+            lineas = envolver_texto_pdf(
+                motivo,
+                "Helvetica",
+                tam_motivo,
+                caja_w - 56,
             )
-            y_texto += alto + 12
 
-        y = bloque_bottom + 30
+        interlineado = tam_motivo + 4
+        altura_total = len(lineas) * interlineado
+        y_linea = caja_y + (caja_h + altura_total) / 2 - interlineado + 1
 
-        # Fecha
-        f_fecha = fuente_diploma(30, cursiva=True)
-        y = dibujar_texto_centrado(
-            draw,
-            f"Vicuña, {format_date_es(datos['fecha'])}",
-            y,
-            f_fecha,
+        pdf.setFillColor(gris)
+        pdf.setFont("Helvetica", tam_motivo)
+        for linea in lineas[:4]:
+            pdf.drawCentredString(page_w / 2, y_linea, linea)
+            y_linea -= interlineado
+
+        # Fecha.
+        dibujar_texto_centrado_pdf(
+            pdf,
+            f"Vicuña, {fecha_texto}",
+            210,
+            "Helvetica-Oblique",
+            10.5,
             gris,
-            w,
-        ) + 18
+        )
 
-        draw.line((1080, y, w - 1080, y), fill=secundario, width=3)
+        pdf.setStrokeColor(dorado)
+        pdf.setLineWidth(0.8)
+        pdf.line(300, 199, 492, 199)
 
-        # ------------------------------------------------------------------
-        # FIRMAS
-        # ------------------------------------------------------------------
-        firma_profesor = abrir_imagen_diploma(firma_profesor_bytes)
-        firma_director = abrir_imagen_diploma(firma_director_bytes)
-        if firma_director is None and RUTA_FIRMA_DIRECTOR.exists():
-            firma_director = abrir_imagen_diploma(RUTA_FIRMA_DIRECTOR)
-
-        y_firma = 1805
-        if firma_profesor:
-            pegar_imagen_contenida(
-                canvas,
-                firma_profesor,
-                (390, y_firma, 1410, y_firma + 240),
-                limpiar_blanco=True,
+        # Firmas preparadas.
+        firma_prof_preparada = preparar_imagen_para_pdf(
+            firma_profesor_bytes,
+            quitar_blanco=True,
+        )
+        firma_dir_preparada = preparar_imagen_para_pdf(
+            firma_director_bytes,
+            quitar_blanco=True,
+        )
+        if firma_dir_preparada is None and RUTA_FIRMA_DIRECTOR.exists():
+            firma_dir_preparada = preparar_imagen_para_pdf(
+                RUTA_FIRMA_DIRECTOR,
+                quitar_blanco=True,
             )
 
-        if firma_director:
-            pegar_imagen_contenida(
-                canvas,
-                firma_director,
-                (w - 1410, y_firma - 8, w - 390, y_firma + 260),
-                limpiar_blanco=True,
-            )
+        dibujar_imagen_contenida_pdf(
+            pdf,
+            firma_prof_preparada,
+            x=115,
+            y=88,
+            ancho=210,
+            alto=78,
+        )
+        dibujar_imagen_contenida_pdf(
+            pdf,
+            firma_dir_preparada,
+            x=467,
+            y=82,
+            ancho=210,
+            alto=88,
+        )
 
-        line_y = 2170
-        draw.line((420, line_y, 1410, line_y), fill=gris, width=4)
-        draw.line((w - 1410, line_y, w - 420, line_y), fill=gris, width=4)
+        # Líneas de firma.
+        pdf.setStrokeColor(gris)
+        pdf.setLineWidth(0.9)
+        pdf.line(110, 76, 330, 76)
+        pdf.line(462, 76, 682, 76)
 
-        f_nom_firma = fuente_diploma(31, negrita=True)
-        f_cargo = fuente_diploma(24)
+        # Nombres y cargos.
+        tam_prof = ajustar_tamano_pdf(
+            profesor,
+            "Helvetica-Bold",
+            maximo=10.5,
+            minimo=8,
+            ancho_maximo=210,
+        )
+        pdf.setFillColor(primario)
+        pdf.setFont("Helvetica-Bold", tam_prof)
+        pdf.drawCentredString(220, 61, profesor)
 
-        ancho_p, _ = medir_texto(draw, profesor, f_nom_firma)
-        draw.text((915 - ancho_p / 2, line_y + 18), profesor, font=f_nom_firma, fill=primario)
+        pdf.setFillColor(gris_suave)
+        pdf.setFont("Helvetica", 8.5)
+        pdf.drawCentredString(220, 48, cargo_profesor)
 
-        ancho_cp, _ = medir_texto(draw, cargo_profesor, f_cargo)
-        draw.text((915 - ancho_cp / 2, line_y + 58), cargo_profesor, font=f_cargo, fill=gris_suave)
+        tam_dir = ajustar_tamano_pdf(
+            director,
+            "Helvetica-Bold",
+            maximo=10.5,
+            minimo=8,
+            ancho_maximo=210,
+        )
+        pdf.setFillColor(primario)
+        pdf.setFont("Helvetica-Bold", tam_dir)
+        pdf.drawCentredString(572, 61, director)
 
-        ancho_d, _ = medir_texto(draw, director, f_nom_firma)
-        draw.text((w - 915 - ancho_d / 2, line_y + 18), director, font=f_nom_firma, fill=primario)
+        pdf.setFillColor(gris_suave)
+        pdf.setFont("Helvetica", 8.5)
+        pdf.drawCentredString(572, 48, "Director")
 
-        cargo_director = "Director"
-        ancho_cd, _ = medir_texto(draw, cargo_director, f_cargo)
-        draw.text((w - 915 - ancho_cd / 2, line_y + 58), cargo_director, font=f_cargo, fill=gris_suave)
+        # Pie.
+        pdf.setFillColor(blanco)
+        pdf.setFont("Helvetica", 6.5)
+        pdf.drawCentredString(
+            page_w / 2,
+            6,
+            "Diploma digital emitido por el Sistema Institucional CAV",
+        )
 
-        # pie
-        f_pie = fuente_diploma(18)
-        pie = "Diploma digital emitido por el Sistema Institucional CAV"
-        ancho_pie, _ = medir_texto(draw, pie, f_pie)
-        draw.text(((w - ancho_pie) / 2, h - 56), pie, font=f_pie, fill=blanco)
+        # Metadatos PDF.
+        pdf.setTitle(f"Diploma - {estudiante}")
+        pdf.setAuthor("Colegio Antonio Varas")
+        pdf.setSubject(titulo)
+        pdf.showPage()
+        pdf.save()
 
-        return canvas.convert("RGB")
+        return salida.getvalue()
+
+    def crear_preview_desde_pdf(pdf_bytes):
+        """Renderiza el mismo PDF como PNG; la vista previa y el archivo coinciden."""
+        documento = fitz.open(stream=pdf_bytes, filetype="pdf")
+        pagina = documento.load_page(0)
+        matriz = fitz.Matrix(2.2, 2.2)
+        pixmap = pagina.get_pixmap(matrix=matriz, alpha=False)
+        png = pixmap.tobytes("png")
+        documento.close()
+        return png
 
     def exportar_diploma(imagen):
         png_buffer = BytesIO()
@@ -4466,6 +4594,20 @@ Colegio Antonio Varas
 
         return True
 
+    # Invalida automáticamente imágenes generadas por versiones anteriores.
+    # Antes, Streamlit conservaba diploma_png en session_state y parecía que el
+    # código nuevo no se aplicaba aunque el archivo sí se hubiera actualizado.
+    if (
+        st.session_state.get("diploma_render_version")
+        != DIPLOMA_RENDER_VERSION
+    ):
+        st.session_state.diploma_png = None
+        st.session_state.diploma_pdf = None
+        st.session_state.diploma_datos = None
+        st.session_state.diploma_nombre_archivo = "Diploma_CAV"
+        st.session_state.diploma_ultimo_envio = None
+        st.session_state.diploma_render_version = DIPLOMA_RENDER_VERSION
+
     if "diploma_png" not in st.session_state:
         st.session_state.diploma_png = None
     if "diploma_pdf" not in st.session_state:
@@ -4515,6 +4657,11 @@ Colegio Antonio Varas
         st.info(
             "La firma del director debe incluir el sello dentro de la misma imagen. "
             "No se utiliza un archivo de sello separado."
+        )
+
+        st.success(
+            "✅ Motor activo: V13 ReportLab · PDF vectorial. "
+            "Si no ves este mensaje, Streamlit todavía está ejecutando otro archivo."
         )
 
         try:
@@ -4768,15 +4915,13 @@ Colegio Antonio Varas
                         with st.spinner(
                             "Diseñando el diploma en alta resolución..."
                         ):
-                            imagen_diploma = crear_diploma_imagen(
+                            pdf_bytes = crear_diploma_pdf(
                                 datos_diploma,
                                 logo_bytes=logo_bytes,
                                 firma_director_bytes=firma_director_bytes,
                                 firma_profesor_bytes=firma_profesor_bytes,
                             )
-                            png_bytes, pdf_bytes = exportar_diploma(
-                                imagen_diploma
-                            )
+                            png_bytes = crear_preview_desde_pdf(pdf_bytes)
 
                         nombre_base = (
                             "Diploma_"
@@ -4826,8 +4971,8 @@ Colegio Antonio Varas
         st.image(
             st.session_state.diploma_png,
             caption=(
-                "Vista previa del diploma institucional. "
-                "El archivo PDF mantiene tamaño carta horizontal a 300 DPI."
+                "Vista previa renderizada desde el mismo PDF vectorial V13. "
+                "Lo que ves coincide con el archivo descargado y enviado."
             ),
             use_container_width=True,
         )
