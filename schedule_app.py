@@ -3948,144 +3948,315 @@ elif page == "Diplomas":
         firma_director_bytes=None,
         firma_profesor_bytes=None,
     ):
+        # Formato carta horizontal a 300 DPI
         w, h = 3300, 2550
         estilo = ESTILOS_DIPLOMA[datos["estilo"]]
 
-        primario = color_rgb(estilo["primario"])
-        secundario = color_rgb(estilo["secundario"])
+        primario = color_rgb(estilo["primario"])      # burdeo institucional
+        secundario = color_rgb(estilo["secundario"])  # dorado institucional
         fondo = color_rgb(estilo["fondo"])
         acento = color_rgb(estilo["acento"])
-        gris = (58, 67, 77)
-        gris_suave = (118, 124, 133)
+        gris = (70, 72, 78)
+        gris_suave = (120, 122, 128)
         blanco = (255, 255, 255)
 
         canvas = Image.new("RGBA", (w, h), fondo + (255,))
         draw = ImageDraw.Draw(canvas)
 
-        draw.rectangle((0, 0, w, 125), fill=primario)
-        draw.rectangle((0, h - 90, w, h), fill=primario)
-        draw.rectangle((50, 50, w - 50, h - 50), outline=secundario, width=16)
-        draw.rectangle((84, 84, w - 84, h - 84), outline=primario, width=7)
-        draw.rectangle((115, 115, w - 115, h - 115), outline=secundario, width=3)
+        # ------------------------------------------------------------------
+        # MARCO INSTITUCIONAL
+        # ------------------------------------------------------------------
+        draw.rectangle((0, 0, w, 120), fill=primario)
+        draw.rectangle((0, h - 84, w, h), fill=primario)
+
+        draw.rectangle((48, 48, w - 48, h - 48), outline=secundario, width=16)
+        draw.rectangle((82, 82, w - 82, h - 82), outline=primario, width=7)
+        draw.rectangle((112, 112, w - 112, h - 112), outline=secundario, width=3)
 
         for x, y, sx, sy in [
-            (118, 118, 1, 1),
-            (w - 118, 118, -1, 1),
-            (118, h - 118, 1, -1),
-            (w - 118, h - 118, -1, -1),
+            (114, 114, 1, 1),
+            (w - 114, 114, -1, 1),
+            (114, h - 114, 1, -1),
+            (w - 114, h - 114, -1, -1),
         ]:
-            draw.line((x, y, x + sx * 130, y), fill=secundario, width=12)
-            draw.line((x, y, x, y + sy * 130), fill=secundario, width=12)
+            draw.line((x, y, x + sx * 120, y), fill=secundario, width=10)
+            draw.line((x, y, x, y + sy * 120), fill=secundario, width=10)
 
+        # ------------------------------------------------------------------
+        # LOGO Y MARCA DE AGUA
+        # ------------------------------------------------------------------
         logo = abrir_imagen_diploma(logo_bytes)
         if logo is None and RUTA_LOGO_DIPLOMA.exists():
             logo = abrir_imagen_diploma(RUTA_LOGO_DIPLOMA)
 
         if logo:
             marca = logo.copy()
-            marca.thumbnail((700, 700), Image.Resampling.LANCZOS)
-            alpha = marca.getchannel("A").point(lambda v: int(v * 0.06))
+            marca.thumbnail((640, 640), Image.Resampling.LANCZOS)
+            alpha = marca.getchannel("A").point(lambda v: int(v * 0.045))
             marca.putalpha(alpha)
-            canvas.alpha_composite(marca, ((w - marca.width) // 2, 1160))
-            pegar_imagen_contenida(canvas, logo, (w // 2 - 170, 150, w // 2 + 170, 430))
+            canvas.alpha_composite(marca, ((w - marca.width) // 2, 1260))
 
-        dibujar_decoracion_area(draw, estilo, w, h)
+            pegar_imagen_contenida(
+                canvas,
+                logo,
+                (w // 2 - 150, 135, w // 2 + 150, 395),
+            )
 
-        y = 455
-        f_inst = fuente_diploma(54, negrita=True)
-        y = dibujar_texto_centrado(draw, "LICEO BICENTENARIO DE EXCELENCIA", y, f_inst, primario, w) + 8
+        # ------------------------------------------------------------------
+        # ENCABEZADO
+        # ------------------------------------------------------------------
+        y = 410
+        f_inst = fuente_diploma(44, negrita=True)
+        y = dibujar_texto_centrado(
+            draw,
+            "LICEO BICENTENARIO DE EXCELENCIA",
+            y,
+            f_inst,
+            primario,
+            w,
+        ) + 2
 
-        f_colegio = fuente_diploma(68, negrita=True)
-        y = dibujar_texto_centrado(draw, "COLEGIO ANTONIO VARAS", y, f_colegio, acento, w) + 26
+        f_colegio = fuente_diploma(60, negrita=True)
+        y = dibujar_texto_centrado(
+            draw,
+            "COLEGIO ANTONIO VARAS",
+            y,
+            f_colegio,
+            primario,
+            w,
+        ) + 18
 
-        draw.line((720, y, w - 720, y), fill=secundario, width=7)
-        y += 48
+        draw.line((760, y, w - 760, y), fill=secundario, width=6)
+        y += 70
 
-        titulo = datos["titulo"].upper()
-        f_titulo = ajustar_fuente(draw, titulo, 2500, 118, 76, negrita=True)
-        y = dibujar_texto_centrado(draw, titulo, y, f_titulo, primario, w) + 32
+        # ------------------------------------------------------------------
+        # TÍTULO PRINCIPAL
+        # ------------------------------------------------------------------
+        titulo = str(datos["titulo"]).strip().upper()
+        f_titulo = ajustar_fuente(
+            draw,
+            titulo,
+            max_ancho=2350,
+            tamano_max=96,
+            tamano_min=62,
+            negrita=True,
+        )
+        y = dibujar_texto_centrado(
+            draw,
+            titulo,
+            y,
+            f_titulo,
+            primario,
+            w,
+        ) + 18
 
-        f_intro = fuente_diploma(48, cursiva=True)
-        y = dibujar_texto_centrado(draw, "Se otorga el presente diploma a", y, f_intro, gris_suave, w) + 26
+        f_otorga = fuente_diploma(38, cursiva=True)
+        y = dibujar_texto_centrado(
+            draw,
+            "Se otorga el presente diploma a",
+            y,
+            f_otorga,
+            gris_suave,
+            w,
+        ) + 34
 
-        estudiante = datos["estudiante"].upper()
-        f_estudiante = ajustar_fuente(draw, estudiante, 2700, 142, 84, negrita=True)
-        y = dibujar_texto_centrado(draw, estudiante, y, f_estudiante, acento, w) + 14
+        # ------------------------------------------------------------------
+        # NOMBRE DEL ESTUDIANTE
+        # ------------------------------------------------------------------
+        estudiante = str(datos["estudiante"]).strip().upper()
+        f_estudiante = ajustar_fuente(
+            draw,
+            estudiante,
+            max_ancho=2550,
+            tamano_max=112,
+            tamano_min=74,
+            negrita=True,
+        )
+        y = dibujar_texto_centrado(
+            draw,
+            estudiante,
+            y,
+            f_estudiante,
+            acento,
+            w,
+        ) + 12
 
         ancho_nombre, _ = medir_texto(draw, estudiante, f_estudiante)
-        ancho_linea = min(max(ancho_nombre + 180, 1350), 2820)
-        draw.line(((w - ancho_linea) / 2, y, (w + ancho_linea) / 2, y), fill=secundario, width=6)
-        y += 36
+        ancho_linea = min(max(ancho_nombre + 140, 1100), 2600)
+        draw.line(
+            ((w - ancho_linea) / 2, y, (w + ancho_linea) / 2, y),
+            fill=secundario,
+            width=5,
+        )
+        y += 32
 
-        subtitulo = f"{datos['curso']}  •  {datos['area']}"
-        f_sub = ajustar_fuente(draw, subtitulo, 2450, 56, 38, negrita=True)
-        y = dibujar_texto_centrado(draw, subtitulo, y, f_sub, primario, w) + 34
+        # ------------------------------------------------------------------
+        # CURSO Y ÁREA
+        # ------------------------------------------------------------------
+        curso = str(datos["curso"]).strip()
+        area = str(datos["area"]).strip()
+        subtitulo = f"{curso}  |  {area}"
+        f_sub = ajustar_fuente(
+            draw,
+            subtitulo,
+            max_ancho=1900,
+            tamano_max=44,
+            tamano_min=30,
+            negrita=True,
+        )
+        y = dibujar_texto_centrado(
+            draw,
+            subtitulo,
+            y,
+            f_sub,
+            primario,
+            w,
+        ) + 42
 
-        motivo_texto = str(datos["motivo"]).strip()
-        max_ancho = 2300
-        fuente_motivo = fuente_diploma(52)
-        lineas = envolver_por_ancho(draw, motivo_texto, fuente_motivo, max_ancho)
+        # ------------------------------------------------------------------
+        # PÁRRAFO DEL RECONOCIMIENTO
+        # ------------------------------------------------------------------
+        motivo = str(datos["motivo"]).strip()
+        max_ancho_texto = 2200
+        fuente_motivo = fuente_diploma(48)
 
-        for tam in range(52, 37, -2):
+        lineas = envolver_por_ancho(draw, motivo, fuente_motivo, max_ancho_texto)
+        for tam in range(48, 31, -2):
             f_try = fuente_diploma(tam)
-            lineas_try = envolver_por_ancho(draw, motivo_texto, f_try, max_ancho)
+            lineas_try = envolver_por_ancho(draw, motivo, f_try, max_ancho_texto)
             alturas = [medir_texto(draw, ln or " ", f_try)[1] for ln in lineas_try]
-            alto_total = sum(alturas) + max(0, len(lineas_try) - 1) * 16
-            if alto_total <= 300 and len(lineas_try) <= 5:
+            alto_total = sum(alturas) + max(0, len(lineas_try) - 1) * 14
+            if alto_total <= 260 and len(lineas_try) <= 4:
                 fuente_motivo = f_try
                 lineas = lineas_try
                 break
 
         for linea in lineas:
             if not linea:
-                y += 14
+                y += 10
                 continue
             ancho, alto = medir_texto(draw, linea, fuente_motivo)
-            draw.text(((w - ancho) / 2, y), linea, font=fuente_motivo, fill=gris)
-            y += alto + 16
+            draw.text(
+                ((w - ancho) / 2, y),
+                linea,
+                font=fuente_motivo,
+                fill=gris,
+            )
+            y += alto + 14
 
-        y += 28
-        f_fecha = fuente_diploma(40, cursiva=True)
-        y = dibujar_texto_centrado(draw, f"Vicuña, {format_date_es(datos['fecha'])}", y, f_fecha, gris, w) + 10
+        # Separador sutil
+        y += 24
+        draw.line((980, y, w - 980, y), fill=secundario, width=3)
+        y += 36
 
+        # ------------------------------------------------------------------
+        # FECHA
+        # ------------------------------------------------------------------
+        f_fecha = fuente_diploma(34, cursiva=True)
+        y = dibujar_texto_centrado(
+            draw,
+            f"Vicuña, {format_date_es(datos['fecha'])}",
+            y,
+            f_fecha,
+            gris,
+            w,
+        ) + 20
+
+        # ------------------------------------------------------------------
+        # FIRMAS
+        # ------------------------------------------------------------------
         firma_profesor = abrir_imagen_diploma(firma_profesor_bytes)
         firma_director = abrir_imagen_diploma(firma_director_bytes)
         if firma_director is None and RUTA_FIRMA_DIRECTOR.exists():
             firma_director = abrir_imagen_diploma(RUTA_FIRMA_DIRECTOR)
 
-        y_firma_caja = 1780
+        y_firmas = 1835
+
         if firma_profesor:
-            pegar_imagen_contenida(canvas, firma_profesor, (380, y_firma_caja, 1440, y_firma_caja + 290), limpiar_blanco=True)
+            pegar_imagen_contenida(
+                canvas,
+                firma_profesor,
+                (370, y_firmas, 1450, y_firmas + 265),
+                limpiar_blanco=True,
+            )
+
         if firma_director:
-            pegar_imagen_contenida(canvas, firma_director, (w - 1440, y_firma_caja - 10, w - 380, y_firma_caja + 315), limpiar_blanco=True)
+            pegar_imagen_contenida(
+                canvas,
+                firma_director,
+                (w - 1450, y_firmas - 8, w - 370, y_firmas + 290),
+                limpiar_blanco=True,
+            )
 
-        line_y = 2190
-        draw.line((420, line_y, 1430, line_y), fill=gris, width=5)
-        draw.line((w - 1430, line_y, w - 420, line_y), fill=gris, width=5)
+        line_y = 2185
+        draw.line((420, line_y, 1430, line_y), fill=gris, width=4)
+        draw.line((w - 1430, line_y, w - 420, line_y), fill=gris, width=4)
 
-        nombre_profesor = datos["profesor"]
-        f_nombre_prof = ajustar_fuente(draw, nombre_profesor, 950, 38, 26, negrita=True)
+        # Profesor
+        nombre_profesor = str(datos["profesor"]).strip()
+        f_nombre_prof = ajustar_fuente(
+            draw,
+            nombre_profesor,
+            max_ancho=930,
+            tamano_max=34,
+            tamano_min=24,
+            negrita=True,
+        )
         ancho_prof, _ = medir_texto(draw, nombre_profesor, f_nombre_prof)
-        draw.text((925 - ancho_prof / 2, line_y + 16), nombre_profesor, font=f_nombre_prof, fill=acento)
+        draw.text(
+            (925 - ancho_prof / 2, line_y + 18),
+            nombre_profesor,
+            font=f_nombre_prof,
+            fill=primario,
+        )
 
-        f_cargo = fuente_diploma(30)
-        cargo_profesor = datos["cargo_profesor"]
+        cargo_profesor = str(datos["cargo_profesor"]).strip()
+        f_cargo = fuente_diploma(27)
         ancho_cargo, _ = medir_texto(draw, cargo_profesor, f_cargo)
-        draw.text((925 - ancho_cargo / 2, line_y + 66), cargo_profesor, font=f_cargo, fill=gris_suave)
+        draw.text(
+            (925 - ancho_cargo / 2, line_y + 62),
+            cargo_profesor,
+            font=f_cargo,
+            fill=gris_suave,
+        )
 
-        nombre_director = datos["director"]
-        f_nombre_dir = ajustar_fuente(draw, nombre_director, 950, 38, 26, negrita=True)
+        # Director
+        nombre_director = str(datos["director"]).strip()
+        f_nombre_dir = ajustar_fuente(
+            draw,
+            nombre_director,
+            max_ancho=930,
+            tamano_max=34,
+            tamano_min=24,
+            negrita=True,
+        )
         ancho_dir, _ = medir_texto(draw, nombre_director, f_nombre_dir)
-        draw.text((w - 925 - ancho_dir / 2, line_y + 16), nombre_director, font=f_nombre_dir, fill=acento)
+        draw.text(
+            (w - 925 - ancho_dir / 2, line_y + 18),
+            nombre_director,
+            font=f_nombre_dir,
+            fill=primario,
+        )
 
         cargo_director = "Director"
         ancho_cd, _ = medir_texto(draw, cargo_director, f_cargo)
-        draw.text((w - 925 - ancho_cd / 2, line_y + 66), cargo_director, font=f_cargo, fill=gris_suave)
+        draw.text(
+            (w - 925 - ancho_cd / 2, line_y + 62),
+            cargo_director,
+            font=f_cargo,
+            fill=gris_suave,
+        )
 
-        f_pie = fuente_diploma(22)
+        # Pie
+        f_pie = fuente_diploma(20)
         pie = "Diploma digital emitido por el Sistema Institucional CAV"
         ancho_pie, _ = medir_texto(draw, pie, f_pie)
-        draw.text(((w - ancho_pie) / 2, h - 68), pie, font=f_pie, fill=blanco)
+        draw.text(
+            ((w - ancho_pie) / 2, h - 64),
+            pie,
+            font=f_pie,
+            fill=blanco,
+        )
 
         return canvas.convert("RGB")
 
