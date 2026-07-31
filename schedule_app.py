@@ -188,6 +188,424 @@ def consultar_gemini(prompt):
         return f"Error con la IA: {e}"
         st.header("💬 Asistente Técnico IA")
 
+    st.markdown("---")
+    st.markdown("## 🏫 Generación masiva desde Google Workspace")
+    st.caption(
+        "Carga grupos de Google Workspace, selecciona alumnos o funcionarios, "
+        "genera diplomas en lote, descarga un ZIP y envíalos al correo institucional."
+    )
+
+    tab_ws_config, tab_ws_bulk = st.tabs(["⚙️ Configuración Workspace", "🚀 Generación masiva"])
+
+    with tab_ws_config:
+        st.info(
+            "Para usar la generación masiva debes configurar una service account "
+            "con delegación de dominio en Google Workspace."
+        )
+
+        cfg_ws = obtener_workspace_config()
+        if cfg_ws:
+            st.success("✅ Se detectó configuración [workspace] en secrets.toml.")
+            st.write(
+                {
+                    "domain": cfg_ws.get("domain", DOMINIO_INSTITUCIONAL),
+                    "delegated_admin_email": cfg_ws.get("delegated_admin_email", ""),
+                    "allowed_group_prefix": cfg_ws.get("allowed_group_prefix", ""),
+                }
+            )
+        else:
+            st.warning("⚠️ Aún no existe la sección [workspace] en secrets.toml.")
+
+        st.markdown(
+            """
+**Qué permite este módulo:**
+- Leer grupos desde Google Workspace.
+- Cargar sus miembros.
+- Seleccionar solo las personas que deseas reconocer.
+- Editar nombre, curso/cargo y área antes de generar.
+- Enviar el diploma al correo institucional en lote.
+"""
+        )
+
+    with tab_ws_bulk:
+        ws_ok = True
+        try:
+            grupos_workspace = listar_grupos_workspace()
+        except Exception as e:
+            ws_ok = False
+            st.error(
+                "No fue posible conectarse a Google Workspace. "
+                f"Detalle técnico: {e}"
+            )
+            grupos_workspace = []
+
+        if ws_ok:
+            opciones_grupos = {
+                f"{g['name']} ({g['email']})": g["email"]
+                for g in grupos_workspace
+            }
+
+            st.markdown("### 1) Cargar grupo(s)")
+            grupos_seleccionados_labels = st.multiselect(
+                "Grupos disponibles",
+                list(opciones_grupos.keys()),
+                help="Puedes seleccionar uno o varios grupos de Workspace.",
+                key="grupos_workspace_multiselect",
+            )
+
+            col_ws1, col_ws2 = st.columns([1, 1])
+            with col_ws1:
+                if st.button("📥 Cargar miembros del/los grupo(s)", use_container_width=True):
+                    if not grupos_seleccionados_labels:
+                        st.warning("Selecciona al menos un grupo.")
+                    else:
+                        with st.spinner("Consultando grupos y miembros en Google Workspace..."):
+                            emails_grupos = [opciones_grupos[x] for x in grupos_seleccionados_labels]
+                            df_ws = construir_dataframe_destinatarios(emails_grupos)
+                            if df_ws.empty:
+                                st.warning("Los grupos seleccionados no tienen miembros disponibles.")
+                            else:
+                                st.session_state.workspace_destinatarios_df = df_ws
+                                st.success(
+                                    f"✅ Se cargaron {len(df_ws)} destinatarios únicos desde Workspace."
+                                )
+
+            with col_ws2:
+                if st.button("🧹 Limpiar carga masiva", use_container_width=True):
+                    st.session_state.workspace_destinatarios_df = None
+                    st.session_state.workspace_zip_masivo = None
+                    st.session_state.workspace_resultados_masivo = None
+                    st.rerun()
+
+        df_dest = st.session_state.get("workspace_destinatarios_df")
+
+        if isinstance(df_dest, pd.DataFrame) and not df_dest.empty:
+            st.markdown("### 2) Revisar y seleccionar destinatarios")
+            st.caption(
+                "Puedes editar nombre, curso/cargo y área antes de generar. "
+                "La columna grupo es informativa."
+            )
+
+            df_editor = st.data_editor(
+                df_dest,
+                hide_index=True,
+                use_container_width=True,
+                num_rows="fixed",
+                column_config={
+                    "seleccionar": st.column_config.CheckboxColumn("Seleccionar"),
+                    "nombre": st.column_config.TextColumn("Nombre"),
+                    "correo": st.column_config.TextColumn("Correo"),
+                    "curso": st.column_config.TextColumn("Curso / cargo / unidad"),
+                    "area": st.column_config.TextColumn("Área específica (opcional)"),
+                    "grupo": st.column_config.TextColumn("Grupo Workspace"),
+                },
+                key="editor_workspace_destinatarios",
+            )
+
+            st.markdown("### 3) Configuración común del lote")
+            with st.form("form_generacion_masiva_workspace", clear_on_submit=False):
+                cw1, cw2 = st.columns(2)
+                area_masiva = cw1.selectbox(
+                    "Área o taller común *",
+                    AREAS_DIPLOMA_AMPLIADAS,
+                    key="area_masiva_common",
+                )
+                if area_masiva == "Otra":
+                    area_masiva = cw1.text_input(
+                        "Escribe el área o taller",
+                        placeholder="Ej. Taller de Robótica",
+                        key="area_masiva_otro",
+                    )
+
+                tipo_reco_masivo = cw2.selectbox(
+                    "Tipo de reconocimiento",
+                    list(TEXTOS_RECONOCIMIENTO.keys()),
+                    key="tipo_reco_masivo",
+                )
+
+                titulo_default_masivo = (
+                    "Diploma de Reconocimiento"
+                    if tipo_reco_masivo == "Texto personalizado"
+                    else tipo_reco_masivo
+                )
+                titulo_masivo = st.text_input(
+                    "Título del diploma *",
+                    value=titulo_default_masivo,
+                    max_chars=90,
+                    key="titulo_masivo",
+                )
+
+                motivo_default_masivo = TEXTOS_RECONOCIMIENTO[tipo_reco_masivo]
+                motivo_masivo = st.text_area(
+                    "Texto del reconocimiento *",
+                    value=motivo_default_masivo,
+                    height=110,
+                    max_chars=650,
+                    key="motivo_masivo",
+                )
+
+                cm1, cm2, cm3 = st.columns(3)
+                fecha_masiva = cm1.date_input(
+                    "Fecha del diploma",
+                    value=dt.date.today(),
+                    format="DD/MM/YYYY",
+                    key="fecha_masiva",
+                )
+                estilo_masivo = cm2.selectbox(
+                    "Diseño visual",
+                    list(ESTILOS_DIPLOMA.keys()),
+                    key="estilo_masivo",
+                )
+                tema_masivo = cm3.selectbox(
+                    "Tema gráfico",
+                    list(TEMAS_GRAFICOS.keys()),
+                    format_func=lambda x: TEMAS_GRAFICOS.get(x, x.title()),
+                    key="tema_masivo",
+                )
+
+                cia1, cia2 = st.columns(2)
+                usar_ia_visual_masivo = cia1.checkbox(
+                    "Usar IA para sugerir tema gráfico del lote",
+                    value=False,
+                    key="usar_ia_visual_masivo",
+                )
+                enviar_lote_correo = cia2.checkbox(
+                    "Enviar automáticamente al correo institucional",
+                    value=True,
+                    key="enviar_lote_correo",
+                )
+
+                cf1, cf2 = st.columns(2)
+                profesor_masivo = cf1.text_input(
+                    "Nombre del profesor responsable *",
+                    value=st.session_state.get("profesor_name") or "",
+                    key="profesor_masivo",
+                )
+                cargo_profesor_masivo = cf1.text_input(
+                    "Cargo del profesor",
+                    value="Profesor responsable",
+                    key="cargo_profesor_masivo",
+                )
+                director_masivo = cf2.text_input(
+                    "Nombre del director *",
+                    value="Director(a)",
+                    key="director_masivo",
+                )
+                incluir_png_lote = cf2.checkbox(
+                    "Adjuntar también PNG por correo y en ZIP",
+                    value=False,
+                    key="incluir_png_lote",
+                )
+
+                st.markdown("#### Archivos gráficos opcionales del lote")
+                cg1, cg2, cg3 = st.columns(3)
+                firma_profesor_masiva = cg1.file_uploader(
+                    "Firma del profesor",
+                    type=["png", "jpg", "jpeg"],
+                    key="firma_profesor_masiva",
+                )
+                firma_director_masiva = cg2.file_uploader(
+                    "Firma del director con sello",
+                    type=["png", "jpg", "jpeg"],
+                    key="firma_director_masiva",
+                )
+                logo_masivo = cg3.file_uploader(
+                    "Logo alternativo",
+                    type=["png", "jpg", "jpeg"],
+                    key="logo_masivo",
+                )
+
+                confirmar_lote = st.checkbox(
+                    "Confirmo que revisé los destinatarios y autorizo la generación masiva.",
+                    value=False,
+                    key="confirmar_lote",
+                )
+
+                procesar_lote = st.form_submit_button(
+                    "🚀 Generar diplomas masivos",
+                    type="primary",
+                    use_container_width=True,
+                )
+
+                if procesar_lote:
+                    seleccionados = df_editor[df_editor["seleccionar"] == True].copy()
+
+                    if seleccionados.empty:
+                        st.warning("Debes seleccionar al menos una persona.")
+                    elif not confirmar_lote:
+                        st.warning("Confirma la generación masiva antes de continuar.")
+                    elif not profesor_masivo.strip() or not director_masivo.strip():
+                        st.warning("Completa profesor responsable y director.")
+                    else:
+                        firma_director_disponible = (
+                            firma_director_masiva is not None or RUTA_FIRMA_DIRECTOR.exists()
+                        )
+                        if not firma_director_disponible:
+                            st.warning(
+                                "Falta la firma del director con sello. "
+                                "Carga la imagen o agrega `firma_director.png` al repositorio."
+                            )
+                        else:
+                            logo_bytes = logo_masivo.getvalue() if logo_masivo else None
+                            firma_profesor_bytes = (
+                                firma_profesor_masiva.getvalue() if firma_profesor_masiva else None
+                            )
+                            firma_director_bytes = (
+                                firma_director_masiva.getvalue() if firma_director_masiva else None
+                            )
+
+                            registros = []
+                            barra = st.progress(0, text="Iniciando generación masiva...")
+                            total = len(seleccionados)
+
+                            for idx, fila in enumerate(seleccionados.itertuples(index=False), start=1):
+                                correo = str(fila.correo).strip().lower()
+                                nombre = str(fila.nombre).strip()
+                                curso_item = str(fila.curso).strip() or "Sin curso"
+                                area_item = str(fila.area).strip() or str(area_masiva).strip()
+
+                                nombre_base = (
+                                    "Diploma_"
+                                    + archivo_seguro_diploma(nombre)
+                                    + "_"
+                                    + archivo_seguro_diploma(area_item)
+                                )
+
+                                estado = "Generado"
+                                mensaje = "OK"
+                                pdf_bytes = None
+                                png_bytes = None
+
+                                try:
+                                    datos_masivos = {
+                                        "estudiante": nombre,
+                                        "curso": curso_item,
+                                        "area": area_item,
+                                        "titulo": titulo_masivo.strip(),
+                                        "motivo": motivo_masivo.strip(),
+                                        "fecha": fecha_masiva,
+                                        "estilo": estilo_masivo,
+                                        "profesor": profesor_masivo.strip(),
+                                        "cargo_profesor": cargo_profesor_masivo.strip() or "Profesor responsable",
+                                        "director": director_masivo.strip(),
+                                        "tema_visual_manual": tema_masivo,
+                                        "usar_ia_visual": usar_ia_visual_masivo,
+                                    }
+
+                                    pdf_bytes = crear_diploma_pdf(
+                                        datos_masivos,
+                                        logo_bytes=logo_bytes,
+                                        firma_director_bytes=firma_director_bytes,
+                                        firma_profesor_bytes=firma_profesor_bytes,
+                                    )
+                                    png_bytes = crear_preview_desde_pdf(pdf_bytes)
+
+                                    if enviar_lote_correo:
+                                        valido, msg_val = validar_correo_institucional(correo)
+                                        if not valido:
+                                            raise ValueError(msg_val)
+
+                                        enviar_diploma_workspace(
+                                            destinatario=correo,
+                                            datos=datos_masivos,
+                                            pdf_bytes=pdf_bytes,
+                                            png_bytes=png_bytes,
+                                            nombre_base=nombre_base,
+                                            incluir_png=incluir_png_lote,
+                                        )
+                                        estado = "Enviado"
+                                        mensaje = "Generado y enviado"
+
+                                except Exception as e:
+                                    estado = "Error"
+                                    mensaje = str(e)
+
+                                registros.append({
+                                    "nombre": nombre,
+                                    "correo": correo,
+                                    "estado": estado,
+                                    "mensaje": mensaje,
+                                    "pdf": pdf_bytes,
+                                    "png": png_bytes,
+                                    "nombre_base": nombre_base,
+                                })
+
+                                barra.progress(
+                                    idx / total,
+                                    text=f"Procesando {idx}/{total}: {nombre}"
+                                )
+
+                            zip_bytes = generar_zip_diplomas_masivos(
+                                registros,
+                                incluir_png=incluir_png_lote,
+                            )
+                            st.session_state.workspace_zip_masivo = zip_bytes
+                            st.session_state.workspace_resultados_masivo = pd.DataFrame([
+                                {
+                                    "Nombre": r["nombre"],
+                                    "Correo": r["correo"],
+                                    "Estado": r["estado"],
+                                    "Mensaje": r["mensaje"],
+                                }
+                                for r in registros
+                            ])
+
+                            enviados = sum(1 for r in registros if r["estado"] == "Enviado")
+                            generados = sum(1 for r in registros if r["estado"] in ["Generado", "Enviado"])
+                            errores = sum(1 for r in registros if r["estado"] == "Error")
+
+                            registrar_auditoria(
+                                "procesó diplomas masivos",
+                                "Diplomas",
+                                detalle={
+                                    "total": total,
+                                    "generados": generados,
+                                    "enviados": enviados,
+                                    "errores": errores,
+                                    "area": str(area_masiva),
+                                },
+                            )
+
+                            if errores == 0:
+                                st.success(
+                                    f"✅ Lote completado. Generados: {generados}. "
+                                    f"Enviados: {enviados}."
+                                )
+                                st.balloons()
+                            else:
+                                st.warning(
+                                    f"Proceso finalizado con incidencias. "
+                                    f"Generados: {generados}, enviados: {enviados}, errores: {errores}."
+                                )
+
+        resultados_lote = st.session_state.get("workspace_resultados_masivo")
+        zip_lote = st.session_state.get("workspace_zip_masivo")
+
+        if isinstance(resultados_lote, pd.DataFrame) and not resultados_lote.empty:
+            st.markdown("### 4) Resultados del lote")
+            st.dataframe(resultados_lote, use_container_width=True, hide_index=True)
+
+            cr1, cr2 = st.columns(2)
+            with cr1:
+                st.download_button(
+                    "⬇️ Descargar ZIP del lote",
+                    data=zip_lote,
+                    file_name="diplomas_masivos_workspace.zip",
+                    mime="application/zip",
+                    type="primary",
+                    use_container_width=True,
+                )
+            with cr2:
+                st.download_button(
+                    "⬇️ Descargar reporte CSV",
+                    data=resultados_lote.to_csv(index=False).encode("utf-8-sig"),
+                    file_name="reporte_diplomas_masivos.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
+
+
+
 # ------------------------------------------------------------------
 # CONFIGURACIÓN SUPABASE (NUEVO MOTOR DE BASE DE DATOS)
 # ------------------------------------------------------------------
@@ -3567,11 +3985,14 @@ elif page == "Diplomas":
     from reportlab.lib.colors import HexColor
     from reportlab.lib.utils import ImageReader
     from reportlab.pdfbase.pdfmetrics import stringWidth
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
     import fitz
     import unicodedata
     import ssl
+    import json
 
-    st.title("🎓 Diplomas Digitales CAV · V13 ReportLab")
+    st.title("🎓 Diplomas Digitales CAV · V14 Masivo Workspace")
     st.caption(
         "Genera diplomas institucionales legibles, descárgalos en PDF o PNG "
         "y envíalos directamente al correo institucional mediante Google Workspace."
@@ -3679,6 +4100,41 @@ elif page == "Diplomas":
         ),
         "Texto personalizado": "",
     }
+
+
+    TEMAS_GRAFICOS = {
+        "automatico": "Automático",
+        "institucional": "Institucional",
+        "lenguaje": "Lenguaje / lectura",
+        "matematica": "Matemática",
+        "ciencias": "Ciencias",
+        "artes": "Artes",
+        "musica": "Música",
+        "tecnologia": "Tecnología",
+        "educacion_fisica": "Educación Física",
+        "convivencia": "Convivencia",
+        "robotica": "Robótica",
+        "debate": "Debate / comunicación",
+        "medioambiente": "Medioambiente",
+        "teatro": "Teatro / expresión",
+    }
+
+    AREAS_DIPLOMA_AMPLIADAS = [
+        "Reconocimiento institucional",
+        "Lenguaje",
+        "Matemática",
+        "Ciencias",
+        "Artes",
+        "Música",
+        "Tecnología",
+        "Educación Física",
+        "Convivencia Escolar",
+        "Robótica",
+        "Debate",
+        "Medioambiente",
+        "Teatro",
+        "Otra",
+    ]
 
     def color_rgb(hex_color):
         valor = hex_color.lstrip("#")
@@ -3942,7 +4398,7 @@ elif page == "Diplomas":
                     draw.line((x + 12, y, x + 31, y), fill=suave, width=4)
                     draw.line((x + 55, y, x + 74, y), fill=suave, width=4)
 
-    DIPLOMA_RENDER_VERSION = "V13-REPORTLAB-2026-07-30"
+    DIPLOMA_RENDER_VERSION = "V14-REPORTLAB-WORKSPACE-2026-07-30"
 
     def preparar_imagen_para_pdf(origen, quitar_blanco=False):
         """Convierte logo o firma a PNG en memoria, recortado y transparente."""
@@ -4025,6 +4481,144 @@ elif page == "Diplomas":
             mask="auto",
         )
 
+
+    def inferir_tema_visual_local(area, titulo="", motivo=""):
+        texto = limpiar_texto_diploma(" ".join([str(area or ""), str(titulo or ""), str(motivo or "")])).lower()
+
+        reglas = [
+            ("robotica", ["robot", "robótica", "robotica", "programación", "programacion", "coding", "maker"]),
+            ("debate", ["debate", "oratoria", "comunicación", "comunicacion", "discurso", "comunicar"]),
+            ("medioambiente", ["medioambiente", "medio ambiente", "ecología", "ecologia", "ambiental", "sustentable", "reciclaje"]),
+            ("teatro", ["teatro", "drama", "actuación", "actuacion", "expresión", "expresion"]),
+            ("lenguaje", ["lenguaje", "lectura", "escritura", "literatura", "idioma", "comunicación"]),
+            ("matematica", ["matemática", "matematica", "álgebra", "algebra", "geometría", "geometria", "cálculo", "calculo"]),
+            ("ciencias", ["ciencias", "biología", "biologia", "química", "quimica", "física", "fisica", "laboratorio"]),
+            ("artes", ["artes", "arte", "pintura", "dibujo", "visual"]),
+            ("musica", ["música", "musica", "canto", "instrumento", "orquesta", "banda"]),
+            ("tecnologia", ["tecnología", "tecnologia", "computación", "computacion", "informática", "informatica", "digital"]),
+            ("educacion_fisica", ["educación física", "educacion fisica", "deporte", "fútbol", "futbol", "voleibol", "basquet", "actividad física"]),
+            ("convivencia", ["convivencia", "respeto", "liderazgo", "solidaridad", "valores", "buen trato", "comunidad"]),
+        ]
+        for tema, palabras in reglas:
+            if any(p in texto for p in palabras):
+                return tema
+        return "institucional"
+
+    def sugerir_tema_visual_ia(area, titulo, motivo):
+        try:
+            prompt = f"""
+Eres un clasificador visual para diplomas escolares.
+Debes elegir SOLO UNO de estos tokens exactos:
+institucional, lenguaje, matematica, ciencias, artes, musica, tecnologia,
+educacion_fisica, convivencia, robotica, debate, medioambiente, teatro
+
+Área: {area}
+Título: {titulo}
+Texto: {motivo}
+
+Responde únicamente el token exacto, sin explicación.
+"""
+            respuesta = consultar_gemini(prompt)
+            token = limpiar_texto_diploma(respuesta).lower().strip()
+            token = re.sub(r"[^a-z_]", "", token)
+            return token if token in TEMAS_GRAFICOS else None
+        except Exception:
+            return None
+
+    def resolver_tema_visual(area, titulo, motivo, seleccion_manual="automatico", usar_ia=False):
+        if seleccion_manual and seleccion_manual != "automatico":
+            return seleccion_manual
+        if usar_ia:
+            sugerido = sugerir_tema_visual_ia(area, titulo, motivo)
+            if sugerido:
+                return sugerido
+        return inferir_tema_visual_local(area, titulo, motivo)
+
+    def dibujar_motivo_icono_pdf(pdf, tema, cx, cy, stroke_color, fill_color, s=1.0):
+        pdf.setStrokeColor(stroke_color)
+        pdf.setFillColor(fill_color)
+        pdf.setLineWidth(1.1)
+
+        if tema == "lenguaje":
+            pdf.roundRect(cx - 18*s, cy - 12*s, 36*s, 24*s, 4*s, fill=0, stroke=1)
+            pdf.line(cx, cy - 12*s, cx, cy + 12*s)
+            pdf.line(cx - 12*s, cy + 6*s, cx - 4*s, cy + 6*s)
+            pdf.line(cx + 4*s, cy + 6*s, cx + 12*s, cy + 6*s)
+        elif tema == "matematica":
+            pdf.circle(cx, cy, 15*s, stroke=1, fill=0)
+            pdf.line(cx - 10*s, cy, cx + 10*s, cy)
+            pdf.line(cx, cy - 10*s, cx, cy + 10*s)
+            pdf.line(cx - 8*s, cy - 8*s, cx + 8*s, cy + 8*s)
+        elif tema == "ciencias":
+            pdf.circle(cx, cy, 4*s, stroke=1, fill=1)
+            pdf.ellipse(cx - 19*s, cy - 7*s, cx + 19*s, cy + 7*s, stroke=1, fill=0)
+            pdf.ellipse(cx - 7*s, cy - 19*s, cx + 7*s, cy + 19*s, stroke=1, fill=0)
+            pdf.ellipse(cx - 16*s, cy - 16*s, cx + 16*s, cy + 16*s, stroke=1, fill=0)
+        elif tema == "artes":
+            pdf.circle(cx - 6*s, cy + 2*s, 16*s, stroke=1, fill=0)
+            for dx, dy in [(-11, 12), (0, 16), (11, 12), (12, 1)]:
+                pdf.circle(cx + dx*s, cy + dy*s, 3.2*s, stroke=1, fill=0)
+            pdf.circle(cx + 5*s, cy - 4*s, 4.8*s, stroke=1, fill=0)
+        elif tema == "musica":
+            pdf.line(cx - 2*s, cy - 13*s, cx - 2*s, cy + 10*s)
+            pdf.line(cx - 2*s, cy + 10*s, cx + 13*s, cy + 6*s)
+            pdf.circle(cx - 7*s, cy - 12*s, 4.5*s, stroke=1, fill=0)
+            pdf.circle(cx + 8*s, cy - 16*s, 4.5*s, stroke=1, fill=0)
+        elif tema == "tecnologia":
+            pdf.rect(cx - 12*s, cy - 12*s, 24*s, 24*s, stroke=1, fill=0)
+            for i in range(-2, 3):
+                pdf.line(cx - 18*s, cy + i*6*s, cx - 12*s, cy + i*6*s)
+                pdf.line(cx + 12*s, cy + i*6*s, cx + 18*s, cy + i*6*s)
+                pdf.line(cx + i*6*s, cy - 18*s, cx + i*6*s, cy - 12*s)
+                pdf.line(cx + i*6*s, cy + 12*s, cx + i*6*s, cy + 18*s)
+        elif tema == "educacion_fisica":
+            pdf.circle(cx, cy, 15*s, stroke=1, fill=0)
+            pdf.arc(cx - 15*s, cy - 15*s, cx + 15*s, cy + 15*s, 40, 140)
+            pdf.arc(cx - 15*s, cy - 15*s, cx + 15*s, cy + 15*s, 220, 320)
+            pdf.line(cx - 15*s, cy, cx + 15*s, cy)
+        elif tema == "convivencia":
+            pdf.circle(cx - 7*s, cy + 5*s, 5*s, stroke=1, fill=0)
+            pdf.circle(cx + 7*s, cy + 5*s, 5*s, stroke=1, fill=0)
+            pdf.circle(cx, cy - 8*s, 7*s, stroke=1, fill=0)
+            pdf.line(cx - 7*s, cy, cx, cy - 2*s)
+            pdf.line(cx + 7*s, cy, cx, cy - 2*s)
+        elif tema == "robotica":
+            pdf.roundRect(cx - 14*s, cy - 10*s, 28*s, 20*s, 3*s, fill=0, stroke=1)
+            pdf.circle(cx - 6*s, cy + 2*s, 2.2*s, stroke=1, fill=1)
+            pdf.circle(cx + 6*s, cy + 2*s, 2.2*s, stroke=1, fill=1)
+            pdf.line(cx - 7*s, cy - 4*s, cx + 7*s, cy - 4*s)
+            pdf.line(cx, cy + 10*s, cx, cy + 16*s)
+            pdf.circle(cx, cy + 18*s, 1.8*s, stroke=1, fill=1)
+        elif tema == "debate":
+            pdf.roundRect(cx - 18*s, cy - 4*s, 22*s, 16*s, 3*s, fill=0, stroke=1)
+            pdf.line(cx - 10*s, cy - 4*s, cx - 4*s, cy - 10*s)
+            pdf.roundRect(cx - 2*s, cy - 12*s, 22*s, 16*s, 3*s, fill=0, stroke=1)
+            pdf.line(cx + 10*s, cy - 12*s, cx + 16*s, cy - 18*s)
+        elif tema == "medioambiente":
+            pdf.line(cx, cy - 14*s, cx, cy + 10*s)
+            pdf.bezier(cx, cy + 4*s, cx - 14*s, cy + 8*s, cx - 14*s, cy + 24*s, cx, cy + 20*s)
+            pdf.bezier(cx, cy + 4*s, cx + 14*s, cy + 8*s, cx + 14*s, cy + 24*s, cx, cy + 20*s)
+        elif tema == "teatro":
+            pdf.arc(cx - 18*s, cy - 15*s, cx - 2*s, cy + 15*s, 210, 120)
+            pdf.arc(cx + 2*s, cy - 15*s, cx + 18*s, cy + 15*s, 30, 120)
+            pdf.line(cx - 14*s, cy, cx - 6*s, cy)
+            pdf.line(cx + 6*s, cy + 4*s, cx + 14*s, cy + 4*s)
+        else:
+            # institucional
+            pdf.circle(cx, cy + 2*s, 14*s, stroke=1, fill=0)
+            for dx, dy in [(-10, -6), (-4, 6), (8, -2)]:
+                pdf.circle(cx + dx*s, cy + dy*s, 2.4*s, stroke=1, fill=1)
+
+    def dibujar_elementos_graficos_diploma(pdf, tema, stroke_color, fill_color):
+        posiciones = [
+            (96, 274, 0.95),
+            (696, 274, 0.95),
+            (122, 145, 0.82),
+            (670, 145, 0.82),
+        ]
+        for cx, cy, esc in posiciones:
+            dibujar_motivo_icono_pdf(pdf, tema, cx, cy, stroke_color, fill_color, s=esc)
+
     def crear_diploma_pdf(
         datos,
         logo_bytes=None,
@@ -4059,6 +4653,13 @@ elif page == "Diplomas":
         cargo_profesor = limpiar_texto_diploma(datos["cargo_profesor"])
         director = limpiar_texto_diploma(datos["director"])
         fecha_texto = limpiar_texto_diploma(format_date_es(datos["fecha"]))
+        tema_visual = resolver_tema_visual(
+            area,
+            titulo,
+            motivo,
+            seleccion_manual=str(datos.get("tema_visual_manual", "automatico")),
+            usar_ia=bool(datos.get("usar_ia_visual", False)),
+        )
 
         # Fondo.
         pdf.setFillColor(fondo)
@@ -4108,6 +4709,9 @@ elif page == "Diplomas":
             ancho=80,
             alto=78,
         )
+
+        # Motivos gráficos temáticos.
+        dibujar_elementos_graficos_diploma(pdf, tema_visual, dorado, dorado)
 
         # Encabezado.
         dibujar_texto_centrado_pdf(
@@ -4406,6 +5010,164 @@ elif page == "Diplomas":
         visible = usuario[:2] if len(usuario) >= 2 else usuario[:1]
         return f"{visible}***@{dominio}"
 
+
+    def obtener_workspace_config():
+        try:
+            cfg = st.secrets["workspace"]
+            return cfg
+        except Exception:
+            return None
+
+    @st.cache_resource(show_spinner=False)
+    def construir_servicio_workspace(service_account_json, delegated_admin_email):
+        info = json.loads(service_account_json)
+        scopes = [
+            "https://www.googleapis.com/auth/admin.directory.group.readonly",
+            "https://www.googleapis.com/auth/admin.directory.group.member.readonly",
+            "https://www.googleapis.com/auth/admin.directory.user.readonly",
+        ]
+        creds = service_account.Credentials.from_service_account_info(
+            info,
+            scopes=scopes,
+        )
+        if delegated_admin_email:
+            creds = creds.with_subject(delegated_admin_email)
+        return build("admin", "directory_v1", credentials=creds, cache_discovery=False)
+
+    def obtener_servicio_workspace():
+        cfg = obtener_workspace_config()
+        if not cfg:
+            raise RuntimeError(
+                "Falta la sección [workspace] en secrets.toml. "
+                "Debes configurar una service account con delegación de dominio."
+            )
+        service_account_json = str(cfg.get("service_account_json", "")).strip()
+        delegated_admin_email = str(cfg.get("delegated_admin_email", "")).strip()
+        if not service_account_json:
+            raise RuntimeError("Falta workspace.service_account_json en secrets.toml.")
+        if not delegated_admin_email:
+            raise RuntimeError("Falta workspace.delegated_admin_email en secrets.toml.")
+        return construir_servicio_workspace(service_account_json, delegated_admin_email), cfg
+
+    @st.cache_data(ttl=1800, show_spinner=False)
+    def listar_grupos_workspace():
+        service, cfg = obtener_servicio_workspace()
+        domain = str(cfg.get("domain", DOMINIO_INSTITUCIONAL)).strip()
+        prefijo = str(cfg.get("allowed_group_prefix", "")).strip().lower()
+        grupos = []
+        request = service.groups().list(domain=domain, maxResults=200, orderBy="email")
+        while request is not None:
+            response = request.execute()
+            for item in response.get("groups", []):
+                email = item.get("email", "")
+                nombre = item.get("name", email)
+                if prefijo and not email.lower().startswith(prefijo):
+                    continue
+                grupos.append({
+                    "name": nombre,
+                    "email": email,
+                    "description": item.get("description", ""),
+                })
+            request = service.groups().list_next(request, response)
+
+        grupos = sorted(grupos, key=lambda g: g["email"].lower())
+        return grupos
+
+    @st.cache_data(ttl=1800, show_spinner=False)
+    def obtener_usuario_workspace(email_usuario):
+        service, _ = obtener_servicio_workspace()
+        try:
+            data = service.users().get(
+                userKey=email_usuario,
+                projection="basic",
+                viewType="domain_public",
+            ).execute()
+            full_name = (
+                data.get("name", {}).get("fullName")
+                or data.get("name", {}).get("givenName")
+                or email_usuario.split("@")[0].replace(".", " ").title()
+            )
+            org = ""
+            orgs = data.get("organizations", []) or []
+            if orgs:
+                org = orgs[0].get("department") or orgs[0].get("title") or ""
+            return {
+                "name": full_name,
+                "email": data.get("primaryEmail", email_usuario),
+                "org": org,
+            }
+        except Exception:
+            return {
+                "name": email_usuario.split("@")[0].replace(".", " ").replace("_", " ").title(),
+                "email": email_usuario,
+                "org": "",
+            }
+
+    @st.cache_data(ttl=1800, show_spinner=False)
+    def listar_miembros_grupo_workspace(group_email):
+        service, _ = obtener_servicio_workspace()
+        miembros = []
+        request = service.members().list(groupKey=group_email, maxResults=200)
+        while request is not None:
+            response = request.execute()
+            for item in response.get("members", []):
+                if item.get("type") != "USER":
+                    continue
+                correo = item.get("email")
+                if not correo:
+                    continue
+                detalle = obtener_usuario_workspace(correo)
+                miembros.append({
+                    "grupo": group_email,
+                    "nombre": detalle["name"],
+                    "correo": detalle["email"].lower(),
+                    "curso": detalle["org"] or "",
+                    "area": "",
+                })
+            request = service.members().list_next(request, response)
+        return miembros
+
+    def construir_dataframe_destinatarios(grupos_seleccionados):
+        mapa = {}
+        for g in grupos_seleccionados:
+            for miembro in listar_miembros_grupo_workspace(g):
+                key = miembro["correo"].lower()
+                if key not in mapa:
+                    mapa[key] = {
+                        "seleccionar": True,
+                        "nombre": miembro["nombre"],
+                        "correo": miembro["correo"],
+                        "curso": miembro["curso"],
+                        "area": "",
+                        "grupo": g,
+                    }
+                else:
+                    grupos_prev = mapa[key]["grupo"]
+                    if g not in grupos_prev:
+                        mapa[key]["grupo"] = grupos_prev + " | " + g
+        datos = list(mapa.values())
+        return pd.DataFrame(datos)
+
+    def generar_zip_diplomas_masivos(registros, incluir_png=False):
+        buffer_zip = BytesIO()
+        with zipfile.ZipFile(buffer_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+            for item in registros:
+                base_name = item["nombre_base"]
+                zf.writestr(f"{base_name}.pdf", item["pdf"])
+                if incluir_png and item.get("png"):
+                    zf.writestr(f"{base_name}.png", item["png"])
+            resumen = pd.DataFrame([
+                {
+                    "nombre": r["nombre"],
+                    "correo": r["correo"],
+                    "estado": r["estado"],
+                    "mensaje": r["mensaje"],
+                }
+                for r in registros
+            ])
+            zf.writestr("resumen_envio.csv", resumen.to_csv(index=False).encode("utf-8-sig"))
+        return buffer_zip.getvalue()
+
     def enviar_diploma_workspace(
         destinatario,
         datos,
@@ -4612,6 +5374,12 @@ Colegio Antonio Varas
         st.session_state.diploma_png = None
     if "diploma_pdf" not in st.session_state:
         st.session_state.diploma_pdf = None
+    if "workspace_destinatarios_df" not in st.session_state:
+        st.session_state.workspace_destinatarios_df = None
+    if "workspace_zip_masivo" not in st.session_state:
+        st.session_state.workspace_zip_masivo = None
+    if "workspace_resultados_masivo" not in st.session_state:
+        st.session_state.workspace_resultados_masivo = None
     if "diploma_nombre_archivo" not in st.session_state:
         st.session_state.diploma_nombre_archivo = "Diploma_CAV"
     if "diploma_datos" not in st.session_state:
@@ -4660,7 +5428,7 @@ Colegio Antonio Varas
         )
 
         st.success(
-            "✅ Motor activo: V13 ReportLab · PDF vectorial. "
+            "✅ Motor activo: V14 ReportLab + Google Workspace. "
             "Si no ves este mensaje, Streamlit todavía está ejecutando otro archivo."
         )
 
@@ -4721,18 +5489,7 @@ Colegio Antonio Varas
 
             area = c2.selectbox(
                 "Área o asignatura *",
-                [
-                    "Reconocimiento institucional",
-                    "Lenguaje",
-                    "Matemática",
-                    "Ciencias",
-                    "Artes",
-                    "Música",
-                    "Tecnología",
-                    "Educación Física",
-                    "Convivencia Escolar",
-                    "Otra",
-                ],
+                AREAS_DIPLOMA_AMPLIADAS,
             )
 
             if area == "Otra":
@@ -4777,6 +5534,21 @@ Colegio Antonio Varas
             estilo_diploma = c4.selectbox(
                 "Diseño visual",
                 list(ESTILOS_DIPLOMA.keys()),
+            )
+
+            st.markdown("### 🎨 Elementos gráficos")
+            ctema1, ctema2 = st.columns(2)
+            tema_visual_manual = ctema1.selectbox(
+                "Tema gráfico",
+                list(TEMAS_GRAFICOS.keys()),
+                format_func=lambda x: TEMAS_GRAFICOS.get(x, x.title()),
+                index=0,
+                help="Automático toma el área y el texto para decorar el diploma.",
+            )
+            usar_ia_visual = ctema2.checkbox(
+                "Usar IA para sugerir tema gráfico",
+                value=False,
+                help="Si está activo, Gemini intentará escoger el tema visual más adecuado.",
             )
 
             st.markdown("### ✍️ Firmas")
@@ -4893,6 +5665,8 @@ Colegio Antonio Varas
                         "profesor": profesor.strip(),
                         "cargo_profesor": cargo_profesor.strip() or "Profesor responsable",
                         "director": director.strip(),
+                        "tema_visual_manual": tema_visual_manual,
+                        "usar_ia_visual": usar_ia_visual,
                     }
 
                     logo_bytes = (
