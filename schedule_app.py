@@ -281,12 +281,102 @@ def crear_codigo_diploma(area):
 def crear_token_publico_diploma():
     return uuid.uuid4().hex + uuid.uuid4().hex
 
-def construir_url_publica_diploma(token):
+def obtener_url_base_aplicacion():
+    """
+    Obtiene la URL real desde la cual se está ejecutando Streamlit.
+
+    Se prioriza la URL de la petición actual para evitar enlaces rotos por una
+    configuración manual incorrecta, por ejemplo un subdominio que no existe.
+    """
+    candidatos = []
+
+    # Streamlit moderno expone la URL completa de la sesión.
+    try:
+        url_contexto = str(st.context.url or "").strip()
+        if url_contexto:
+            candidatos.append(url_contexto)
+    except Exception:
+        pass
+
+    # Respaldo mediante headers del proxy de Streamlit Cloud.
+    try:
+        headers = st.context.headers
+        host = (
+            headers.get("x-forwarded-host")
+            or headers.get("host")
+            or ""
+        )
+        proto = (
+            headers.get("x-forwarded-proto")
+            or "https"
+        )
+        if "," in proto:
+            proto = proto.split(",", 1)[0].strip()
+        if "," in host:
+            host = host.split(",", 1)[0].strip()
+        if host:
+            candidatos.append(f"{proto}://{host}")
+    except Exception:
+        pass
+
+    # Último respaldo: valor configurado manualmente en Secrets.
     config = obtener_config_diplomas()
-    base_url = str(config.get("public_app_url", "")).strip().rstrip("/")
+    configurada = str(config.get("public_app_url", "")).strip()
+    if configurada:
+        candidatos.append(configurada)
+
+    for candidata in candidatos:
+        try:
+            partes = urllib.parse.urlsplit(candidata)
+            host = (partes.hostname or "").lower()
+            if not partes.scheme or not partes.netloc:
+                continue
+            if host in {"localhost", "127.0.0.1", "0.0.0.0"}:
+                continue
+            return f"{partes.scheme}://{partes.netloc}".rstrip("/")
+        except Exception:
+            continue
+
+    return ""
+
+def construir_url_publica_diploma(token):
+    base_url = obtener_url_base_aplicacion()
     if not base_url:
         return ""
-    return f"{base_url}/?diploma={urllib.parse.quote(str(token))}"
+    token_seguro = urllib.parse.quote(str(token), safe="")
+    return f"{base_url}/?diploma={token_seguro}"
+
+def reparar_urls_publicas_diplomas(registros):
+    """
+    Corrige registros antiguos que quedaron asociados a una URL equivocada.
+    Solo actualiza la columna url_publica; no cambia códigos ni tokens.
+    """
+    base_url = obtener_url_base_aplicacion()
+    if not base_url or not registros:
+        return 0
+
+    corregidos = 0
+    for registro in registros:
+        diploma_id = registro.get("id")
+        token = registro.get("public_token")
+        if not diploma_id or not token:
+            continue
+
+        url_correcta = f"{base_url}/?diploma={urllib.parse.quote(str(token), safe='')}"
+        url_guardada = str(registro.get("url_publica") or "").strip()
+
+        if url_guardada != url_correcta:
+            try:
+                supabase.table("diplomas_digitales").update({
+                    "url_publica": url_correcta,
+                    "actualizado_en": dt_datetime.now().isoformat(),
+                }).eq("id", diploma_id).execute()
+                registro["url_publica"] = url_correcta
+                corregidos += 1
+            except Exception as error:
+                registrar_error("reparar_url_publica_diploma", error)
+
+    return corregidos
 
 def extraer_signed_url(respuesta):
     if isinstance(respuesta, str):
@@ -3945,7 +4035,7 @@ elif page == "Diplomas":
     import unicodedata
     import ssl
 
-    st.title("🎓 Diplomas Digitales CAV · V15.1 · 100% Digital")
+    st.title("🎓 Diplomas Digitales CAV · V15.2 · URL pública automática")
 
     st.caption(
         "Reconocimientos digitales con registro oficial, enlace personal, "
@@ -3959,6 +4049,12 @@ elif page == "Diplomas":
             else st.session_state.get("profesor_name")
         )
         registros_diplomas = cargar_diplomas_registrados(filtro_creador)
+        urls_corregidas = reparar_urls_publicas_diplomas(registros_diplomas)
+        if urls_corregidas:
+            st.info(
+                f"🔗 Se corrigieron automáticamente {urls_corregidas} "
+                "enlaces digitales antiguos."
+            )
     except Exception as error:
         registros_diplomas = []
         st.warning(
@@ -4412,7 +4508,7 @@ elif page == "Diplomas":
                     draw.line((x + 12, y, x + 31, y), fill=suave, width=4)
                     draw.line((x + 55, y, x + 74, y), fill=suave, width=4)
 
-    DIPLOMA_RENDER_VERSION = "V15.1-STORAGE-BYTES-2026-07-31"
+    DIPLOMA_RENDER_VERSION = "V15.2-AUTO-PUBLIC-URL-2026-07-31"
 
     def preparar_imagen_para_pdf(origen, quitar_blanco=False):
         """Convierte logo o firma a PNG en memoria, recortado y transparente."""
@@ -5165,9 +5261,18 @@ Colegio Antonio Varas
         )
 
         st.success(
-            "✅ Motor activo: V15.1 Digital · Storage corregido. "
+            "✅ Motor activo: V15.2 Digital · URL pública automática. "
             "Si no ves este mensaje, Streamlit todavía está ejecutando otro archivo."
         )
+
+        url_base_detectada = obtener_url_base_aplicacion()
+        if url_base_detectada:
+            st.caption(f"🔗 URL pública detectada: {url_base_detectada}")
+        else:
+            st.warning(
+                "No se pudo detectar la URL pública de la aplicación. "
+                "Configura diplomas.public_app_url en Secrets."
+            )
 
         try:
             correo_config = st.secrets["email_credentials"]
@@ -5650,6 +5755,22 @@ Colegio Antonio Varas
                             with st.spinner(
                                 "Enviando diploma mediante Google Workspace..."
                             ):
+                                if datos_generados.get("public_token"):
+                                    url_actualizada = construir_url_publica_diploma(
+                                        datos_generados["public_token"]
+                                    )
+                                    datos_generados["url_publica"] = url_actualizada
+                                    st.session_state.diploma_url_publica = url_actualizada
+
+                                    if st.session_state.get("diploma_registro_id"):
+                                        supabase.table("diplomas_digitales").update({
+                                            "url_publica": url_actualizada,
+                                            "actualizado_en": dt_datetime.now().isoformat(),
+                                        }).eq(
+                                            "id",
+                                            st.session_state.diploma_registro_id,
+                                        ).execute()
+
                                 enviar_diploma_workspace(
                                     destinatario=correo_envio.strip().lower(),
                                     datos=datos_generados,
