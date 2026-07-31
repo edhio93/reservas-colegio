@@ -188,424 +188,6 @@ def consultar_gemini(prompt):
         return f"Error con la IA: {e}"
         st.header("💬 Asistente Técnico IA")
 
-    st.markdown("---")
-    st.markdown("## 🏫 Generación masiva desde Google Workspace")
-    st.caption(
-        "Carga grupos de Google Workspace, selecciona alumnos o funcionarios, "
-        "genera diplomas en lote, descarga un ZIP y envíalos al correo institucional."
-    )
-
-    tab_ws_config, tab_ws_bulk = st.tabs(["⚙️ Configuración Workspace", "🚀 Generación masiva"])
-
-    with tab_ws_config:
-        st.info(
-            "Para usar la generación masiva debes configurar una service account "
-            "con delegación de dominio en Google Workspace."
-        )
-
-        cfg_ws = obtener_workspace_config()
-        if cfg_ws:
-            st.success("✅ Se detectó configuración [workspace] en secrets.toml.")
-            st.write(
-                {
-                    "domain": cfg_ws.get("domain", DOMINIO_INSTITUCIONAL),
-                    "delegated_admin_email": cfg_ws.get("delegated_admin_email", ""),
-                    "allowed_group_prefix": cfg_ws.get("allowed_group_prefix", ""),
-                }
-            )
-        else:
-            st.warning("⚠️ Aún no existe la sección [workspace] en secrets.toml.")
-
-        st.markdown(
-            """
-**Qué permite este módulo:**
-- Leer grupos desde Google Workspace.
-- Cargar sus miembros.
-- Seleccionar solo las personas que deseas reconocer.
-- Editar nombre, curso/cargo y área antes de generar.
-- Enviar el diploma al correo institucional en lote.
-"""
-        )
-
-    with tab_ws_bulk:
-        ws_ok = True
-        try:
-            grupos_workspace = listar_grupos_workspace()
-        except Exception as e:
-            ws_ok = False
-            st.error(
-                "No fue posible conectarse a Google Workspace. "
-                f"Detalle técnico: {e}"
-            )
-            grupos_workspace = []
-
-        if ws_ok:
-            opciones_grupos = {
-                f"{g['name']} ({g['email']})": g["email"]
-                for g in grupos_workspace
-            }
-
-            st.markdown("### 1) Cargar grupo(s)")
-            grupos_seleccionados_labels = st.multiselect(
-                "Grupos disponibles",
-                list(opciones_grupos.keys()),
-                help="Puedes seleccionar uno o varios grupos de Workspace.",
-                key="grupos_workspace_multiselect",
-            )
-
-            col_ws1, col_ws2 = st.columns([1, 1])
-            with col_ws1:
-                if st.button("📥 Cargar miembros del/los grupo(s)", use_container_width=True):
-                    if not grupos_seleccionados_labels:
-                        st.warning("Selecciona al menos un grupo.")
-                    else:
-                        with st.spinner("Consultando grupos y miembros en Google Workspace..."):
-                            emails_grupos = [opciones_grupos[x] for x in grupos_seleccionados_labels]
-                            df_ws = construir_dataframe_destinatarios(emails_grupos)
-                            if df_ws.empty:
-                                st.warning("Los grupos seleccionados no tienen miembros disponibles.")
-                            else:
-                                st.session_state.workspace_destinatarios_df = df_ws
-                                st.success(
-                                    f"✅ Se cargaron {len(df_ws)} destinatarios únicos desde Workspace."
-                                )
-
-            with col_ws2:
-                if st.button("🧹 Limpiar carga masiva", use_container_width=True):
-                    st.session_state.workspace_destinatarios_df = None
-                    st.session_state.workspace_zip_masivo = None
-                    st.session_state.workspace_resultados_masivo = None
-                    st.rerun()
-
-        df_dest = st.session_state.get("workspace_destinatarios_df")
-
-        if isinstance(df_dest, pd.DataFrame) and not df_dest.empty:
-            st.markdown("### 2) Revisar y seleccionar destinatarios")
-            st.caption(
-                "Puedes editar nombre, curso/cargo y área antes de generar. "
-                "La columna grupo es informativa."
-            )
-
-            df_editor = st.data_editor(
-                df_dest,
-                hide_index=True,
-                use_container_width=True,
-                num_rows="fixed",
-                column_config={
-                    "seleccionar": st.column_config.CheckboxColumn("Seleccionar"),
-                    "nombre": st.column_config.TextColumn("Nombre"),
-                    "correo": st.column_config.TextColumn("Correo"),
-                    "curso": st.column_config.TextColumn("Curso / cargo / unidad"),
-                    "area": st.column_config.TextColumn("Área específica (opcional)"),
-                    "grupo": st.column_config.TextColumn("Grupo Workspace"),
-                },
-                key="editor_workspace_destinatarios",
-            )
-
-            st.markdown("### 3) Configuración común del lote")
-            with st.form("form_generacion_masiva_workspace", clear_on_submit=False):
-                cw1, cw2 = st.columns(2)
-                area_masiva = cw1.selectbox(
-                    "Área o taller común *",
-                    AREAS_DIPLOMA_AMPLIADAS,
-                    key="area_masiva_common",
-                )
-                if area_masiva == "Otra":
-                    area_masiva = cw1.text_input(
-                        "Escribe el área o taller",
-                        placeholder="Ej. Taller de Robótica",
-                        key="area_masiva_otro",
-                    )
-
-                tipo_reco_masivo = cw2.selectbox(
-                    "Tipo de reconocimiento",
-                    list(TEXTOS_RECONOCIMIENTO.keys()),
-                    key="tipo_reco_masivo",
-                )
-
-                titulo_default_masivo = (
-                    "Diploma de Reconocimiento"
-                    if tipo_reco_masivo == "Texto personalizado"
-                    else tipo_reco_masivo
-                )
-                titulo_masivo = st.text_input(
-                    "Título del diploma *",
-                    value=titulo_default_masivo,
-                    max_chars=90,
-                    key="titulo_masivo",
-                )
-
-                motivo_default_masivo = TEXTOS_RECONOCIMIENTO[tipo_reco_masivo]
-                motivo_masivo = st.text_area(
-                    "Texto del reconocimiento *",
-                    value=motivo_default_masivo,
-                    height=110,
-                    max_chars=650,
-                    key="motivo_masivo",
-                )
-
-                cm1, cm2, cm3 = st.columns(3)
-                fecha_masiva = cm1.date_input(
-                    "Fecha del diploma",
-                    value=dt.date.today(),
-                    format="DD/MM/YYYY",
-                    key="fecha_masiva",
-                )
-                estilo_masivo = cm2.selectbox(
-                    "Diseño visual",
-                    list(ESTILOS_DIPLOMA.keys()),
-                    key="estilo_masivo",
-                )
-                tema_masivo = cm3.selectbox(
-                    "Tema gráfico",
-                    list(TEMAS_GRAFICOS.keys()),
-                    format_func=lambda x: TEMAS_GRAFICOS.get(x, x.title()),
-                    key="tema_masivo",
-                )
-
-                cia1, cia2 = st.columns(2)
-                usar_ia_visual_masivo = cia1.checkbox(
-                    "Usar IA para sugerir tema gráfico del lote",
-                    value=False,
-                    key="usar_ia_visual_masivo",
-                )
-                enviar_lote_correo = cia2.checkbox(
-                    "Enviar automáticamente al correo institucional",
-                    value=True,
-                    key="enviar_lote_correo",
-                )
-
-                cf1, cf2 = st.columns(2)
-                profesor_masivo = cf1.text_input(
-                    "Nombre del profesor responsable *",
-                    value=st.session_state.get("profesor_name") or "",
-                    key="profesor_masivo",
-                )
-                cargo_profesor_masivo = cf1.text_input(
-                    "Cargo del profesor",
-                    value="Profesor responsable",
-                    key="cargo_profesor_masivo",
-                )
-                director_masivo = cf2.text_input(
-                    "Nombre del director *",
-                    value="Director(a)",
-                    key="director_masivo",
-                )
-                incluir_png_lote = cf2.checkbox(
-                    "Adjuntar también PNG por correo y en ZIP",
-                    value=False,
-                    key="incluir_png_lote",
-                )
-
-                st.markdown("#### Archivos gráficos opcionales del lote")
-                cg1, cg2, cg3 = st.columns(3)
-                firma_profesor_masiva = cg1.file_uploader(
-                    "Firma del profesor",
-                    type=["png", "jpg", "jpeg"],
-                    key="firma_profesor_masiva",
-                )
-                firma_director_masiva = cg2.file_uploader(
-                    "Firma del director con sello",
-                    type=["png", "jpg", "jpeg"],
-                    key="firma_director_masiva",
-                )
-                logo_masivo = cg3.file_uploader(
-                    "Logo alternativo",
-                    type=["png", "jpg", "jpeg"],
-                    key="logo_masivo",
-                )
-
-                confirmar_lote = st.checkbox(
-                    "Confirmo que revisé los destinatarios y autorizo la generación masiva.",
-                    value=False,
-                    key="confirmar_lote",
-                )
-
-                procesar_lote = st.form_submit_button(
-                    "🚀 Generar diplomas masivos",
-                    type="primary",
-                    use_container_width=True,
-                )
-
-                if procesar_lote:
-                    seleccionados = df_editor[df_editor["seleccionar"] == True].copy()
-
-                    if seleccionados.empty:
-                        st.warning("Debes seleccionar al menos una persona.")
-                    elif not confirmar_lote:
-                        st.warning("Confirma la generación masiva antes de continuar.")
-                    elif not profesor_masivo.strip() or not director_masivo.strip():
-                        st.warning("Completa profesor responsable y director.")
-                    else:
-                        firma_director_disponible = (
-                            firma_director_masiva is not None or RUTA_FIRMA_DIRECTOR.exists()
-                        )
-                        if not firma_director_disponible:
-                            st.warning(
-                                "Falta la firma del director con sello. "
-                                "Carga la imagen o agrega `firma_director.png` al repositorio."
-                            )
-                        else:
-                            logo_bytes = logo_masivo.getvalue() if logo_masivo else None
-                            firma_profesor_bytes = (
-                                firma_profesor_masiva.getvalue() if firma_profesor_masiva else None
-                            )
-                            firma_director_bytes = (
-                                firma_director_masiva.getvalue() if firma_director_masiva else None
-                            )
-
-                            registros = []
-                            barra = st.progress(0, text="Iniciando generación masiva...")
-                            total = len(seleccionados)
-
-                            for idx, fila in enumerate(seleccionados.itertuples(index=False), start=1):
-                                correo = str(fila.correo).strip().lower()
-                                nombre = str(fila.nombre).strip()
-                                curso_item = str(fila.curso).strip() or "Sin curso"
-                                area_item = str(fila.area).strip() or str(area_masiva).strip()
-
-                                nombre_base = (
-                                    "Diploma_"
-                                    + archivo_seguro_diploma(nombre)
-                                    + "_"
-                                    + archivo_seguro_diploma(area_item)
-                                )
-
-                                estado = "Generado"
-                                mensaje = "OK"
-                                pdf_bytes = None
-                                png_bytes = None
-
-                                try:
-                                    datos_masivos = {
-                                        "estudiante": nombre,
-                                        "curso": curso_item,
-                                        "area": area_item,
-                                        "titulo": titulo_masivo.strip(),
-                                        "motivo": motivo_masivo.strip(),
-                                        "fecha": fecha_masiva,
-                                        "estilo": estilo_masivo,
-                                        "profesor": profesor_masivo.strip(),
-                                        "cargo_profesor": cargo_profesor_masivo.strip() or "Profesor responsable",
-                                        "director": director_masivo.strip(),
-                                        "tema_visual_manual": tema_masivo,
-                                        "usar_ia_visual": usar_ia_visual_masivo,
-                                    }
-
-                                    pdf_bytes = crear_diploma_pdf(
-                                        datos_masivos,
-                                        logo_bytes=logo_bytes,
-                                        firma_director_bytes=firma_director_bytes,
-                                        firma_profesor_bytes=firma_profesor_bytes,
-                                    )
-                                    png_bytes = crear_preview_desde_pdf(pdf_bytes)
-
-                                    if enviar_lote_correo:
-                                        valido, msg_val = validar_correo_institucional(correo)
-                                        if not valido:
-                                            raise ValueError(msg_val)
-
-                                        enviar_diploma_workspace(
-                                            destinatario=correo,
-                                            datos=datos_masivos,
-                                            pdf_bytes=pdf_bytes,
-                                            png_bytes=png_bytes,
-                                            nombre_base=nombre_base,
-                                            incluir_png=incluir_png_lote,
-                                        )
-                                        estado = "Enviado"
-                                        mensaje = "Generado y enviado"
-
-                                except Exception as e:
-                                    estado = "Error"
-                                    mensaje = str(e)
-
-                                registros.append({
-                                    "nombre": nombre,
-                                    "correo": correo,
-                                    "estado": estado,
-                                    "mensaje": mensaje,
-                                    "pdf": pdf_bytes,
-                                    "png": png_bytes,
-                                    "nombre_base": nombre_base,
-                                })
-
-                                barra.progress(
-                                    idx / total,
-                                    text=f"Procesando {idx}/{total}: {nombre}"
-                                )
-
-                            zip_bytes = generar_zip_diplomas_masivos(
-                                registros,
-                                incluir_png=incluir_png_lote,
-                            )
-                            st.session_state.workspace_zip_masivo = zip_bytes
-                            st.session_state.workspace_resultados_masivo = pd.DataFrame([
-                                {
-                                    "Nombre": r["nombre"],
-                                    "Correo": r["correo"],
-                                    "Estado": r["estado"],
-                                    "Mensaje": r["mensaje"],
-                                }
-                                for r in registros
-                            ])
-
-                            enviados = sum(1 for r in registros if r["estado"] == "Enviado")
-                            generados = sum(1 for r in registros if r["estado"] in ["Generado", "Enviado"])
-                            errores = sum(1 for r in registros if r["estado"] == "Error")
-
-                            registrar_auditoria(
-                                "procesó diplomas masivos",
-                                "Diplomas",
-                                detalle={
-                                    "total": total,
-                                    "generados": generados,
-                                    "enviados": enviados,
-                                    "errores": errores,
-                                    "area": str(area_masiva),
-                                },
-                            )
-
-                            if errores == 0:
-                                st.success(
-                                    f"✅ Lote completado. Generados: {generados}. "
-                                    f"Enviados: {enviados}."
-                                )
-                                st.balloons()
-                            else:
-                                st.warning(
-                                    f"Proceso finalizado con incidencias. "
-                                    f"Generados: {generados}, enviados: {enviados}, errores: {errores}."
-                                )
-
-        resultados_lote = st.session_state.get("workspace_resultados_masivo")
-        zip_lote = st.session_state.get("workspace_zip_masivo")
-
-        if isinstance(resultados_lote, pd.DataFrame) and not resultados_lote.empty:
-            st.markdown("### 4) Resultados del lote")
-            st.dataframe(resultados_lote, use_container_width=True, hide_index=True)
-
-            cr1, cr2 = st.columns(2)
-            with cr1:
-                st.download_button(
-                    "⬇️ Descargar ZIP del lote",
-                    data=zip_lote,
-                    file_name="diplomas_masivos_workspace.zip",
-                    mime="application/zip",
-                    type="primary",
-                    use_container_width=True,
-                )
-            with cr2:
-                st.download_button(
-                    "⬇️ Descargar reporte CSV",
-                    data=resultados_lote.to_csv(index=False).encode("utf-8-sig"),
-                    file_name="reporte_diplomas_masivos.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                )
-
-
-
 # ------------------------------------------------------------------
 # CONFIGURACIÓN SUPABASE (NUEVO MOTOR DE BASE DE DATOS)
 # ------------------------------------------------------------------
@@ -666,6 +248,355 @@ def registrar_auditoria(accion, modulo, registro_id=None, detalle=None):
         }).execute()
     except Exception as e:
         registrar_error("auditoria", e)
+
+
+# ==============================================================================
+# DIPLOMAS DIGITALES V15: REGISTRO, STORAGE Y VISTA PÚBLICA
+# ==============================================================================
+DIPLOMAS_BUCKET = "diplomas-digitales"
+EQUIVALENCIA_HOJAS_NORMALES = 2.7
+TONER_MIN_GRAMOS_POR_DIPLOMA = 0.15
+TONER_MAX_GRAMOS_POR_DIPLOMA = 0.25
+
+def obtener_config_diplomas():
+    try:
+        return dict(st.secrets["diplomas"])
+    except Exception:
+        return {}
+
+def crear_codigo_diploma(area):
+    area_limpia = (
+        str(area or "GENE")
+        .upper()
+        .replace("Á", "A")
+        .replace("É", "E")
+        .replace("Í", "I")
+        .replace("Ó", "O")
+        .replace("Ú", "U")
+        .replace("Ñ", "N")
+    )
+    abreviatura = re.sub(r"[^A-Z]", "", area_limpia)[:4] or "GENE"
+    return f"CAV-{dt.date.today().year}-{abreviatura}-{uuid.uuid4().hex[:8].upper()}"
+
+def crear_token_publico_diploma():
+    return uuid.uuid4().hex + uuid.uuid4().hex
+
+def construir_url_publica_diploma(token):
+    config = obtener_config_diplomas()
+    base_url = str(config.get("public_app_url", "")).strip().rstrip("/")
+    if not base_url:
+        return ""
+    return f"{base_url}/?diploma={urllib.parse.quote(str(token))}"
+
+def extraer_signed_url(respuesta):
+    if isinstance(respuesta, str):
+        return respuesta
+    if isinstance(respuesta, dict):
+        return (
+            respuesta.get("signedURL")
+            or respuesta.get("signedUrl")
+            or respuesta.get("signed_url")
+            or respuesta.get("url")
+            or ""
+        )
+    data = getattr(respuesta, "data", None)
+    if isinstance(data, dict):
+        return (
+            data.get("signedURL")
+            or data.get("signedUrl")
+            or data.get("signed_url")
+            or data.get("url")
+            or ""
+        )
+    return ""
+
+def subir_archivo_diploma_storage(ruta, contenido, mime_type):
+    archivo = BytesIO(contenido)
+    return (
+        supabase.storage
+        .from_(DIPLOMAS_BUCKET)
+        .upload(
+            path=ruta,
+            file=archivo,
+            file_options={
+                "content-type": mime_type,
+                "cache-control": "3600",
+                "upsert": "true",
+            },
+        )
+    )
+
+def crear_url_firmada_diploma(ruta, expiracion=3600, descargar=False):
+    if not ruta:
+        return ""
+    opciones = {"download": True} if descargar else None
+    bucket = supabase.storage.from_(DIPLOMAS_BUCKET)
+    if opciones:
+        respuesta = bucket.create_signed_url(ruta, expiracion, opciones)
+    else:
+        respuesta = bucket.create_signed_url(ruta, expiracion)
+    return extraer_signed_url(respuesta)
+
+def registrar_evento_diploma(diploma_id, evento, detalle=None):
+    try:
+        supabase.table("diploma_eventos").insert({
+            "diploma_id": diploma_id,
+            "evento": evento,
+            "usuario": (
+                st.session_state.get("profesor_name")
+                or st.session_state.get("role")
+                or "sistema"
+            ),
+            "detalle": detalle or {},
+            "fecha": dt_datetime.now().isoformat(),
+        }).execute()
+    except Exception as error:
+        registrar_error("registrar_evento_diploma", error)
+
+def crear_registro_diploma(datos, correo, origen="individual"):
+    codigo = crear_codigo_diploma(datos.get("area"))
+    token = crear_token_publico_diploma()
+    url_publica = construir_url_publica_diploma(token)
+
+    payload = {
+        "codigo": codigo,
+        "public_token": token,
+        "nombre": str(datos.get("estudiante", "")).strip(),
+        "correo": str(correo or "").strip().lower() or None,
+        "curso": str(datos.get("curso", "")).strip(),
+        "area": str(datos.get("area", "")).strip(),
+        "titulo": str(datos.get("titulo", "")).strip(),
+        "motivo": str(datos.get("motivo", "")).strip(),
+        "profesor": str(datos.get("profesor", "")).strip(),
+        "director": str(datos.get("director", "")).strip(),
+        "fecha_diploma": str(datos.get("fecha")),
+        "estado": "GENERADO",
+        "origen": origen,
+        "url_publica": url_publica or None,
+        "creado_por": (
+            st.session_state.get("profesor_name")
+            or st.session_state.get("role")
+            or "sistema"
+        ),
+        "creado_en": dt_datetime.now().isoformat(),
+        "actualizado_en": dt_datetime.now().isoformat(),
+    }
+
+    respuesta = supabase.table("diplomas_digitales").insert(payload).execute()
+    registro = (respuesta.data or [None])[0]
+    if not registro:
+        raise RuntimeError("Supabase no devolvió el registro del diploma.")
+
+    registrar_evento_diploma(
+        registro["id"],
+        "GENERADO",
+        {"codigo": codigo, "origen": origen},
+    )
+    return registro
+
+def actualizar_archivos_diploma(diploma_id, pdf_path, preview_path):
+    supabase.table("diplomas_digitales").update({
+        "pdf_path": pdf_path,
+        "preview_path": preview_path,
+        "actualizado_en": dt_datetime.now().isoformat(),
+    }).eq("id", diploma_id).execute()
+    registrar_evento_diploma(
+        diploma_id,
+        "ARCHIVOS_GUARDADOS",
+        {"pdf_path": pdf_path, "preview_path": preview_path},
+    )
+
+def marcar_diploma_enviado(diploma_id, correo):
+    supabase.table("diplomas_digitales").update({
+        "estado": "ENVIADO",
+        "correo": str(correo).strip().lower(),
+        "enviado_en": dt_datetime.now().isoformat(),
+        "actualizado_en": dt_datetime.now().isoformat(),
+        "error_envio": None,
+    }).eq("id", diploma_id).execute()
+    registrar_evento_diploma(
+        diploma_id,
+        "ENVIADO",
+        {"correo": correo_enmascarado_global(correo)},
+    )
+
+def marcar_error_diploma(diploma_id, error):
+    try:
+        supabase.table("diplomas_digitales").update({
+            "estado": "ERROR",
+            "error_envio": str(error)[:1500],
+            "actualizado_en": dt_datetime.now().isoformat(),
+        }).eq("id", diploma_id).execute()
+        registrar_evento_diploma(
+            diploma_id,
+            "ERROR",
+            {"mensaje": str(error)[:500]},
+        )
+    except Exception as error_actualizacion:
+        registrar_error("marcar_error_diploma", error_actualizacion)
+
+def correo_enmascarado_global(correo):
+    correo = str(correo or "")
+    if "@" not in correo:
+        return "***"
+    usuario, dominio = correo.split("@", 1)
+    visible = usuario[:2] if len(usuario) >= 2 else usuario[:1]
+    return f"{visible}***@{dominio}"
+
+def cargar_diplomas_registrados(creado_por=None):
+    filtros = []
+    if creado_por:
+        filtros.append(("eq", "creado_por", creado_por))
+    return select_paginado(
+        "diplomas_digitales",
+        "*",
+        filtros=filtros,
+        orden="creado_en",
+        desc=True,
+    )
+
+def renderizar_diploma_publico(token):
+    try:
+        respuesta = (
+            supabase.table("diplomas_digitales")
+            .select("*")
+            .eq("public_token", str(token))
+            .limit(1)
+            .execute()
+        )
+        registros = respuesta.data or []
+    except Exception as error:
+        st.error("No fue posible consultar el diploma digital.")
+        registrar_error("vista_publica_diploma", error)
+        st.stop()
+
+    if not registros:
+        st.error("⚠️ El diploma consultado no existe o el enlace no es válido.")
+        st.stop()
+
+    diploma = registros[0]
+    if diploma.get("estado") == "ANULADO":
+        st.error("⚠️ Este diploma fue anulado por la institución.")
+        st.stop()
+
+    try:
+        preview_url = crear_url_firmada_diploma(
+            diploma.get("preview_path"),
+            expiracion=1800,
+        )
+        pdf_url = crear_url_firmada_diploma(
+            diploma.get("pdf_path"),
+            expiracion=1800,
+            descargar=True,
+        )
+    except Exception as error:
+        preview_url = ""
+        pdf_url = ""
+        registrar_error("firmar_urls_diploma", error)
+
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"], [data-testid="stHeader"] {display:none !important;}
+        .block-container {max-width:1100px; padding-top:1.3rem;}
+        .cav-digital-hero {
+            padding:24px 28px;
+            border-radius:24px;
+            background:linear-gradient(135deg,#73001d,#9a0029);
+            color:white;
+            border-bottom:6px solid #c7a44a;
+            box-shadow:0 18px 45px rgba(78,0,20,.22);
+            margin-bottom:22px;
+        }
+        .cav-digital-hero h1 {margin:0 0 7px;font-size:clamp(29px,5vw,48px);}
+        .cav-digital-hero p {margin:0;opacity:.92;}
+        .cav-eco {
+            margin-top:20px;
+            padding:18px 20px;
+            border-radius:18px;
+            background:#effaf2;
+            border:1px solid #b6dfbf;
+            color:#174f2a;
+        }
+        .cav-code {
+            display:inline-block;
+            margin-top:12px;
+            padding:8px 13px;
+            border-radius:999px;
+            background:#fff6db;
+            color:#680018;
+            font-weight:800;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <div class="cav-digital-hero">
+            <h1>🎓 Diploma Digital CAV</h1>
+            <p>Liceo Bicentenario de Excelencia Colegio Antonio Varas</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    c1, c2, c3 = st.columns([1.35, 1, 1])
+    c1.metric("Persona reconocida", diploma.get("nombre") or "—")
+    c2.metric("Curso / unidad", diploma.get("curso") or "—")
+    c3.metric("Estado", diploma.get("estado") or "—")
+
+    st.markdown(
+        f"""
+        <div style="text-align:center;margin:14px 0 20px;">
+            <h2 style="color:#800020;margin-bottom:5px;">{html_sanitizer.escape(str(diploma.get("titulo") or "Diploma de Reconocimiento"))}</h2>
+            <div style="font-size:1.1rem;color:#555;">{html_sanitizer.escape(str(diploma.get("area") or ""))}</div>
+            <div class="cav-code">Código: {html_sanitizer.escape(str(diploma.get("codigo") or ""))}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if preview_url:
+        st.image(
+            preview_url,
+            caption="Diploma digital oficial",
+            use_container_width=True,
+        )
+    else:
+        st.info("La vista previa no está disponible temporalmente.")
+
+    if pdf_url:
+        st.link_button(
+            "📥 Descargar diploma en PDF",
+            pdf_url,
+            type="primary",
+            use_container_width=True,
+        )
+
+    st.markdown(
+        """
+        <div class="cav-eco">
+            <strong>🌱 Reconocimiento digital con impacto ambiental positivo</strong><br>
+            Este diploma evita una impresión en papel opalina y contribuye a
+            reducir el uso de papel, tóner y residuos de impresión.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    registrar_evento_diploma(
+        diploma.get("id"),
+        "VISTO",
+        {"origen": "enlace_publico"},
+    )
+    st.stop()
+
+# La vista pública debe ejecutarse antes del login.
+_token_publico_diploma = st.query_params.get("diploma")
+if _token_publico_diploma:
+    renderizar_diploma_publico(_token_publico_diploma)
 
 TZ_CHILE = pytz.timezone("America/Santiago")
 
@@ -1838,11 +1769,11 @@ if not st.session_state.logged:
 
         with col_form:
             st.markdown("<h2 style='text-align: center; color: #1E3A8A; margin-bottom: 0px;'>SISTEMA CAV</h2>", unsafe_allow_html=True)
-            st.markdown("<p style='text-align: center; color: gray; font-size: 0.9rem;'>Reserva de Recursos y Espacios</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: gray; font-size: 0.9rem;'>Reservas, recursos y diplomas digitales</p>", unsafe_allow_html=True)
             
             with st.container(border=True):
                 # Quitamos "Profesor" de las opciones. Ahora solo quedan Admin y Mensajería
-                tipo_user = st.radio("Acceder como:", ["Administrador", "Mensajería Interna"], horizontal=True)
+                tipo_user = st.radio("Acceder como:", ["Administrador", "Profesores / Diplomas", "Mensajería Interna"], horizontal=True)
                 st.markdown("---")
 
                 if tipo_user == "Administrador":
@@ -2061,7 +1992,7 @@ with st.sidebar:
         "Semana": {"icon": "🗓️", "roles": ["admin", "profesor"]},
         "Dashboard": {"icon": "📈", "roles": ["admin"]},
         "Técnicos": {"icon": "🔧", "roles": ["admin"]},
-        "Diplomas": {"icon": "🎓", "roles": ["admin"]},
+        "Diplomas": {"icon": "🎓", "roles": ["admin", "profesor"]},
         "Inventario": {"icon": "💻", "roles": ["admin"]},
         "Mantención preventiva": {"icon": "🧰", "roles": ["admin"]},
         "Auditoría": {"icon": "🧾", "roles": ["admin"]},
@@ -3985,14 +3916,107 @@ elif page == "Diplomas":
     from reportlab.lib.colors import HexColor
     from reportlab.lib.utils import ImageReader
     from reportlab.pdfbase.pdfmetrics import stringWidth
-    from google.oauth2 import service_account
-    from googleapiclient.discovery import build
     import fitz
     import unicodedata
     import ssl
-    import json
 
-    st.title("🎓 Diplomas Digitales CAV · V14 Masivo Workspace")
+    st.title("🎓 Diplomas Digitales CAV · V15 · 100% Digital")
+
+    st.caption(
+        "Reconocimientos digitales con registro oficial, enlace personal, "
+        "PDF de respaldo e impacto ambiental acumulado."
+    )
+
+    try:
+        filtro_creador = (
+            None
+            if st.session_state.get("role") == "admin"
+            else st.session_state.get("profesor_name")
+        )
+        registros_diplomas = cargar_diplomas_registrados(filtro_creador)
+    except Exception as error:
+        registros_diplomas = []
+        st.warning(
+            "El registro oficial todavía no está disponible. "
+            "Ejecuta la migración SQL V15 en Supabase."
+        )
+        registrar_error("dashboard_diplomas", error)
+
+    total_diplomas = len(registros_diplomas)
+    enviados_diplomas = sum(
+        1 for d in registros_diplomas if d.get("estado") == "ENVIADO"
+    )
+    pendientes_diplomas = sum(
+        1 for d in registros_diplomas if d.get("estado") == "GENERADO"
+    )
+    errores_diplomas = sum(
+        1 for d in registros_diplomas if d.get("estado") == "ERROR"
+    )
+
+    hojas_opalina = enviados_diplomas
+    hojas_normales = enviados_diplomas * EQUIVALENCIA_HOJAS_NORMALES
+    toner_min = enviados_diplomas * TONER_MIN_GRAMOS_POR_DIPLOMA
+    toner_max = enviados_diplomas * TONER_MAX_GRAMOS_POR_DIPLOMA
+
+    if st.session_state.get("role") == "admin":
+        st.markdown("## 📊 Resumen institucional")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Diplomas registrados", total_diplomas)
+        m2.metric("Enviados", enviados_diplomas)
+        m3.metric("Pendientes", pendientes_diplomas)
+        m4.metric("Errores", errores_diplomas)
+
+        e1, e2, e3 = st.columns(3)
+        e1.metric("Hojas opalina evitadas", f"{hojas_opalina:,.0f}")
+        e2.metric("Hojas normales equivalentes", f"{hojas_normales:,.1f}")
+        e3.metric(
+            "Tóner estimado evitado",
+            f"{toner_min:,.1f}–{toner_max:,.1f} g",
+        )
+
+        with st.expander("📚 Historial y distribución por área", expanded=False):
+            if registros_diplomas:
+                df_historial = pd.DataFrame(registros_diplomas)
+                columnas_historial = [
+                    c for c in [
+                        "codigo", "nombre", "curso", "area", "estado",
+                        "creado_por", "creado_en", "enviado_en"
+                    ] if c in df_historial.columns
+                ]
+                st.dataframe(
+                    df_historial[columnas_historial],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                if "area" in df_historial.columns:
+                    df_area = (
+                        df_historial[df_historial["estado"] == "ENVIADO"]
+                        .groupby("area")
+                        .size()
+                        .reset_index(name="Diplomas")
+                        .sort_values("Diplomas", ascending=False)
+                    )
+                    if not df_area.empty:
+                        fig_area = px.bar(
+                            df_area,
+                            x="area",
+                            y="Diplomas",
+                            title="Diplomas enviados por área",
+                        )
+                        st.plotly_chart(fig_area, use_container_width=True)
+            else:
+                st.info("Todavía no existen diplomas registrados.")
+    else:
+        st.markdown("## 🌱 Mis reconocimientos digitales")
+        p1, p2, p3 = st.columns(3)
+        p1.metric("Generados por mí", total_diplomas)
+        p2.metric("Enviados", enviados_diplomas)
+        p3.metric("Ahorro confirmado", f"{hojas_opalina} hojas")
+
+    st.markdown("---")
+    st.markdown("## ✨ Crear diploma digital")
+
     st.caption(
         "Genera diplomas institucionales legibles, descárgalos en PDF o PNG "
         "y envíalos directamente al correo institucional mediante Google Workspace."
@@ -4100,41 +4124,6 @@ elif page == "Diplomas":
         ),
         "Texto personalizado": "",
     }
-
-
-    TEMAS_GRAFICOS = {
-        "automatico": "Automático",
-        "institucional": "Institucional",
-        "lenguaje": "Lenguaje / lectura",
-        "matematica": "Matemática",
-        "ciencias": "Ciencias",
-        "artes": "Artes",
-        "musica": "Música",
-        "tecnologia": "Tecnología",
-        "educacion_fisica": "Educación Física",
-        "convivencia": "Convivencia",
-        "robotica": "Robótica",
-        "debate": "Debate / comunicación",
-        "medioambiente": "Medioambiente",
-        "teatro": "Teatro / expresión",
-    }
-
-    AREAS_DIPLOMA_AMPLIADAS = [
-        "Reconocimiento institucional",
-        "Lenguaje",
-        "Matemática",
-        "Ciencias",
-        "Artes",
-        "Música",
-        "Tecnología",
-        "Educación Física",
-        "Convivencia Escolar",
-        "Robótica",
-        "Debate",
-        "Medioambiente",
-        "Teatro",
-        "Otra",
-    ]
 
     def color_rgb(hex_color):
         valor = hex_color.lstrip("#")
@@ -4398,7 +4387,7 @@ elif page == "Diplomas":
                     draw.line((x + 12, y, x + 31, y), fill=suave, width=4)
                     draw.line((x + 55, y, x + 74, y), fill=suave, width=4)
 
-    DIPLOMA_RENDER_VERSION = "V14-REPORTLAB-WORKSPACE-2026-07-30"
+    DIPLOMA_RENDER_VERSION = "V15-DIGITAL-SUPABASE-2026-07-31"
 
     def preparar_imagen_para_pdf(origen, quitar_blanco=False):
         """Convierte logo o firma a PNG en memoria, recortado y transparente."""
@@ -4481,143 +4470,21 @@ elif page == "Diplomas":
             mask="auto",
         )
 
-
-    def inferir_tema_visual_local(area, titulo="", motivo=""):
-        texto = limpiar_texto_diploma(" ".join([str(area or ""), str(titulo or ""), str(motivo or "")])).lower()
-
-        reglas = [
-            ("robotica", ["robot", "robótica", "robotica", "programación", "programacion", "coding", "maker"]),
-            ("debate", ["debate", "oratoria", "comunicación", "comunicacion", "discurso", "comunicar"]),
-            ("medioambiente", ["medioambiente", "medio ambiente", "ecología", "ecologia", "ambiental", "sustentable", "reciclaje"]),
-            ("teatro", ["teatro", "drama", "actuación", "actuacion", "expresión", "expresion"]),
-            ("lenguaje", ["lenguaje", "lectura", "escritura", "literatura", "idioma", "comunicación"]),
-            ("matematica", ["matemática", "matematica", "álgebra", "algebra", "geometría", "geometria", "cálculo", "calculo"]),
-            ("ciencias", ["ciencias", "biología", "biologia", "química", "quimica", "física", "fisica", "laboratorio"]),
-            ("artes", ["artes", "arte", "pintura", "dibujo", "visual"]),
-            ("musica", ["música", "musica", "canto", "instrumento", "orquesta", "banda"]),
-            ("tecnologia", ["tecnología", "tecnologia", "computación", "computacion", "informática", "informatica", "digital"]),
-            ("educacion_fisica", ["educación física", "educacion fisica", "deporte", "fútbol", "futbol", "voleibol", "basquet", "actividad física"]),
-            ("convivencia", ["convivencia", "respeto", "liderazgo", "solidaridad", "valores", "buen trato", "comunidad"]),
-        ]
-        for tema, palabras in reglas:
-            if any(p in texto for p in palabras):
-                return tema
-        return "institucional"
-
-    def sugerir_tema_visual_ia(area, titulo, motivo):
-        try:
-            prompt = f"""
-Eres un clasificador visual para diplomas escolares.
-Debes elegir SOLO UNO de estos tokens exactos:
-institucional, lenguaje, matematica, ciencias, artes, musica, tecnologia,
-educacion_fisica, convivencia, robotica, debate, medioambiente, teatro
-
-Área: {area}
-Título: {titulo}
-Texto: {motivo}
-
-Responde únicamente el token exacto, sin explicación.
-"""
-            respuesta = consultar_gemini(prompt)
-            token = limpiar_texto_diploma(respuesta).lower().strip()
-            token = re.sub(r"[^a-z_]", "", token)
-            return token if token in TEMAS_GRAFICOS else None
-        except Exception:
+    def crear_qr_diploma(url):
+        if not url:
             return None
-
-    def resolver_tema_visual(area, titulo, motivo, seleccion_manual="automatico", usar_ia=False):
-        if seleccion_manual and seleccion_manual != "automatico":
-            return seleccion_manual
-        if usar_ia:
-            sugerido = sugerir_tema_visual_ia(area, titulo, motivo)
-            if sugerido:
-                return sugerido
-        return inferir_tema_visual_local(area, titulo, motivo)
-
-    def dibujar_motivo_icono_pdf(pdf, tema, cx, cy, stroke_color, fill_color, s=1.0):
-        pdf.setStrokeColor(stroke_color)
-        pdf.setFillColor(fill_color)
-        pdf.setLineWidth(1.1)
-
-        if tema == "lenguaje":
-            pdf.roundRect(cx - 18*s, cy - 12*s, 36*s, 24*s, 4*s, fill=0, stroke=1)
-            pdf.line(cx, cy - 12*s, cx, cy + 12*s)
-            pdf.line(cx - 12*s, cy + 6*s, cx - 4*s, cy + 6*s)
-            pdf.line(cx + 4*s, cy + 6*s, cx + 12*s, cy + 6*s)
-        elif tema == "matematica":
-            pdf.circle(cx, cy, 15*s, stroke=1, fill=0)
-            pdf.line(cx - 10*s, cy, cx + 10*s, cy)
-            pdf.line(cx, cy - 10*s, cx, cy + 10*s)
-            pdf.line(cx - 8*s, cy - 8*s, cx + 8*s, cy + 8*s)
-        elif tema == "ciencias":
-            pdf.circle(cx, cy, 4*s, stroke=1, fill=1)
-            pdf.ellipse(cx - 19*s, cy - 7*s, cx + 19*s, cy + 7*s, stroke=1, fill=0)
-            pdf.ellipse(cx - 7*s, cy - 19*s, cx + 7*s, cy + 19*s, stroke=1, fill=0)
-            pdf.ellipse(cx - 16*s, cy - 16*s, cx + 16*s, cy + 16*s, stroke=1, fill=0)
-        elif tema == "artes":
-            pdf.circle(cx - 6*s, cy + 2*s, 16*s, stroke=1, fill=0)
-            for dx, dy in [(-11, 12), (0, 16), (11, 12), (12, 1)]:
-                pdf.circle(cx + dx*s, cy + dy*s, 3.2*s, stroke=1, fill=0)
-            pdf.circle(cx + 5*s, cy - 4*s, 4.8*s, stroke=1, fill=0)
-        elif tema == "musica":
-            pdf.line(cx - 2*s, cy - 13*s, cx - 2*s, cy + 10*s)
-            pdf.line(cx - 2*s, cy + 10*s, cx + 13*s, cy + 6*s)
-            pdf.circle(cx - 7*s, cy - 12*s, 4.5*s, stroke=1, fill=0)
-            pdf.circle(cx + 8*s, cy - 16*s, 4.5*s, stroke=1, fill=0)
-        elif tema == "tecnologia":
-            pdf.rect(cx - 12*s, cy - 12*s, 24*s, 24*s, stroke=1, fill=0)
-            for i in range(-2, 3):
-                pdf.line(cx - 18*s, cy + i*6*s, cx - 12*s, cy + i*6*s)
-                pdf.line(cx + 12*s, cy + i*6*s, cx + 18*s, cy + i*6*s)
-                pdf.line(cx + i*6*s, cy - 18*s, cx + i*6*s, cy - 12*s)
-                pdf.line(cx + i*6*s, cy + 12*s, cx + i*6*s, cy + 18*s)
-        elif tema == "educacion_fisica":
-            pdf.circle(cx, cy, 15*s, stroke=1, fill=0)
-            pdf.arc(cx - 15*s, cy - 15*s, cx + 15*s, cy + 15*s, 40, 140)
-            pdf.arc(cx - 15*s, cy - 15*s, cx + 15*s, cy + 15*s, 220, 320)
-            pdf.line(cx - 15*s, cy, cx + 15*s, cy)
-        elif tema == "convivencia":
-            pdf.circle(cx - 7*s, cy + 5*s, 5*s, stroke=1, fill=0)
-            pdf.circle(cx + 7*s, cy + 5*s, 5*s, stroke=1, fill=0)
-            pdf.circle(cx, cy - 8*s, 7*s, stroke=1, fill=0)
-            pdf.line(cx - 7*s, cy, cx, cy - 2*s)
-            pdf.line(cx + 7*s, cy, cx, cy - 2*s)
-        elif tema == "robotica":
-            pdf.roundRect(cx - 14*s, cy - 10*s, 28*s, 20*s, 3*s, fill=0, stroke=1)
-            pdf.circle(cx - 6*s, cy + 2*s, 2.2*s, stroke=1, fill=1)
-            pdf.circle(cx + 6*s, cy + 2*s, 2.2*s, stroke=1, fill=1)
-            pdf.line(cx - 7*s, cy - 4*s, cx + 7*s, cy - 4*s)
-            pdf.line(cx, cy + 10*s, cx, cy + 16*s)
-            pdf.circle(cx, cy + 18*s, 1.8*s, stroke=1, fill=1)
-        elif tema == "debate":
-            pdf.roundRect(cx - 18*s, cy - 4*s, 22*s, 16*s, 3*s, fill=0, stroke=1)
-            pdf.line(cx - 10*s, cy - 4*s, cx - 4*s, cy - 10*s)
-            pdf.roundRect(cx - 2*s, cy - 12*s, 22*s, 16*s, 3*s, fill=0, stroke=1)
-            pdf.line(cx + 10*s, cy - 12*s, cx + 16*s, cy - 18*s)
-        elif tema == "medioambiente":
-            pdf.line(cx, cy - 14*s, cx, cy + 10*s)
-            pdf.bezier(cx, cy + 4*s, cx - 14*s, cy + 8*s, cx - 14*s, cy + 24*s, cx, cy + 20*s)
-            pdf.bezier(cx, cy + 4*s, cx + 14*s, cy + 8*s, cx + 14*s, cy + 24*s, cx, cy + 20*s)
-        elif tema == "teatro":
-            pdf.arc(cx - 18*s, cy - 15*s, cx - 2*s, cy + 15*s, 210, 120)
-            pdf.arc(cx + 2*s, cy - 15*s, cx + 18*s, cy + 15*s, 30, 120)
-            pdf.line(cx - 14*s, cy, cx - 6*s, cy)
-            pdf.line(cx + 6*s, cy + 4*s, cx + 14*s, cy + 4*s)
-        else:
-            # institucional
-            pdf.circle(cx, cy + 2*s, 14*s, stroke=1, fill=0)
-            for dx, dy in [(-10, -6), (-4, 6), (8, -2)]:
-                pdf.circle(cx + dx*s, cy + dy*s, 2.4*s, stroke=1, fill=1)
-
-    def dibujar_elementos_graficos_diploma(pdf, tema, stroke_color, fill_color):
-        posiciones = [
-            (96, 274, 0.95),
-            (696, 274, 0.95),
-            (122, 145, 0.82),
-            (670, 145, 0.82),
-        ]
-        for cx, cy, esc in posiciones:
-            dibujar_motivo_icono_pdf(pdf, tema, cx, cy, stroke_color, fill_color, s=esc)
+        qr = qrcode.QRCode(
+            version=None,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=8,
+            border=2,
+        )
+        qr.add_data(url)
+        qr.make(fit=True)
+        imagen = qr.make_image(fill_color="#800020", back_color="white").convert("RGB")
+        salida = BytesIO()
+        imagen.save(salida, format="PNG", optimize=True)
+        return salida.getvalue()
 
     def crear_diploma_pdf(
         datos,
@@ -4653,13 +4520,8 @@ Responde únicamente el token exacto, sin explicación.
         cargo_profesor = limpiar_texto_diploma(datos["cargo_profesor"])
         director = limpiar_texto_diploma(datos["director"])
         fecha_texto = limpiar_texto_diploma(format_date_es(datos["fecha"]))
-        tema_visual = resolver_tema_visual(
-            area,
-            titulo,
-            motivo,
-            seleccion_manual=str(datos.get("tema_visual_manual", "automatico")),
-            usar_ia=bool(datos.get("usar_ia_visual", False)),
-        )
+        codigo_diploma = limpiar_texto_diploma(datos.get("codigo", ""))
+        url_publica_diploma = str(datos.get("url_publica", "") or "").strip()
 
         # Fondo.
         pdf.setFillColor(fondo)
@@ -4709,9 +4571,6 @@ Responde únicamente el token exacto, sin explicación.
             ancho=80,
             alto=78,
         )
-
-        # Motivos gráficos temáticos.
-        dibujar_elementos_graficos_diploma(pdf, tema_visual, dorado, dorado)
 
         # Encabezado.
         dibujar_texto_centrado_pdf(
@@ -4859,6 +4718,24 @@ Responde únicamente el token exacto, sin explicación.
         pdf.setStrokeColor(dorado)
         pdf.setLineWidth(0.8)
         pdf.line(300, 199, 492, 199)
+
+        # QR y código de acceso digital.
+        qr_bytes = crear_qr_diploma(url_publica_diploma)
+        if qr_bytes:
+            dibujar_imagen_contenida_pdf(
+                pdf,
+                qr_bytes,
+                x=365,
+                y=96,
+                ancho=62,
+                alto=62,
+            )
+            pdf.setFillColor(primario)
+            pdf.setFont("Helvetica-Bold", 6.8)
+            pdf.drawCentredString(396, 89, codigo_diploma)
+            pdf.setFillColor(gris_suave)
+            pdf.setFont("Helvetica", 6.4)
+            pdf.drawCentredString(396, 80, "Escanea para abrir el diploma digital")
 
         # Firmas preparadas.
         firma_prof_preparada = preparar_imagen_para_pdf(
@@ -5010,164 +4887,6 @@ Responde únicamente el token exacto, sin explicación.
         visible = usuario[:2] if len(usuario) >= 2 else usuario[:1]
         return f"{visible}***@{dominio}"
 
-
-    def obtener_workspace_config():
-        try:
-            cfg = st.secrets["workspace"]
-            return cfg
-        except Exception:
-            return None
-
-    @st.cache_resource(show_spinner=False)
-    def construir_servicio_workspace(service_account_json, delegated_admin_email):
-        info = json.loads(service_account_json)
-        scopes = [
-            "https://www.googleapis.com/auth/admin.directory.group.readonly",
-            "https://www.googleapis.com/auth/admin.directory.group.member.readonly",
-            "https://www.googleapis.com/auth/admin.directory.user.readonly",
-        ]
-        creds = service_account.Credentials.from_service_account_info(
-            info,
-            scopes=scopes,
-        )
-        if delegated_admin_email:
-            creds = creds.with_subject(delegated_admin_email)
-        return build("admin", "directory_v1", credentials=creds, cache_discovery=False)
-
-    def obtener_servicio_workspace():
-        cfg = obtener_workspace_config()
-        if not cfg:
-            raise RuntimeError(
-                "Falta la sección [workspace] en secrets.toml. "
-                "Debes configurar una service account con delegación de dominio."
-            )
-        service_account_json = str(cfg.get("service_account_json", "")).strip()
-        delegated_admin_email = str(cfg.get("delegated_admin_email", "")).strip()
-        if not service_account_json:
-            raise RuntimeError("Falta workspace.service_account_json en secrets.toml.")
-        if not delegated_admin_email:
-            raise RuntimeError("Falta workspace.delegated_admin_email en secrets.toml.")
-        return construir_servicio_workspace(service_account_json, delegated_admin_email), cfg
-
-    @st.cache_data(ttl=1800, show_spinner=False)
-    def listar_grupos_workspace():
-        service, cfg = obtener_servicio_workspace()
-        domain = str(cfg.get("domain", DOMINIO_INSTITUCIONAL)).strip()
-        prefijo = str(cfg.get("allowed_group_prefix", "")).strip().lower()
-        grupos = []
-        request = service.groups().list(domain=domain, maxResults=200, orderBy="email")
-        while request is not None:
-            response = request.execute()
-            for item in response.get("groups", []):
-                email = item.get("email", "")
-                nombre = item.get("name", email)
-                if prefijo and not email.lower().startswith(prefijo):
-                    continue
-                grupos.append({
-                    "name": nombre,
-                    "email": email,
-                    "description": item.get("description", ""),
-                })
-            request = service.groups().list_next(request, response)
-
-        grupos = sorted(grupos, key=lambda g: g["email"].lower())
-        return grupos
-
-    @st.cache_data(ttl=1800, show_spinner=False)
-    def obtener_usuario_workspace(email_usuario):
-        service, _ = obtener_servicio_workspace()
-        try:
-            data = service.users().get(
-                userKey=email_usuario,
-                projection="basic",
-                viewType="domain_public",
-            ).execute()
-            full_name = (
-                data.get("name", {}).get("fullName")
-                or data.get("name", {}).get("givenName")
-                or email_usuario.split("@")[0].replace(".", " ").title()
-            )
-            org = ""
-            orgs = data.get("organizations", []) or []
-            if orgs:
-                org = orgs[0].get("department") or orgs[0].get("title") or ""
-            return {
-                "name": full_name,
-                "email": data.get("primaryEmail", email_usuario),
-                "org": org,
-            }
-        except Exception:
-            return {
-                "name": email_usuario.split("@")[0].replace(".", " ").replace("_", " ").title(),
-                "email": email_usuario,
-                "org": "",
-            }
-
-    @st.cache_data(ttl=1800, show_spinner=False)
-    def listar_miembros_grupo_workspace(group_email):
-        service, _ = obtener_servicio_workspace()
-        miembros = []
-        request = service.members().list(groupKey=group_email, maxResults=200)
-        while request is not None:
-            response = request.execute()
-            for item in response.get("members", []):
-                if item.get("type") != "USER":
-                    continue
-                correo = item.get("email")
-                if not correo:
-                    continue
-                detalle = obtener_usuario_workspace(correo)
-                miembros.append({
-                    "grupo": group_email,
-                    "nombre": detalle["name"],
-                    "correo": detalle["email"].lower(),
-                    "curso": detalle["org"] or "",
-                    "area": "",
-                })
-            request = service.members().list_next(request, response)
-        return miembros
-
-    def construir_dataframe_destinatarios(grupos_seleccionados):
-        mapa = {}
-        for g in grupos_seleccionados:
-            for miembro in listar_miembros_grupo_workspace(g):
-                key = miembro["correo"].lower()
-                if key not in mapa:
-                    mapa[key] = {
-                        "seleccionar": True,
-                        "nombre": miembro["nombre"],
-                        "correo": miembro["correo"],
-                        "curso": miembro["curso"],
-                        "area": "",
-                        "grupo": g,
-                    }
-                else:
-                    grupos_prev = mapa[key]["grupo"]
-                    if g not in grupos_prev:
-                        mapa[key]["grupo"] = grupos_prev + " | " + g
-        datos = list(mapa.values())
-        return pd.DataFrame(datos)
-
-    def generar_zip_diplomas_masivos(registros, incluir_png=False):
-        buffer_zip = BytesIO()
-        with zipfile.ZipFile(buffer_zip, "w", zipfile.ZIP_DEFLATED) as zf:
-            for item in registros:
-                base_name = item["nombre_base"]
-                zf.writestr(f"{base_name}.pdf", item["pdf"])
-                if incluir_png and item.get("png"):
-                    zf.writestr(f"{base_name}.png", item["png"])
-            resumen = pd.DataFrame([
-                {
-                    "nombre": r["nombre"],
-                    "correo": r["correo"],
-                    "estado": r["estado"],
-                    "mensaje": r["mensaje"],
-                }
-                for r in registros
-            ])
-            zf.writestr("resumen_envio.csv", resumen.to_csv(index=False).encode("utf-8-sig"))
-        return buffer_zip.getvalue()
-
     def enviar_diploma_workspace(
         destinatario,
         datos,
@@ -5183,24 +4902,18 @@ Responde únicamente el token exacto, sin explicación.
                 "No existe la sección [email_credentials] en Streamlit Secrets."
             ) from exc
 
-        smtp_server = str(
-            creds.get("smtp_server", "smtp.gmail.com")
-        ).strip()
+        smtp_server = str(creds.get("smtp_server", "smtp.gmail.com")).strip()
         smtp_port = int(creds.get("smtp_port", 587))
         smtp_username = str(creds.get("smtp_username", "")).strip()
         smtp_password = str(creds.get("smtp_password", "")).replace(" ", "")
-        sender_email = str(
-            creds.get("sender_email", smtp_username)
-        ).strip()
+        sender_email = str(creds.get("sender_email", smtp_username)).strip()
         sender_name = str(
             creds.get(
                 "sender_name",
                 "Liceo Bicentenario de Excelencia Colegio Antonio Varas",
             )
         ).strip()
-        reply_to = str(
-            creds.get("reply_to", sender_email)
-        ).strip()
+        reply_to = str(creds.get("reply_to", sender_email)).strip()
         usar_tls = bool(creds.get("use_tls", smtp_port != 465))
         usar_ssl = bool(creds.get("use_ssl", smtp_port == 465))
 
@@ -5210,8 +4923,6 @@ Responde únicamente el token exacto, sin explicación.
             raise RuntimeError(
                 "Falta sender_email o smtp_username en [email_credentials]."
             )
-
-        # Para smtp.gmail.com se requiere autenticación.
         if smtp_server.lower() == "smtp.gmail.com":
             if not smtp_username or not smtp_password:
                 raise RuntimeError(
@@ -5219,87 +4930,96 @@ Responde únicamente el token exacto, sin explicación.
                     "smtp_password con una contraseña de aplicación."
                 )
 
-        asunto = (
-            f"{datos['titulo']} – {datos['estudiante']} | "
-            "Colegio Antonio Varas"
-        )
+        estudiante = html_sanitizer.escape(str(datos["estudiante"]))
+        titulo = html_sanitizer.escape(str(datos["titulo"]))
+        curso = html_sanitizer.escape(str(datos["curso"]))
+        area = html_sanitizer.escape(str(datos["area"]))
+        fecha = html_sanitizer.escape(format_date_es(datos["fecha"]))
+        codigo = html_sanitizer.escape(str(datos.get("codigo", "")))
+        url_publica = str(datos.get("url_publica", "") or "").strip()
+
+        asunto = f"Tu diploma digital CAV · {datos['estudiante']}"
 
         texto_plano = f"""Estimada/o {datos['estudiante']}:
 
-Junto con saludar, el Liceo Bicentenario de Excelencia Colegio Antonio Varas
-hace entrega de su diploma digital: {datos['titulo']}.
+El Liceo Bicentenario de Excelencia Colegio Antonio Varas hace entrega de tu
+diploma digital: {datos['titulo']}.
 
-Curso: {datos['curso']}
+Curso o unidad: {datos['curso']}
 Área: {datos['area']}
 Fecha: {format_date_es(datos['fecha'])}
+Código: {datos.get('codigo', '')}
 
-El diploma se encuentra adjunto en formato PDF. Este documento puede
-descargarse, guardarse o imprimirse cuando sea necesario.
+Abre tu diploma desde este enlace:
+{url_publica}
 
-El uso de diplomas digitales contribuye a reducir el consumo de papel,
-tóner y residuos asociados a la impresión.
+También se adjunta una copia en PDF como respaldo.
+
+Este reconocimiento digital contribuye a reducir el consumo de papel, tóner
+y residuos de impresión.
 
 Atentamente,
-Liceo Bicentenario de Excelencia
 Colegio Antonio Varas
 """
 
-        html = f"""
-        <div style="font-family:Arial,sans-serif;color:#1f2937;line-height:1.6">
-            <div style="
-                max-width:680px;
-                margin:auto;
-                border:1px solid #e5e7eb;
-                border-radius:16px;
-                overflow:hidden;
-                background:#ffffff;">
-                <div style="
-                    background:#800020;
-                    color:white;
-                    padding:22px 28px;">
-                    <div style="font-size:22px;font-weight:700">
-                        Colegio Antonio Varas
-                    </div>
-                    <div style="opacity:.9">
-                        Liceo Bicentenario de Excelencia
-                    </div>
-                </div>
-
-                <div style="padding:28px">
-                    <p>Estimada/o <strong>{html_sanitizer.escape(datos['estudiante'])}</strong>:</p>
-
-                    <p>
-                        Junto con saludar, hacemos entrega de su
-                        <strong>{html_sanitizer.escape(datos['titulo'])}</strong>.
-                    </p>
-
-                    <div style="
-                        background:#fff8e8;
-                        border-left:5px solid #c7a44a;
-                        padding:14px 18px;
-                        margin:20px 0;">
-                        <div><strong>Curso:</strong> {html_sanitizer.escape(datos['curso'])}</div>
-                        <div><strong>Área:</strong> {html_sanitizer.escape(datos['area'])}</div>
-                        <div><strong>Fecha:</strong> {html_sanitizer.escape(format_date_es(datos['fecha']))}</div>
-                    </div>
-
-                    <p>
-                        El diploma está adjunto en formato PDF y puede descargarse,
-                        guardarse o imprimirse cuando sea necesario.
-                    </p>
-
-                    <p style="color:#4b5563">
-                        La entrega digital contribuye a reducir el consumo de papel,
-                        tóner y residuos de impresión.
-                    </p>
-
-                    <p style="margin-top:28px">
-                        Atentamente,<br>
-                        <strong>Liceo Bicentenario de Excelencia<br>
-                        Colegio Antonio Varas</strong>
-                    </p>
-                </div>
+        boton = ""
+        if url_publica:
+            boton = f"""
+            <div style="text-align:center;margin:26px 0 22px;">
+                <a href="{html_sanitizer.escape(url_publica)}"
+                   style="display:inline-block;background:#800020;color:white;
+                          padding:15px 25px;border-radius:12px;text-decoration:none;
+                          font-weight:800;font-size:17px;">
+                    🎓 Abrir mi diploma digital
+                </a>
             </div>
+            """
+
+        html = f"""
+        <div style="font-family:Arial,Helvetica,sans-serif;color:#20242b;line-height:1.6">
+          <div style="max-width:680px;margin:auto;border:1px solid #e8dfc9;
+                      border-radius:20px;overflow:hidden;background:#ffffff;">
+            <div style="background:linear-gradient(135deg,#72001d,#970027);
+                        color:white;padding:25px 30px;border-bottom:6px solid #c7a44a;">
+              <div style="font-size:24px;font-weight:800;">Diploma Digital CAV</div>
+              <div style="opacity:.92;">Liceo Bicentenario de Excelencia Colegio Antonio Varas</div>
+            </div>
+
+            <div style="padding:30px;">
+              <p>Estimada/o <strong>{estudiante}</strong>:</p>
+              <p>
+                La comunidad educativa hace entrega de tu
+                <strong>{titulo}</strong>.
+              </p>
+
+              <div style="background:#fff9ea;border:1px solid #ead8a7;
+                          border-radius:14px;padding:16px 18px;margin:20px 0;">
+                <strong>Curso o unidad:</strong> {curso}<br>
+                <strong>Área:</strong> {area}<br>
+                <strong>Fecha:</strong> {fecha}<br>
+                <strong>Código oficial:</strong> {codigo}
+              </div>
+
+              {boton}
+
+              <p style="font-size:14px;color:#5e6470;">
+                Se adjunta una copia PDF como respaldo. No necesitas abrir
+                archivos HTML ni instalar aplicaciones.
+              </p>
+
+              <div style="margin-top:22px;padding:16px 18px;border-radius:14px;
+                          background:#eff9f1;border:1px solid #b9dec0;color:#174c29;">
+                <strong>🌱 Acción ambiental institucional</strong><br>
+                Este diploma digital evita una impresión en papel opalina y
+                ayuda a reducir papel, tóner y residuos de impresión.
+              </div>
+
+              <p style="margin-top:26px;">
+                Atentamente,<br>
+                <strong>Colegio Antonio Varas</strong>
+              </p>
+            </div>
+          </div>
         </div>
         """
 
@@ -5313,20 +5033,13 @@ Colegio Antonio Varas
         mensaje.set_content(texto_plano)
         mensaje.add_alternative(html, subtype="html")
 
+        # Solo PDF como respaldo; no se adjunta HTML.
         mensaje.add_attachment(
             pdf_bytes,
             maintype="application",
             subtype="pdf",
             filename=f"{nombre_base}.pdf",
         )
-
-        if incluir_png:
-            mensaje.add_attachment(
-                png_bytes,
-                maintype="image",
-                subtype="png",
-                filename=f"{nombre_base}.png",
-            )
 
         contexto_ssl = ssl.create_default_context()
 
@@ -5341,11 +5054,7 @@ Colegio Antonio Varas
                     servidor.login(smtp_username, smtp_password)
                 servidor.send_message(mensaje)
         else:
-            with smtplib.SMTP(
-                smtp_server,
-                smtp_port,
-                timeout=45,
-            ) as servidor:
+            with smtplib.SMTP(smtp_server, smtp_port, timeout=45) as servidor:
                 servidor.ehlo()
                 if usar_tls:
                     servidor.starttls(context=contexto_ssl)
@@ -5368,18 +5077,15 @@ Colegio Antonio Varas
         st.session_state.diploma_datos = None
         st.session_state.diploma_nombre_archivo = "Diploma_CAV"
         st.session_state.diploma_ultimo_envio = None
+        st.session_state.diploma_registro_id = None
+        st.session_state.diploma_codigo = ""
+        st.session_state.diploma_url_publica = ""
         st.session_state.diploma_render_version = DIPLOMA_RENDER_VERSION
 
     if "diploma_png" not in st.session_state:
         st.session_state.diploma_png = None
     if "diploma_pdf" not in st.session_state:
         st.session_state.diploma_pdf = None
-    if "workspace_destinatarios_df" not in st.session_state:
-        st.session_state.workspace_destinatarios_df = None
-    if "workspace_zip_masivo" not in st.session_state:
-        st.session_state.workspace_zip_masivo = None
-    if "workspace_resultados_masivo" not in st.session_state:
-        st.session_state.workspace_resultados_masivo = None
     if "diploma_nombre_archivo" not in st.session_state:
         st.session_state.diploma_nombre_archivo = "Diploma_CAV"
     if "diploma_datos" not in st.session_state:
@@ -5388,6 +5094,12 @@ Colegio Antonio Varas
         st.session_state.diploma_correo = ""
     if "diploma_ultimo_envio" not in st.session_state:
         st.session_state.diploma_ultimo_envio = None
+    if "diploma_registro_id" not in st.session_state:
+        st.session_state.diploma_registro_id = None
+    if "diploma_codigo" not in st.session_state:
+        st.session_state.diploma_codigo = ""
+    if "diploma_url_publica" not in st.session_state:
+        st.session_state.diploma_url_publica = ""
 
     col_formulario, col_info = st.columns([1.4, 0.8], gap="large")
 
@@ -5428,7 +5140,7 @@ Colegio Antonio Varas
         )
 
         st.success(
-            "✅ Motor activo: V14 ReportLab + Google Workspace. "
+            "✅ Motor activo: V15 Digital · ReportLab + Supabase. "
             "Si no ves este mensaje, Streamlit todavía está ejecutando otro archivo."
         )
 
@@ -5489,7 +5201,18 @@ Colegio Antonio Varas
 
             area = c2.selectbox(
                 "Área o asignatura *",
-                AREAS_DIPLOMA_AMPLIADAS,
+                [
+                    "Reconocimiento institucional",
+                    "Lenguaje",
+                    "Matemática",
+                    "Ciencias",
+                    "Artes",
+                    "Música",
+                    "Tecnología",
+                    "Educación Física",
+                    "Convivencia Escolar",
+                    "Otra",
+                ],
             )
 
             if area == "Otra":
@@ -5534,21 +5257,6 @@ Colegio Antonio Varas
             estilo_diploma = c4.selectbox(
                 "Diseño visual",
                 list(ESTILOS_DIPLOMA.keys()),
-            )
-
-            st.markdown("### 🎨 Elementos gráficos")
-            ctema1, ctema2 = st.columns(2)
-            tema_visual_manual = ctema1.selectbox(
-                "Tema gráfico",
-                list(TEMAS_GRAFICOS.keys()),
-                format_func=lambda x: TEMAS_GRAFICOS.get(x, x.title()),
-                index=0,
-                help="Automático toma el área y el texto para decorar el diploma.",
-            )
-            usar_ia_visual = ctema2.checkbox(
-                "Usar IA para sugerir tema gráfico",
-                value=False,
-                help="Si está activo, Gemini intentará escoger el tema visual más adecuado.",
             )
 
             st.markdown("### ✍️ Firmas")
@@ -5665,8 +5373,6 @@ Colegio Antonio Varas
                         "profesor": profesor.strip(),
                         "cargo_profesor": cargo_profesor.strip() or "Profesor responsable",
                         "director": director.strip(),
-                        "tema_visual_manual": tema_visual_manual,
-                        "usar_ia_visual": usar_ia_visual,
                     }
 
                     logo_bytes = (
@@ -5685,10 +5391,23 @@ Colegio Antonio Varas
                         else None
                     )
 
+                    registro_diploma = None
                     try:
                         with st.spinner(
-                            "Diseñando el diploma en alta resolución..."
+                            "Creando registro oficial y diploma digital..."
                         ):
+                            registro_diploma = crear_registro_diploma(
+                                datos_diploma,
+                                correo_destinatario,
+                                origen="individual",
+                            )
+
+                            datos_diploma["codigo"] = registro_diploma["codigo"]
+                            datos_diploma["public_token"] = registro_diploma["public_token"]
+                            datos_diploma["url_publica"] = (
+                                registro_diploma.get("url_publica") or ""
+                            )
+
                             pdf_bytes = crear_diploma_pdf(
                                 datos_diploma,
                                 logo_bytes=logo_bytes,
@@ -5696,6 +5415,29 @@ Colegio Antonio Varas
                                 firma_profesor_bytes=firma_profesor_bytes,
                             )
                             png_bytes = crear_preview_desde_pdf(pdf_bytes)
+
+                            carpeta = (
+                                f"{dt.date.today().year}/"
+                                f"{registro_diploma['codigo']}"
+                            )
+                            pdf_path = f"{carpeta}/diploma.pdf"
+                            preview_path = f"{carpeta}/preview.png"
+
+                            subir_archivo_diploma_storage(
+                                pdf_path,
+                                pdf_bytes,
+                                "application/pdf",
+                            )
+                            subir_archivo_diploma_storage(
+                                preview_path,
+                                png_bytes,
+                                "image/png",
+                            )
+                            actualizar_archivos_diploma(
+                                registro_diploma["id"],
+                                pdf_path,
+                                preview_path,
+                            )
 
                         nombre_base = (
                             "Diploma_"
@@ -5712,12 +5454,18 @@ Colegio Antonio Varas
                             correo_destinatario.strip().lower()
                         )
                         st.session_state.diploma_ultimo_envio = None
+                        st.session_state.diploma_registro_id = registro_diploma["id"]
+                        st.session_state.diploma_codigo = registro_diploma["codigo"]
+                        st.session_state.diploma_url_publica = (
+                            registro_diploma.get("url_publica") or ""
+                        )
 
                         registrar_auditoria(
-                            "generó diploma",
+                            "generó diploma digital",
                             "Diplomas",
+                            registro_id=registro_diploma["id"],
                             detalle={
-                                "estudiante": estudiante.strip(),
+                                "codigo": registro_diploma["codigo"],
                                 "curso": curso_final.strip(),
                                 "area": str(area).strip(),
                                 "estilo": estilo_diploma,
@@ -5725,16 +5473,21 @@ Colegio Antonio Varas
                         )
 
                         st.success(
-                            "✅ Diploma generado correctamente. "
-                            "Revisa la vista previa, descárgalo o envíalo "
-                            "al correo institucional."
+                            "✅ Diploma digital registrado y generado correctamente."
                         )
+                        if not datos_diploma.get("url_publica"):
+                            st.warning(
+                                "El PDF se generó, pero falta configurar "
+                                "`diplomas.public_app_url` para crear el enlace digital."
+                            )
                         st.balloons()
 
                     except Exception as e:
+                        if registro_diploma:
+                            marcar_error_diploma(registro_diploma["id"], e)
                         registrar_error("generar_diploma", e)
                         st.error(
-                            "No fue posible generar el diploma. "
+                            "No fue posible generar el diploma digital. "
                             f"Detalle técnico: {e}"
                         )
 
@@ -5750,6 +5503,17 @@ Colegio Antonio Varas
             ),
             use_container_width=True,
         )
+
+        if st.session_state.get("diploma_url_publica"):
+            st.link_button(
+                "🌐 Abrir versión digital",
+                st.session_state.diploma_url_publica,
+                type="primary",
+                use_container_width=True,
+            )
+            st.caption(
+                f"Código oficial: {st.session_state.get('diploma_codigo', '')}"
+            )
 
         col_pdf, col_png, col_limpiar = st.columns([1, 1, 0.75])
 
@@ -5788,13 +5552,16 @@ Colegio Antonio Varas
                 st.session_state.diploma_correo = ""
                 st.session_state.diploma_ultimo_envio = None
                 st.session_state.diploma_nombre_archivo = "Diploma_CAV"
+                st.session_state.diploma_registro_id = None
+                st.session_state.diploma_codigo = ""
+                st.session_state.diploma_url_publica = ""
                 st.rerun()
 
         st.markdown("---")
         st.markdown("## 📧 Enviar por Google Workspace")
         st.caption(
-            "El sistema adjuntará el diploma PDF a un correo institucional. "
-            "El envío se realiza solamente al presionar el botón de confirmación."
+            "El destinatario recibirá un botón directo para abrir el diploma digital "
+            "y un PDF de respaldo. No se adjuntan archivos HTML."
         )
 
         datos_generados = st.session_state.get("diploma_datos") or {}
@@ -5807,13 +5574,9 @@ Colegio Antonio Varas
                 max_chars=180,
             )
 
-            incluir_png_correo = st.checkbox(
-                "Adjuntar también la imagen PNG",
-                value=False,
-                help=(
-                    "El PDF es suficiente para la mayoría de los destinatarios. "
-                    "La imagen PNG aumenta el tamaño del correo."
-                ),
+            st.info(
+                "El correo incluirá un botón para abrir el diploma digital y "
+                "una copia PDF de respaldo. No se adjuntan archivos HTML."
             )
 
             confirmar_envio = st.checkbox(
@@ -5870,13 +5633,19 @@ Colegio Antonio Varas
                                     nombre_base=(
                                         st.session_state.diploma_nombre_archivo
                                     ),
-                                    incluir_png=incluir_png_correo,
+                                    incluir_png=False,
                                 )
 
                             st.session_state.diploma_correo = (
                                 correo_envio.strip().lower()
                             )
                             st.session_state.diploma_ultimo_envio = token_envio
+
+                            if st.session_state.get("diploma_registro_id"):
+                                marcar_diploma_enviado(
+                                    st.session_state.diploma_registro_id,
+                                    correo_envio,
+                                )
 
                             registrar_auditoria(
                                 "envió diploma por correo",
@@ -5886,7 +5655,8 @@ Colegio Antonio Varas
                                         correo_envio
                                     ),
                                     "area": datos_generados.get("area"),
-                                    "adjunto_png": incluir_png_correo,
+                                    "formato": "enlace_digital_mas_pdf",
+                                    "codigo": st.session_state.get("diploma_codigo"),
                                 },
                             )
 
@@ -5909,6 +5679,11 @@ Colegio Antonio Varas
                                 "Comprueba que la cuenta institucional exista."
                             )
                         except Exception as e:
+                            if st.session_state.get("diploma_registro_id"):
+                                marcar_error_diploma(
+                                    st.session_state.diploma_registro_id,
+                                    e,
+                                )
                             registrar_error("enviar_diploma_workspace", e)
                             st.error(
                                 "No fue posible enviar el diploma. "
