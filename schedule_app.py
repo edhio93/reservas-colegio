@@ -311,15 +311,40 @@ def extraer_signed_url(respuesta):
     return ""
 
 def subir_archivo_diploma_storage(ruta, contenido, mime_type):
-    archivo = BytesIO(contenido)
+    """
+    Sube PDF o PNG a Supabase Storage usando bytes reales.
+
+    Algunas versiones de storage-py no reconocen io.BytesIO como archivo
+    válido y lo intentan abrir como si fuera una ruta, provocando:
+    "expected str, bytes or os.PathLike object, not BytesIO".
+    """
+    if isinstance(contenido, BytesIO):
+        contenido = contenido.getvalue()
+    elif hasattr(contenido, "read"):
+        contenido = contenido.read()
+
+    if isinstance(contenido, bytearray):
+        contenido = bytes(contenido)
+
+    if not isinstance(contenido, bytes):
+        raise TypeError(
+            "El contenido que se intenta subir debe ser bytes. "
+            f"Tipo recibido: {type(contenido).__name__}"
+        )
+
+    if not contenido:
+        raise ValueError(
+            f"El archivo '{ruta}' está vacío y no puede subirse a Storage."
+        )
+
     return (
         supabase.storage
         .from_(DIPLOMAS_BUCKET)
         .upload(
-            path=ruta,
-            file=archivo,
+            path=str(ruta),
+            file=contenido,
             file_options={
-                "content-type": mime_type,
+                "content-type": str(mime_type),
                 "cache-control": "3600",
                 "upsert": "true",
             },
@@ -3920,7 +3945,7 @@ elif page == "Diplomas":
     import unicodedata
     import ssl
 
-    st.title("🎓 Diplomas Digitales CAV · V15 · 100% Digital")
+    st.title("🎓 Diplomas Digitales CAV · V15.1 · 100% Digital")
 
     st.caption(
         "Reconocimientos digitales con registro oficial, enlace personal, "
@@ -4387,7 +4412,7 @@ elif page == "Diplomas":
                     draw.line((x + 12, y, x + 31, y), fill=suave, width=4)
                     draw.line((x + 55, y, x + 74, y), fill=suave, width=4)
 
-    DIPLOMA_RENDER_VERSION = "V15-DIGITAL-SUPABASE-2026-07-31"
+    DIPLOMA_RENDER_VERSION = "V15.1-STORAGE-BYTES-2026-07-31"
 
     def preparar_imagen_para_pdf(origen, quitar_blanco=False):
         """Convierte logo o firma a PNG en memoria, recortado y transparente."""
@@ -5140,7 +5165,7 @@ Colegio Antonio Varas
         )
 
         st.success(
-            "✅ Motor activo: V15 Digital · ReportLab + Supabase. "
+            "✅ Motor activo: V15.1 Digital · Storage corregido. "
             "Si no ves este mensaje, Streamlit todavía está ejecutando otro archivo."
         )
 
