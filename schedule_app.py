@@ -722,6 +722,12 @@ def formatear_fecha_diploma_publica(valor):
         return str(valor or "")
 
 def renderizar_diploma_publico(token):
+    """
+    Vista digital oficial V16.3.
+
+    Se usa st.html() en lugar de st.markdown() para impedir que Markdown
+    interprete las etiquetas HTML internas como un bloque de código.
+    """
     try:
         respuesta = (
             supabase.table("diplomas_digitales")
@@ -747,12 +753,14 @@ def renderizar_diploma_publico(token):
 
     tema = obtener_tema_visual_diploma(diploma.get("area"))
 
-    # Color institucional fijo para títulos y encabezados.
-    burdeo_institucional = "#8A1538"
-    dorado_institucional = "#C9A34A"
-    fondo = tema["fondo"]
-    panel = tema["panel"]
-    acento_tema = tema["acento"]
+    # Colores institucionales fijos.
+    BURDEO_CAV = "#800020"
+    BURDEO_OSCURO_CAV = "#590016"
+    DORADO_CAV = "#C7A44A"
+
+    fondo_tema = tema.get("fondo", "#FFFDF8")
+    panel_tema = tema.get("panel", "#FBF5E8")
+    acento_tema = tema.get("acento", BURDEO_CAV)
 
     try:
         pdf_url = crear_url_firmada_diploma(
@@ -765,279 +773,431 @@ def renderizar_diploma_publico(token):
         registrar_error("firmar_urls_diploma", error)
 
     nombre = html_sanitizer.escape(str(diploma.get("nombre") or ""))
-    titulo = html_sanitizer.escape(str(diploma.get("titulo") or "Diploma Digital"))
+    titulo = html_sanitizer.escape(
+        str(diploma.get("titulo") or "Diploma Digital")
+    )
     curso = html_sanitizer.escape(str(diploma.get("curso") or ""))
     area = html_sanitizer.escape(str(diploma.get("area") or ""))
     motivo = html_sanitizer.escape(str(diploma.get("motivo") or ""))
     profesor = html_sanitizer.escape(str(diploma.get("profesor") or ""))
-    director = html_sanitizer.escape(str(diploma.get("director") or "Director"))
+    director = html_sanitizer.escape(
+        str(diploma.get("director") or "Director")
+    )
     fecha = html_sanitizer.escape(
         formatear_fecha_diploma_publica(
             diploma.get("fecha_diploma") or dt.date.today()
         )
     )
     codigo = html_sanitizer.escape(str(diploma.get("codigo") or ""))
-    area_label = html_sanitizer.escape(str(tema.get("nombre") or area))
+    area_label = html_sanitizer.escape(
+        str(tema.get("nombre") or diploma.get("area") or "Institucional")
+    )
+
+    # Logo institucional embebido en la vista pública.
+    logo_html = ""
+    try:
+        ruta_logo = Path(__file__).resolve().parent / "logocav.png"
+        if ruta_logo.exists():
+            logo_b64 = base64.b64encode(ruta_logo.read_bytes()).decode("ascii")
+            logo_html = (
+                '<img class="cav-logo" '
+                f'src="data:image/png;base64,{logo_b64}" '
+                'alt="Logo Colegio Antonio Varas">'
+            )
+    except Exception as error:
+        registrar_error("logo_vista_publica_diploma", error)
 
     chips_html = "".join(
         f'<span class="cav-chip">{html_sanitizer.escape(str(icono))}</span>'
         for icono in (tema.get("deco") or [])[:3]
     )
 
-    css = textwrap.dedent(f"""
-    <style>
-    [data-testid="stSidebar"], [data-testid="stHeader"] {{ display:none !important; }}
-    .block-container {{ max-width:1200px; padding-top:1.1rem; padding-bottom:2rem; }}
-    .stApp {{
-        background:
-            radial-gradient(circle at top left, {panel} 0%, transparent 24%),
-            radial-gradient(circle at bottom right, rgba(201,163,74,.14) 0%, transparent 22%),
-            linear-gradient(180deg, #fcfcfd 0%, #f7f7fa 100%);
+    documento = f"""
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root {{
+    --burdeo: {BURDEO_CAV};
+    --burdeo-oscuro: {BURDEO_OSCURO_CAV};
+    --dorado: {DORADO_CAV};
+    --fondo-tema: {fondo_tema};
+    --panel-tema: {panel_tema};
+    --acento-tema: {acento_tema};
+}}
+
+* {{ box-sizing: border-box; }}
+
+html, body {{
+    margin: 0;
+    padding: 0;
+    color: #232833;
+    background:
+        radial-gradient(circle at 8% 4%, var(--panel-tema), transparent 25%),
+        radial-gradient(circle at 96% 95%, rgba(199,164,74,.15), transparent 24%),
+        linear-gradient(180deg, #fbfbfd, #f5f5f8);
+    font-family: Inter, "Segoe UI", Arial, sans-serif;
+}}
+
+.cav-page {{
+    width: min(1120px, calc(100% - 28px));
+    margin: 18px auto 28px;
+}}
+
+.cav-topbar {{
+    color: white;
+    background: var(--burdeo);
+    border-radius: 23px;
+    padding: 24px 29px;
+    border-bottom: 5px solid var(--dorado);
+    box-shadow: 0 18px 40px rgba(60,0,16,.18);
+    animation: cavFade .6s ease both;
+}}
+
+.cav-topbar h1 {{
+    margin: 0;
+    font-size: clamp(28px, 4.6vw, 43px);
+    letter-spacing: -.025em;
+}}
+
+.cav-topbar p {{
+    margin: 8px 0 0;
+    opacity: .93;
+    font-size: 1rem;
+}}
+
+.cav-card {{
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    margin-top: 20px;
+    padding: 32px 42px 34px;
+    background: var(--fondo-tema);
+    border-radius: 28px;
+    border: 1px solid rgba(0,0,0,.06);
+    box-shadow: 0 20px 48px rgba(24,26,34,.09);
+    animation: cavRise .8s ease both;
+}}
+
+.cav-card::before {{
+    content: "";
+    position: absolute;
+    inset: 13px;
+    border: 2px solid var(--dorado);
+    border-radius: 22px;
+    z-index: -1;
+}}
+
+.cav-card::after {{
+    content: "";
+    position: absolute;
+    inset: 27px;
+    border: 1px solid rgba(128,0,32,.15);
+    border-radius: 17px;
+    z-index: -1;
+}}
+
+.cav-version {{
+    position: absolute;
+    top: 24px;
+    right: 31px;
+    color: #7c6c45;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+}}
+
+.cav-badge {{
+    display: inline-flex;
+    align-items: center;
+    min-height: 38px;
+    padding: 8px 14px;
+    color: var(--burdeo);
+    background: var(--panel-tema);
+    border: 1px solid rgba(128,0,32,.09);
+    border-radius: 999px;
+    font-size: .9rem;
+    font-weight: 800;
+}}
+
+.cav-logo {{
+    display: block;
+    width: min(138px, 24vw);
+    max-height: 138px;
+    object-fit: contain;
+    margin: 8px auto 8px;
+    filter: drop-shadow(0 8px 12px rgba(0,0,0,.08));
+}}
+
+.cav-brand {{
+    text-align: center;
+    color: var(--burdeo);
+}}
+
+.cav-brand-kicker {{
+    font-size: clamp(17px, 2.4vw, 25px);
+    font-weight: 750;
+}}
+
+.cav-brand-name {{
+    margin-top: 2px;
+    font-size: clamp(23px, 3.2vw, 35px);
+    font-weight: 900;
+}}
+
+.cav-gold-line {{
+    width: min(690px, 72%);
+    height: 2px;
+    margin: 14px auto 25px;
+    background: var(--dorado);
+}}
+
+.cav-title {{
+    max-width: 920px;
+    margin: 0 auto;
+    color: var(--burdeo);
+    text-align: center;
+    font-size: clamp(34px, 5.2vw, 58px);
+    font-weight: 900;
+    line-height: 1.04;
+    letter-spacing: -.035em;
+    text-wrap: balance;
+}}
+
+.cav-intro {{
+    margin-top: 17px;
+    color: #6f7580;
+    text-align: center;
+    font-size: 1.08rem;
+    font-style: italic;
+}}
+
+.cav-name {{
+    max-width: 900px;
+    margin: 15px auto 0;
+    color: var(--burdeo);
+    text-align: center;
+    font-size: clamp(38px, 6.3vw, 68px);
+    font-weight: 950;
+    line-height: 1.03;
+    letter-spacing: -.035em;
+    text-wrap: balance;
+}}
+
+.cav-name-line {{
+    width: min(820px, 82%);
+    height: 2px;
+    margin: 13px auto 14px;
+    background: var(--dorado);
+}}
+
+.cav-meta {{
+    color: var(--burdeo);
+    text-align: center;
+    font-size: 1.08rem;
+    font-weight: 800;
+}}
+
+.cav-motivo {{
+    max-width: 850px;
+    margin: 22px auto 0;
+    padding: 19px 24px;
+    color: #3e4653;
+    background: rgba(255,255,255,.9);
+    border: 1px solid rgba(0,0,0,.075);
+    border-radius: 18px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.9);
+    text-align: center;
+    font-size: clamp(17px, 2vw, 21px);
+    line-height: 1.55;
+}}
+
+.cav-fecha {{
+    margin-top: 17px;
+    color: #606773;
+    text-align: center;
+    font-size: 1rem;
+}}
+
+.cav-icons {{
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin: 20px 0 2px;
+}}
+
+.cav-chip {{
+    display: grid;
+    place-items: center;
+    width: 55px;
+    height: 55px;
+    background: white;
+    border: 1px solid rgba(0,0,0,.075);
+    border-radius: 17px;
+    box-shadow: 0 9px 20px rgba(0,0,0,.065);
+    font-size: 1.45rem;
+    animation: cavFloat 3.4s ease-in-out infinite;
+}}
+
+.cav-chip:nth-child(2) {{ animation-delay: .35s; }}
+.cav-chip:nth-child(3) {{ animation-delay: .7s; }}
+
+.cav-footer {{
+    display: grid;
+    grid-template-columns: 1fr minmax(170px, auto) 1fr;
+    align-items: end;
+    gap: 24px;
+    margin-top: 26px;
+}}
+
+.cav-sign {{
+    padding-top: 16px;
+    text-align: center;
+}}
+
+.cav-sign-line {{
+    border-top: 2px solid #69717e;
+    margin-bottom: 8px;
+}}
+
+.cav-sign strong {{
+    color: var(--burdeo);
+    font-size: 1rem;
+}}
+
+.cav-sign small {{
+    display: block;
+    margin-top: 4px;
+    color: #737985;
+}}
+
+.cav-codebox {{
+    min-width: 175px;
+    padding: 13px 14px;
+    background: white;
+    border: 1px solid rgba(0,0,0,.075);
+    border-radius: 17px;
+    text-align: center;
+}}
+
+.cav-code-title {{
+    color: var(--burdeo);
+    font-weight: 850;
+}}
+
+.cav-code {{
+    display: inline-block;
+    margin-top: 8px;
+    padding: 7px 11px;
+    color: var(--burdeo);
+    background: var(--panel-tema);
+    border-radius: 999px;
+    font-size: .85rem;
+    font-weight: 850;
+}}
+
+.cav-code-help {{
+    margin-top: 7px;
+    color: #747b86;
+    font-size: .8rem;
+}}
+
+.cav-eco {{
+    margin-top: 20px;
+    padding: 17px 19px;
+    color: #174d29;
+    background: #eff9f1;
+    border: 1px solid #b8dfc1;
+    border-radius: 17px;
+}}
+
+@keyframes cavRise {{
+    from {{ opacity: 0; transform: translateY(14px); }}
+    to {{ opacity: 1; transform: translateY(0); }}
+}}
+
+@keyframes cavFade {{
+    from {{ opacity: 0; }}
+    to {{ opacity: 1; }}
+}}
+
+@keyframes cavFloat {{
+    0%, 100% {{ transform: translateY(0); }}
+    50% {{ transform: translateY(-7px); }}
+}}
+
+@media (max-width: 760px) {{
+    .cav-page {{
+        width: min(100% - 16px, 1120px);
+        margin-top: 8px;
     }}
-    div[data-testid="stMetric"] {{
-        background:#ffffffcc;
-        border:1px solid rgba(0,0,0,.05);
-        border-radius:16px;
-        padding:.75rem 1rem;
-    }}
+
     .cav-topbar {{
-        background: linear-gradient(135deg, {burdeo_institucional}, #6f1030);
-        color: white;
-        padding: 24px 28px;
-        border-radius: 24px;
-        border-bottom: 5px solid {dorado_institucional};
-        box-shadow: 0 16px 35px rgba(0,0,0,.12);
-        margin-bottom: 22px;
-        animation: cavFadeUp .65s ease both;
+        padding: 21px 20px;
+        border-radius: 19px;
     }}
-    .cav-topbar h1 {{ margin:0; font-size:clamp(28px,5vw,44px); }}
-    .cav-topbar p {{ margin:8px 0 0; opacity:.94; font-size:1.03rem; }}
 
-    .cav-diploma-card {{
-        position: relative;
-        overflow: hidden;
-        background: {fondo};
-        border-radius: 28px;
-        padding: 28px 34px 30px;
-        border: 1px solid rgba(0,0,0,.06);
-        box-shadow: 0 18px 40px rgba(25,25,25,.08);
-        animation: cavFadeUp .85s ease both;
+    .cav-card {{
+        padding: 27px 20px 28px;
+        border-radius: 22px;
     }}
-    .cav-diploma-card::before {{
-        content:"";
-        position:absolute;
-        inset:13px;
-        border:1.6px solid {dorado_institucional};
-        border-radius:22px;
-        pointer-events:none;
+
+    .cav-version {{
+        display: none;
     }}
-    .cav-diploma-card::after {{
-        content:"";
-        position:absolute;
-        inset:26px;
-        border:1px solid rgba(138,21,56,.12);
-        border-radius:18px;
-        pointer-events:none;
-    }}
+
     .cav-badge {{
-        display:inline-flex;
-        align-items:center;
-        gap:9px;
-        background:{panel};
-        color:{acento_tema};
-        border:1px solid rgba(0,0,0,.05);
-        border-radius:999px;
-        padding:9px 14px;
-        font-weight:700;
-        margin-bottom:18px;
+        max-width: calc(100% - 20px);
+        font-size: .8rem;
     }}
-    .cav-brand {{
-        text-align:center;
-        color:{burdeo_institucional};
-        margin:4px 0 16px;
-        position:relative;
-        z-index:2;
-    }}
-    .cav-brand .linea {{
-        width:64%;
-        margin:11px auto 0;
-        height:2px;
-        background:{dorado_institucional};
-        opacity:.95;
-    }}
-    .cav-title {{
-        text-align:center;
-        font-size:clamp(34px, 5vw, 56px);
-        line-height:1.04;
-        color:{burdeo_institucional};
-        margin:10px 0 4px;
-        font-weight:800;
-        letter-spacing:-0.02em;
-        position:relative;
-        z-index:2;
-    }}
-    .cav-sub {{
-        text-align:center;
-        color:#6f7178;
-        font-size:1.07rem;
-        margin-bottom: 10px;
-        position:relative;
-        z-index:2;
-    }}
-    .cav-name {{
-        text-align:center;
-        font-size:clamp(34px, 6vw, 60px);
-        line-height:1.04;
-        color:{burdeo_institucional};
-        font-weight:900;
-        margin:16px auto 8px;
-        max-width: 900px;
-        text-wrap: balance;
-        position:relative;
-        z-index:2;
-    }}
-    .cav-divider {{
-        width:min(82%, 800px);
-        height:2px;
-        background:{dorado_institucional};
-        margin:10px auto 14px;
-        position:relative;
-        z-index:2;
-    }}
-    .cav-meta {{
-        text-align:center;
-        color:{burdeo_institucional};
-        font-weight:700;
-        font-size:1.1rem;
-        margin-bottom: 18px;
-        position:relative;
-        z-index:2;
-    }}
-    .cav-motivo {{
-        max-width: 830px;
-        margin: 0 auto 18px;
-        padding: 18px 22px;
-        background: white;
-        border-radius: 18px;
-        border:1px solid rgba(0,0,0,.08);
-        color:#3d4653;
-        text-align:center;
-        font-size:1.18rem;
-        line-height:1.52;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
-        position:relative;
-        z-index:2;
-    }}
-    .cav-fecha {{
-        text-align:center;
-        color:#5f6470;
-        font-size:1rem;
-        margin-bottom: 18px;
-        position:relative;
-        z-index:2;
-    }}
-    .cav-icons {{
-        display:flex;
-        justify-content:center;
-        gap:16px;
-        flex-wrap:wrap;
-        margin-bottom: 22px;
-        position:relative;
-        z-index:2;
-    }}
-    .cav-chip {{
-        display:inline-flex;
-        justify-content:center;
-        align-items:center;
-        width:56px;
-        height:56px;
-        border-radius:18px;
-        font-size:1.5rem;
-        background: white;
-        border:1px solid rgba(0,0,0,.08);
-        box-shadow:0 8px 18px rgba(0,0,0,.06);
-        animation:cavFloat 3.4s ease-in-out infinite;
-    }}
-    .cav-chip:nth-child(2) {{ animation-delay:.35s; }}
-    .cav-chip:nth-child(3) {{ animation-delay:.7s; }}
+
     .cav-footer {{
-        display:grid;
-        grid-template-columns: 1fr auto 1fr;
-        gap:22px;
-        align-items:end;
-        margin-top: 22px;
-        position:relative;
-        z-index:2;
+        grid-template-columns: 1fr;
     }}
-    .cav-sign {{ text-align:center; padding-top: 16px; }}
-    .cav-sign-line {{ border-top:2px solid #6d7581; margin-bottom:8px; }}
-    .cav-sign strong {{ color:{burdeo_institucional}; font-size:1rem; }}
-    .cav-sign small {{ display:block; color:#6f7178; margin-top:4px; }}
-    .cav-qrbox {{
-        text-align:center;
-        padding:12px 14px;
-        border-radius:18px;
-        background:white;
-        border:1px solid rgba(0,0,0,.08);
-        min-width: 176px;
-    }}
-    .cav-code {{
-        display:inline-block;
-        margin-top:8px;
-        padding:7px 12px;
-        border-radius:999px;
-        background:{panel};
-        color:{burdeo_institucional};
-        font-weight:800;
-        font-size:.88rem;
-    }}
-    .cav-eco {{
-        margin-top:22px;
-        padding:18px 20px;
-        border-radius:18px;
-        background:#eff9f1;
-        border:1px solid #b7dec0;
-        color:#184d2a;
-        animation: cavFadeUp 1s ease both;
-    }}
-    @keyframes cavFadeUp {{
-        from {{ opacity:0; transform: translateY(16px); }}
-        to {{ opacity:1; transform: translateY(0); }}
-    }}
-    @keyframes cavFloat {{
-        0%,100% {{ transform: translateY(0); }}
-        50% {{ transform: translateY(-7px); }}
-    }}
-    @media (max-width: 900px) {{
-        .cav-diploma-card {{ padding: 22px 18px 24px; }}
-        .cav-footer {{ grid-template-columns: 1fr; }}
-        .cav-qrbox {{ order:-1; }}
-    }}
-    </style>
-    """)
 
-    html_publico = textwrap.dedent(f"""
-    <div class="cav-topbar">
+    .cav-codebox {{
+        order: -1;
+    }}
+
+    .cav-motivo {{
+        padding: 17px 18px;
+    }}
+}}
+</style>
+</head>
+<body>
+<main class="cav-page">
+    <header class="cav-topbar">
         <h1>🎓 Diploma Digital CAV</h1>
-        <p>Versión 100 % digital, verificable y amigable con el medio ambiente.</p>
-    </div>
+        <p>Reconocimiento oficial 100 % digital y amigable con el medio ambiente.</p>
+    </header>
 
-    <div class="cav-diploma-card">
+    <section class="cav-card">
+        <span class="cav-version">Vista digital V16.3</span>
         <div class="cav-badge">{area_label} · Reconocimiento digital</div>
 
+        {logo_html}
+
         <div class="cav-brand">
-            <div style="font-size:1.8rem;font-weight:800;">Liceo Bicentenario de Excelencia</div>
-            <div style="font-size:2rem;font-weight:900;">Colegio Antonio Varas</div>
-            <div class="linea"></div>
+            <div class="cav-brand-kicker">Liceo Bicentenario de Excelencia</div>
+            <div class="cav-brand-name">Colegio Antonio Varas</div>
         </div>
 
-        <div class="cav-title">{titulo}</div>
-        <div class="cav-sub">Se otorga el presente diploma a</div>
+        <div class="cav-gold-line"></div>
+
+        <h2 class="cav-title">{titulo}</h2>
+        <div class="cav-intro">Se otorga el presente diploma a</div>
         <div class="cav-name">{nombre}</div>
-        <div class="cav-divider"></div>
+        <div class="cav-name-line"></div>
+
         <div class="cav-meta">{curso} · {area}</div>
+
         <div class="cav-motivo">{motivo}</div>
         <div class="cav-fecha">Vicuña, {fecha}</div>
+
         <div class="cav-icons">{chips_html}</div>
 
         <div class="cav-footer">
@@ -1047,12 +1207,10 @@ def renderizar_diploma_publico(token):
                 <small>Profesor responsable</small>
             </div>
 
-            <div class="cav-qrbox">
-                <div style="font-weight:800;color:{burdeo_institucional};margin-bottom:4px;">Código oficial</div>
+            <div class="cav-codebox">
+                <div class="cav-code-title">Código oficial</div>
                 <div class="cav-code">{codigo}</div>
-                <div style="font-size:.82rem;color:#737882;margin-top:8px;">
-                    Diploma digital verificable
-                </div>
+                <div class="cav-code-help">Diploma digital verificable</div>
             </div>
 
             <div class="cav-sign">
@@ -1061,11 +1219,28 @@ def renderizar_diploma_publico(token):
                 <small>Director</small>
             </div>
         </div>
-    </div>
-    """)
+    </section>
 
-    st.markdown(css, unsafe_allow_html=True)
-    st.markdown(html_publico, unsafe_allow_html=True)
+    <div class="cav-eco">
+        <strong>🌱 Acción ambiental institucional</strong><br>
+        Este reconocimiento digital evita el uso de papel opalina y ayuda a
+        reducir papel, tóner y residuos de impresión.
+    </div>
+</main>
+</body>
+</html>
+"""
+
+    # st.html renderiza HTML directamente y no lo procesa como Markdown.
+    if hasattr(st, "html"):
+        st.html(documento)
+    else:
+        # Respaldo para versiones antiguas de Streamlit.
+        components.html(
+            documento,
+            height=1050,
+            scrolling=True,
+        )
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Persona reconocida", diploma.get("nombre") or "—")
@@ -1080,21 +1255,10 @@ def renderizar_diploma_publico(token):
             use_container_width=True,
         )
 
-    st.markdown(
-        textwrap.dedent("""
-        <div class="cav-eco">
-            <strong>🌱 Acción ambiental institucional</strong><br>
-            Este reconocimiento digital evita el uso de papel opalina y ayuda a reducir
-            el consumo de papel, tóner y residuos de impresión.
-        </div>
-        """),
-        unsafe_allow_html=True,
-    )
-
     registrar_evento_diploma(
         diploma.get("id"),
         "VISTO",
-        {"origen": "enlace_publico_animado"},
+        {"origen": "enlace_publico_v16_3"},
     )
     st.stop()
 
@@ -4425,7 +4589,7 @@ elif page == "Diplomas":
     import unicodedata
     import ssl
 
-    st.title("🎓 Diplomas Digitales CAV · V16.2 · Vista digital corregida")
+    st.title("🎓 Diplomas Digitales CAV · V16.3 · Render digital definitivo")
 
     st.caption(
         "Reconocimientos digitales con registro oficial, enlace personal, "
@@ -4898,7 +5062,7 @@ elif page == "Diplomas":
                     draw.line((x + 12, y, x + 31, y), fill=suave, width=4)
                     draw.line((x + 55, y, x + 74, y), fill=suave, width=4)
 
-    DIPLOMA_RENDER_VERSION = "V16.2-PUBLIC-HTML-FIX-2026-08-03"
+    DIPLOMA_RENDER_VERSION = "V16.3-STHTML-INSTITUTIONAL-2026-08-03"
 
     def preparar_imagen_para_pdf(origen, quitar_blanco=False):
         """Convierte logo o firma a PNG en memoria, recortado y transparente."""
@@ -5838,7 +6002,7 @@ Colegio Antonio Varas
         )
 
         st.success(
-            "✅ Motor activo: V16.2 · Vista digital HTML corregida + burdeo institucional. "
+            "✅ Motor activo: V16.3 · Render directo st.html + burdeo CAV #800020. "
             "Si no ves este mensaje, Streamlit todavía está ejecutando otro archivo."
         )
 
