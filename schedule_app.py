@@ -690,6 +690,36 @@ def obtener_tema_visual_diploma(area_texto):
         "deco": ["🎓", "🏛️", "⭐"],
     }
 
+
+def formatear_fecha_diploma_publica(valor):
+    """
+    Formatea fechas de Supabase sin depender de format_date_es(), que se
+    declara más adelante en el archivo principal.
+    """
+    meses = [
+        "enero", "febrero", "marzo", "abril", "mayo", "junio",
+        "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+    ]
+    dias = [
+        "lunes", "martes", "miércoles", "jueves",
+        "viernes", "sábado", "domingo",
+    ]
+
+    try:
+        if isinstance(valor, dt_datetime):
+            fecha = valor.date()
+        elif isinstance(valor, dt.date):
+            fecha = valor
+        else:
+            fecha = pd.to_datetime(valor).date()
+
+        return (
+            f"{dias[fecha.weekday()]}, {fecha.day} de "
+            f"{meses[fecha.month - 1]} de {fecha.year}"
+        )
+    except Exception:
+        return str(valor or "")
+
 def renderizar_diploma_publico(token):
     try:
         respuesta = (
@@ -739,7 +769,7 @@ def renderizar_diploma_publico(token):
     motivo = html_sanitizer.escape(str(diploma.get("motivo") or ""))
     profesor = html_sanitizer.escape(str(diploma.get("profesor") or ""))
     director = html_sanitizer.escape(str(diploma.get("director") or "Director"))
-    fecha = html_sanitizer.escape(format_date_es(diploma.get("fecha_diploma") or dt.date.today()))
+    fecha = html_sanitizer.escape(formatear_fecha_diploma_publica(diploma.get("fecha_diploma") or dt.date.today()))
     codigo = html_sanitizer.escape(str(diploma.get("codigo") or ""))
 
     chips_html = "".join(
@@ -4372,7 +4402,7 @@ elif page == "Diplomas":
     import unicodedata
     import ssl
 
-    st.title("🎓 Diplomas Digitales CAV · V16 · Animado + Aesthetic")
+    st.title("🎓 Diplomas Digitales CAV · V16.1 · Diseño corregido")
 
     st.caption(
         "Reconocimientos digitales con registro oficial, enlace personal, "
@@ -4845,7 +4875,7 @@ elif page == "Diplomas":
                     draw.line((x + 12, y, x + 31, y), fill=suave, width=4)
                     draw.line((x + 55, y, x + 74, y), fill=suave, width=4)
 
-    DIPLOMA_RENDER_VERSION = "V16-ANIMATED-AESTHETIC-2026-08-03"
+    DIPLOMA_RENDER_VERSION = "V16.1-FIXED-DATE-VECTOR-2026-08-03"
 
     def preparar_imagen_para_pdf(origen, quitar_blanco=False):
         """Convierte logo o firma a PNG en memoria, recortado y transparente."""
@@ -4944,6 +4974,222 @@ elif page == "Diplomas":
         imagen.save(salida, format="PNG", optimize=True)
         return salida.getvalue()
 
+
+    def dibujar_estrella_pdf(pdf, cx, cy, radio, color):
+        import math
+        puntos = []
+        for i in range(10):
+            angulo = math.radians(90 + i * 36)
+            r = radio if i % 2 == 0 else radio * 0.42
+            puntos.append(
+                (cx + r * math.cos(angulo), cy + r * math.sin(angulo))
+            )
+        ruta = pdf.beginPath()
+        ruta.moveTo(*puntos[0])
+        for punto in puntos[1:]:
+            ruta.lineTo(*punto)
+        ruta.close()
+        pdf.setFillColor(color)
+        pdf.setStrokeColor(color)
+        pdf.drawPath(ruta, fill=1, stroke=0)
+
+    def dibujar_motivo_area_vectorial(pdf, tema, cx, cy, escala, primario, secundario):
+        """
+        Dibuja iconografía vectorial relacionada con el área.
+        No usa emojis, porque Helvetica no los representa y producía cuadrados.
+        """
+        tema_normalizado = normalizar_texto_basico(tema)
+        pdf.saveState()
+        pdf.setLineCap(1)
+        pdf.setLineJoin(1)
+        pdf.setStrokeColor(primario)
+        pdf.setFillColor(secundario)
+        pdf.setLineWidth(max(0.8, 1.3 * escala))
+
+        if "arte" in tema_normalizado:
+            # Paleta y pincel.
+            pdf.ellipse(
+                cx - 20 * escala, cy - 15 * escala,
+                cx + 19 * escala, cy + 16 * escala,
+                stroke=1, fill=0,
+            )
+            pdf.circle(cx + 10 * escala, cy - 4 * escala, 6 * escala, stroke=1, fill=0)
+            for dx, dy in [(-11, 6), (-2, 11), (8, 8), (-12, -5)]:
+                pdf.circle(cx + dx * escala, cy + dy * escala, 2.6 * escala, stroke=1, fill=1)
+            pdf.setStrokeColor(secundario)
+            pdf.setLineWidth(3 * escala)
+            pdf.line(
+                cx + 18 * escala, cy + 17 * escala,
+                cx + 31 * escala, cy + 31 * escala,
+            )
+            pdf.setFillColor(primario)
+            dibujar_estrella_pdf(pdf, cx - 26 * escala, cy + 24 * escala, 5 * escala, secundario)
+
+        elif "lenguaje" in tema_normalizado or "debate" in tema_normalizado:
+            # Libro abierto y pluma.
+            pdf.roundRect(
+                cx - 25 * escala, cy - 13 * escala,
+                24 * escala, 27 * escala, 3 * escala,
+                fill=0, stroke=1,
+            )
+            pdf.roundRect(
+                cx + 1 * escala, cy - 13 * escala,
+                24 * escala, 27 * escala, 3 * escala,
+                fill=0, stroke=1,
+            )
+            pdf.line(cx, cy - 13 * escala, cx, cy + 14 * escala)
+            for dy in (-6, 1, 8):
+                pdf.line(cx - 20 * escala, cy + dy * escala, cx - 6 * escala, cy + dy * escala)
+                pdf.line(cx + 6 * escala, cy + dy * escala, cx + 20 * escala, cy + dy * escala)
+            pdf.setStrokeColor(secundario)
+            pdf.setLineWidth(2 * escala)
+            pdf.line(cx + 21 * escala, cy + 18 * escala, cx + 31 * escala, cy + 31 * escala)
+
+        elif "matemat" in tema_normalizado:
+            # Geometría y operaciones.
+            pdf.circle(cx - 13 * escala, cy + 4 * escala, 11 * escala, stroke=1, fill=0)
+            ruta = pdf.beginPath()
+            ruta.moveTo(cx + 2 * escala, cy - 12 * escala)
+            ruta.lineTo(cx + 26 * escala, cy - 12 * escala)
+            ruta.lineTo(cx + 14 * escala, cy + 13 * escala)
+            ruta.close()
+            pdf.drawPath(ruta, fill=0, stroke=1)
+            pdf.setStrokeColor(secundario)
+            pdf.line(cx - 25 * escala, cy - 20 * escala, cx + 25 * escala, cy + 20 * escala)
+            pdf.circle(cx + 27 * escala, cy + 22 * escala, 3.2 * escala, stroke=1, fill=1)
+
+        elif "ciencia" in tema_normalizado:
+            # Átomo.
+            pdf.circle(cx, cy, 3.5 * escala, stroke=1, fill=1)
+            pdf.ellipse(
+                cx - 27 * escala, cy - 9 * escala,
+                cx + 27 * escala, cy + 9 * escala,
+                stroke=1, fill=0,
+            )
+            pdf.ellipse(
+                cx - 9 * escala, cy - 27 * escala,
+                cx + 9 * escala, cy + 27 * escala,
+                stroke=1, fill=0,
+            )
+            pdf.saveState()
+            pdf.translate(cx, cy)
+            pdf.rotate(45)
+            pdf.ellipse(
+                -27 * escala, -9 * escala,
+                27 * escala, 9 * escala,
+                stroke=1, fill=0,
+            )
+            pdf.restoreState()
+            pdf.setFillColor(secundario)
+            pdf.circle(cx + 24 * escala, cy, 3 * escala, stroke=0, fill=1)
+
+        elif "musica" in tema_normalizado:
+            # Notas musicales vectoriales.
+            pdf.setLineWidth(2.2 * escala)
+            pdf.line(cx - 8 * escala, cy - 16 * escala, cx - 8 * escala, cy + 17 * escala)
+            pdf.line(cx + 14 * escala, cy - 10 * escala, cx + 14 * escala, cy + 23 * escala)
+            pdf.line(cx - 8 * escala, cy + 17 * escala, cx + 14 * escala, cy + 23 * escala)
+            pdf.setFillColor(secundario)
+            pdf.ellipse(
+                cx - 17 * escala, cy - 20 * escala,
+                cx - 5 * escala, cy - 10 * escala,
+                stroke=0, fill=1,
+            )
+            pdf.ellipse(
+                cx + 5 * escala, cy - 14 * escala,
+                cx + 17 * escala, cy - 4 * escala,
+                stroke=0, fill=1,
+            )
+
+        elif "tecnolog" in tema_normalizado or "robot" in tema_normalizado:
+            # Microchip.
+            pdf.roundRect(
+                cx - 18 * escala, cy - 18 * escala,
+                36 * escala, 36 * escala, 4 * escala,
+                stroke=1, fill=0,
+            )
+            pdf.roundRect(
+                cx - 9 * escala, cy - 9 * escala,
+                18 * escala, 18 * escala, 2 * escala,
+                stroke=1, fill=0,
+            )
+            for offset in (-12, -4, 4, 12):
+                pdf.line(cx - 26 * escala, cy + offset * escala, cx - 18 * escala, cy + offset * escala)
+                pdf.line(cx + 18 * escala, cy + offset * escala, cx + 26 * escala, cy + offset * escala)
+                pdf.line(cx + offset * escala, cy - 26 * escala, cx + offset * escala, cy - 18 * escala)
+                pdf.line(cx + offset * escala, cy + 18 * escala, cx + offset * escala, cy + 26 * escala)
+            pdf.setFillColor(secundario)
+            pdf.circle(cx, cy, 3.5 * escala, stroke=0, fill=1)
+
+        elif "fisica" in tema_normalizado or "deporte" in tema_normalizado:
+            # Medalla y pelota.
+            pdf.circle(cx - 8 * escala, cy + 2 * escala, 15 * escala, stroke=1, fill=0)
+            pdf.line(cx - 16 * escala, cy + 15 * escala, cx - 21 * escala, cy + 28 * escala)
+            pdf.line(cx, cy + 15 * escala, cx + 5 * escala, cy + 28 * escala)
+            dibujar_estrella_pdf(pdf, cx - 8 * escala, cy + 2 * escala, 7 * escala, secundario)
+            pdf.circle(cx + 20 * escala, cy - 11 * escala, 10 * escala, stroke=1, fill=0)
+            pdf.line(cx + 10 * escala, cy - 11 * escala, cx + 30 * escala, cy - 11 * escala)
+
+        elif "teatro" in tema_normalizado:
+            # Máscaras simplificadas.
+            pdf.ellipse(
+                cx - 27 * escala, cy - 14 * escala,
+                cx - 2 * escala, cy + 16 * escala,
+                stroke=1, fill=0,
+            )
+            pdf.ellipse(
+                cx + 2 * escala, cy - 16 * escala,
+                cx + 27 * escala, cy + 14 * escala,
+                stroke=1, fill=0,
+            )
+            pdf.circle(cx - 19 * escala, cy + 4 * escala, 1.8 * escala, stroke=1, fill=1)
+            pdf.circle(cx - 10 * escala, cy + 4 * escala, 1.8 * escala, stroke=1, fill=1)
+            pdf.circle(cx + 10 * escala, cy + 2 * escala, 1.8 * escala, stroke=1, fill=1)
+            pdf.circle(cx + 19 * escala, cy + 2 * escala, 1.8 * escala, stroke=1, fill=1)
+            pdf.arc(
+                cx - 21 * escala, cy - 10 * escala,
+                cx - 8 * escala, cy + 2 * escala,
+                200, 140,
+            )
+            pdf.arc(
+                cx + 8 * escala, cy - 5 * escala,
+                cx + 21 * escala, cy + 7 * escala,
+                20, 140,
+            )
+
+        elif "ambient" in tema_normalizado or "ecolog" in tema_normalizado:
+            # Hojas.
+            pdf.bezier(
+                cx, cy - 25 * escala,
+                cx - 24 * escala, cy - 9 * escala,
+                cx - 20 * escala, cy + 23 * escala,
+                cx, cy + 20 * escala,
+            )
+            pdf.bezier(
+                cx, cy - 25 * escala,
+                cx + 24 * escala, cy - 9 * escala,
+                cx + 20 * escala, cy + 23 * escala,
+                cx, cy + 20 * escala,
+            )
+            pdf.line(cx, cy - 25 * escala, cx, cy + 20 * escala)
+            pdf.setFillColor(secundario)
+            pdf.circle(cx, cy - 26 * escala, 3 * escala, stroke=0, fill=1)
+
+        else:
+            # Institucional: laurel y estrella.
+            dibujar_estrella_pdf(pdf, cx, cy + 4 * escala, 12 * escala, secundario)
+            for lado in (-1, 1):
+                pdf.setStrokeColor(primario)
+                pdf.setLineWidth(1.2 * escala)
+                pdf.arc(
+                    cx - 34 * escala, cy - 25 * escala,
+                    cx + 34 * escala, cy + 25 * escala,
+                    90 if lado < 0 else 270,
+                    90,
+                )
+
+        pdf.restoreState()
+
     def crear_diploma_pdf(
         datos,
         logo_bytes=None,
@@ -4951,8 +5197,11 @@ elif page == "Diplomas":
         firma_profesor_bytes=None,
     ):
         """
-        Genera un diploma más limpio, con mejor jerarquía visual,
-        texto correctamente distribuido y detalles gráficos del área.
+        Diploma PDF V16.1:
+        - sin emojis ni cuadrados;
+        - separación vertical real entre bloques;
+        - decoraciones vectoriales relacionadas con el área;
+        - firmas y QR sin superponerse.
         """
         salida = BytesIO()
         pdf = rl_canvas.Canvas(salida, pagesize=landscape(letter))
@@ -4966,10 +5215,10 @@ elif page == "Diplomas":
         fondo = HexColor(estilo["fondo"])
         suave = HexColor(estilo["suave"])
         acento = HexColor(estilo["acento"])
-        gris = HexColor("#404654")
-        gris_suave = HexColor("#737A84")
+        gris = HexColor("#3E4653")
+        gris_suave = HexColor("#747B86")
         blanco = HexColor("#FFFFFF")
-        panel = HexColor("#FCFAF4")
+        borde_claro = HexColor("#E5D9BC")
 
         titulo = limpiar_texto_diploma(datos["titulo"], mayusculas=True)
         estudiante = limpiar_texto_diploma(datos["estudiante"], mayusculas=True)
@@ -4983,241 +5232,271 @@ elif page == "Diplomas":
         codigo_diploma = limpiar_texto_diploma(datos.get("codigo", ""))
         url_publica_diploma = str(datos.get("url_publica", "") or "").strip()
 
+        # Fondo y marco.
         pdf.setFillColor(fondo)
         pdf.rect(0, 0, page_w, page_h, fill=1, stroke=0)
-
-        # Franja superior e inferior institucional.
         pdf.setFillColor(primario)
-        pdf.rect(0, page_h - 24, page_w, 24, fill=1, stroke=0)
-        pdf.rect(0, 0, page_w, 16, fill=1, stroke=0)
+        pdf.rect(0, page_h - 22, page_w, 22, fill=1, stroke=0)
+        pdf.rect(0, 0, page_w, 14, fill=1, stroke=0)
 
-        # Marcos decorativos.
         pdf.setStrokeColor(secundario)
         pdf.setLineWidth(3)
         pdf.rect(14, 14, page_w - 28, page_h - 28, fill=0, stroke=1)
-
         pdf.setStrokeColor(primario)
-        pdf.setLineWidth(1.15)
+        pdf.setLineWidth(1.1)
         pdf.rect(24, 24, page_w - 48, page_h - 48, fill=0, stroke=1)
-
         pdf.setStrokeColor(secundario)
-        pdf.setLineWidth(0.7)
-        pdf.roundRect(37, 37, page_w - 74, page_h - 74, 10, fill=0, stroke=1)
+        pdf.setLineWidth(0.65)
+        pdf.roundRect(36, 36, page_w - 72, page_h - 72, 10, fill=0, stroke=1)
 
-        # Esquinas.
-        pdf.setStrokeColor(secundario)
-        pdf.setLineWidth(2)
-        tramo = 26
-        for x, y, sx, sy in [
-            (34, page_h - 34, 1, -1),
-            (page_w - 34, page_h - 34, -1, -1),
-            (34, 34, 1, 1),
-            (page_w - 34, 34, -1, 1),
-        ]:
-            pdf.line(x, y, x + sx * tramo, y)
-            pdf.line(x, y, x, y + sy * tramo)
-
-        # Marca de agua suave.
+        # Logo.
         logo_preparado = preparar_imagen_para_pdf(logo_bytes)
         if logo_preparado is None and RUTA_LOGO_DIPLOMA.exists():
             logo_preparado = preparar_imagen_para_pdf(RUTA_LOGO_DIPLOMA)
-
-        if logo_preparado:
-            try:
-                img_logo = Image.open(BytesIO(logo_preparado)).convert("RGBA")
-                alpha = img_logo.getchannel("A").point(lambda p: int(p * 0.10))
-                img_logo.putalpha(alpha)
-                tmp = BytesIO()
-                img_logo.save(tmp, format="PNG", optimize=True)
-                marca_agua = tmp.getvalue()
-                dibujar_imagen_contenida_pdf(pdf, marca_agua, 305, 188, 182, 182)
-            except Exception:
-                pass
-
-            dibujar_imagen_contenida_pdf(pdf, logo_preparado, 357, 505, 78, 75)
+        dibujar_imagen_contenida_pdf(pdf, logo_preparado, 361, 506, 70, 70)
 
         # Encabezado.
         dibujar_texto_centrado_pdf(
-            pdf,
-            "LICEO BICENTENARIO DE EXCELENCIA",
-            488,
-            "Helvetica-Bold",
-            11.4,
-            primario,
+            pdf, "LICEO BICENTENARIO DE EXCELENCIA",
+            490, "Helvetica-Bold", 10.6, primario,
         )
         dibujar_texto_centrado_pdf(
-            pdf,
-            "COLEGIO ANTONIO VARAS",
-            471,
-            "Helvetica-Bold",
-            18.2,
-            primario,
+            pdf, "COLEGIO ANTONIO VARAS",
+            473, "Helvetica-Bold", 17.8, primario,
         )
         pdf.setStrokeColor(secundario)
-        pdf.setLineWidth(1.3)
-        pdf.line(215, 458, 577, 458)
+        pdf.setLineWidth(1.25)
+        pdf.line(220, 459, 572, 459)
 
-        # Insignia de área.
+        # Etiqueta del área, separada del título.
+        etiqueta_area = f"ÁREA · {area.upper()}"
+        tam_area = ajustar_tamano_pdf(
+            etiqueta_area, "Helvetica-Bold", 9.2, 7.6, 235
+        )
         pdf.setFillColor(suave)
-        pdf.setStrokeColor(secundario)
-        pdf.roundRect(284, 437, 224, 20, 10, fill=1, stroke=0)
+        pdf.setStrokeColor(borde_claro)
+        pdf.roundRect(278, 426, 236, 21, 10, fill=1, stroke=1)
         dibujar_texto_centrado_pdf(
-            pdf,
-            f"ÁREA · {area}",
-            443,
-            "Helvetica-Bold",
-            9.1,
-            acento,
+            pdf, etiqueta_area, 433,
+            "Helvetica-Bold", tam_area, acento,
         )
 
-        # Título con posibilidad de 2 líneas.
-        tam_titulo = 28
-        lineas_titulo = envolver_texto_pdf(titulo, "Helvetica-Bold", tam_titulo, 610)
+        # Decoraciones temáticas laterales.
+        dibujar_motivo_area_vectorial(
+            pdf, tema["nombre"], 89, 327, 0.9, primario, secundario
+        )
+        dibujar_motivo_area_vectorial(
+            pdf, tema["nombre"], 703, 327, 0.9, primario, secundario
+        )
+
+        # Título: una o dos líneas, nunca superpuesto con la etiqueta.
+        tam_titulo = 27.5
+        lineas_titulo = envolver_texto_pdf(
+            titulo, "Helvetica-Bold", tam_titulo, 560
+        )
         while len(lineas_titulo) > 2 and tam_titulo > 20:
             tam_titulo -= 1
-            lineas_titulo = envolver_texto_pdf(titulo, "Helvetica-Bold", tam_titulo, 610)
-        inter_titulo = tam_titulo + 4
-        y_titulo = 420 if len(lineas_titulo) == 1 else 428
+            lineas_titulo = envolver_texto_pdf(
+                titulo, "Helvetica-Bold", tam_titulo, 560
+            )
+
+        alto_titulo = tam_titulo + 4
+        y_titulo = 395 if len(lineas_titulo) == 1 else 405
         pdf.setFillColor(primario)
         pdf.setFont("Helvetica-Bold", tam_titulo)
-        for i, linea in enumerate(lineas_titulo[:2]):
-            pdf.drawCentredString(page_w / 2, y_titulo - i * inter_titulo, linea)
+        for indice, linea in enumerate(lineas_titulo[:2]):
+            pdf.drawCentredString(
+                page_w / 2,
+                y_titulo - indice * alto_titulo,
+                linea,
+            )
 
+        y_intro = 364 if len(lineas_titulo) == 1 else 345
         dibujar_texto_centrado_pdf(
             pdf,
             "Se otorga el presente diploma a",
-            389 if len(lineas_titulo) == 1 else 378,
+            y_intro,
             "Helvetica-Oblique",
-            11.3,
+            11.2,
             gris_suave,
         )
 
-        # Nombre del estudiante en una o dos líneas.
-        tam_nombre = 34
-        lineas_nombre = envolver_texto_pdf(estudiante, "Helvetica-Bold", tam_nombre, 620)
+        # Nombre: máximo dos líneas y con espacio suficiente.
+        tam_nombre = 33
+        lineas_nombre = envolver_texto_pdf(
+            estudiante, "Helvetica-Bold", tam_nombre, 570
+        )
         while len(lineas_nombre) > 2 and tam_nombre > 22:
             tam_nombre -= 1
-            lineas_nombre = envolver_texto_pdf(estudiante, "Helvetica-Bold", tam_nombre, 620)
+            lineas_nombre = envolver_texto_pdf(
+                estudiante, "Helvetica-Bold", tam_nombre, 570
+            )
 
-        inter_nombre = tam_nombre + 5
-        y_nombre = 350 if len(lineas_nombre) == 1 else 362
+        y_nombre = y_intro - 39
         pdf.setFillColor(acento)
         pdf.setFont("Helvetica-Bold", tam_nombre)
-        for i, linea in enumerate(lineas_nombre[:2]):
-            pdf.drawCentredString(page_w / 2, y_nombre - i * inter_nombre, linea)
+        inter_nombre = tam_nombre + 4
+        for indice, linea in enumerate(lineas_nombre[:2]):
+            pdf.drawCentredString(
+                page_w / 2,
+                y_nombre - indice * inter_nombre,
+                linea,
+            )
 
-        ancho_linea_nombre = min(
-            max(max(stringWidth(l, "Helvetica-Bold", tam_nombre) for l in lineas_nombre[:2]) + 40, 260),
-            640,
+        y_separador = (
+            y_nombre
+            - (len(lineas_nombre[:2]) - 1) * inter_nombre
+            - 14
+        )
+        ancho_nombre = min(
+            max(
+                max(
+                    stringWidth(linea, "Helvetica-Bold", tam_nombre)
+                    for linea in lineas_nombre[:2]
+                ) + 36,
+                260,
+            ),
+            600,
         )
         pdf.setStrokeColor(secundario)
-        pdf.setLineWidth(1.2)
-        pdf.line((page_w - ancho_linea_nombre) / 2, 318, (page_w + ancho_linea_nombre) / 2, 318)
+        pdf.setLineWidth(1.1)
+        pdf.line(
+            (page_w - ancho_nombre) / 2,
+            y_separador,
+            (page_w + ancho_nombre) / 2,
+            y_separador,
+        )
 
-        # Curso y modalidad, cada dato en su propia línea para evitar amontonamiento.
-        dibujar_texto_centrado_pdf(pdf, curso, 300, "Helvetica-Bold", 13, primario)
-        dibujar_texto_centrado_pdf(pdf, area, 284, "Helvetica", 11.5, gris)
+        # Curso y área separados.
+        y_curso = y_separador - 24
+        tam_curso = ajustar_tamano_pdf(
+            curso, "Helvetica-Bold", 13.5, 10, 420
+        )
+        dibujar_texto_centrado_pdf(
+            pdf, curso, y_curso,
+            "Helvetica-Bold", tam_curso, primario,
+        )
+        dibujar_texto_centrado_pdf(
+            pdf, area, y_curso - 17,
+            "Helvetica", 11.3, gris,
+        )
 
-        # Caja central del motivo.
-        caja_x, caja_y, caja_w, caja_h = 116, 187, 560, 76
-        pdf.setFillColor(blanco)
-        pdf.setStrokeColor(HexColor("#E5DABF"))
-        pdf.setLineWidth(0.85)
-        pdf.roundRect(caja_x, caja_y, caja_w, caja_h, 12, fill=1, stroke=1)
-
-        tam_motivo = 13.7
-        lineas_motivo = envolver_texto_pdf(motivo, "Helvetica", tam_motivo, caja_w - 46)
-        while len(lineas_motivo) > 4 and tam_motivo > 10.5:
+        # Motivo con altura dinámica.
+        caja_x = 124
+        caja_w = 544
+        tam_motivo = 13.2
+        lineas_motivo = envolver_texto_pdf(
+            motivo, "Helvetica", tam_motivo, caja_w - 54
+        )
+        while len(lineas_motivo) > 4 and tam_motivo > 10.2:
             tam_motivo -= 0.5
-            lineas_motivo = envolver_texto_pdf(motivo, "Helvetica", tam_motivo, caja_w - 46)
+            lineas_motivo = envolver_texto_pdf(
+                motivo, "Helvetica", tam_motivo, caja_w - 54
+            )
 
-        inter_motivo = tam_motivo + 3.6
+        inter_motivo = tam_motivo + 4
+        caja_h = max(68, len(lineas_motivo[:4]) * inter_motivo + 28)
+        caja_y = 164
+
+        pdf.setFillColor(blanco)
+        pdf.setStrokeColor(borde_claro)
+        pdf.setLineWidth(0.85)
+        pdf.roundRect(
+            caja_x, caja_y, caja_w, caja_h,
+            12, fill=1, stroke=1,
+        )
+
         bloque_h = len(lineas_motivo[:4]) * inter_motivo
-        y_base = caja_y + (caja_h + bloque_h) / 2 - inter_motivo + 3
-
+        y_linea = caja_y + (caja_h + bloque_h) / 2 - inter_motivo + 2
         pdf.setFillColor(gris)
         pdf.setFont("Helvetica", tam_motivo)
         for linea in lineas_motivo[:4]:
-            pdf.drawCentredString(page_w / 2, y_base, linea)
-            y_base -= inter_motivo
+            pdf.drawCentredString(page_w / 2, y_linea, linea)
+            y_linea -= inter_motivo
 
         # Fecha.
         dibujar_texto_centrado_pdf(
             pdf,
             f"Vicuña, {fecha_texto}",
-            165,
+            148,
             "Helvetica-Oblique",
-            10.5,
+            10.2,
             gris,
         )
 
-        # Motivos gráficos del área.
-        iconos = tema["deco"]
-        posiciones_x = [286, 396, 506]
-        for idx, simbolo in enumerate(iconos[:3]):
-            x = posiciones_x[idx]
-            pdf.setFillColor(blanco)
-            pdf.setStrokeColor(secundario)
-            pdf.setLineWidth(0.8)
-            pdf.roundRect(x - 24, 128, 48, 34, 10, fill=1, stroke=1)
-            pdf.setFillColor(primario)
-            pdf.setFont("Helvetica-Bold", 14)
-            pdf.drawCentredString(x, 139, str(simbolo))
+        # Firmas y QR en tres columnas.
+        firma_prof_preparada = preparar_imagen_para_pdf(
+            firma_profesor_bytes, quitar_blanco=True
+        )
+        firma_dir_preparada = preparar_imagen_para_pdf(
+            firma_director_bytes, quitar_blanco=True
+        )
+        if firma_dir_preparada is None and RUTA_FIRMA_DIRECTOR.exists():
+            firma_dir_preparada = preparar_imagen_para_pdf(
+                RUTA_FIRMA_DIRECTOR, quitar_blanco=True
+            )
 
-        # QR y código.
+        dibujar_imagen_contenida_pdf(
+            pdf, firma_prof_preparada, 86, 68, 205, 57
+        )
+        dibujar_imagen_contenida_pdf(
+            pdf, firma_dir_preparada, 500, 67, 178, 62
+        )
+
         qr_bytes = crear_qr_diploma(url_publica_diploma)
         if qr_bytes:
             pdf.setFillColor(blanco)
-            pdf.setStrokeColor(HexColor("#E6E2D6"))
-            pdf.roundRect(620, 82, 108, 90, 10, fill=1, stroke=1)
-            dibujar_imagen_contenida_pdf(pdf, qr_bytes, 633, 102, 52, 52)
+            pdf.setStrokeColor(borde_claro)
+            pdf.roundRect(343, 54, 106, 84, 10, fill=1, stroke=1)
+            dibujar_imagen_contenida_pdf(
+                pdf, qr_bytes, 368, 75, 56, 56
+            )
             pdf.setFillColor(primario)
-            pdf.setFont("Helvetica-Bold", 6.8)
-            pdf.drawCentredString(674, 95, codigo_diploma)
+            pdf.setFont("Helvetica-Bold", 6.6)
+            pdf.drawCentredString(396, 68, codigo_diploma)
             pdf.setFillColor(gris_suave)
-            pdf.setFont("Helvetica", 6.2)
-            pdf.drawCentredString(674, 86, "Abrir diploma digital")
-
-        # Firmas.
-        firma_prof_preparada = preparar_imagen_para_pdf(firma_profesor_bytes, quitar_blanco=True)
-        firma_dir_preparada = preparar_imagen_para_pdf(firma_director_bytes, quitar_blanco=True)
-        if firma_dir_preparada is None and RUTA_FIRMA_DIRECTOR.exists():
-            firma_dir_preparada = preparar_imagen_para_pdf(RUTA_FIRMA_DIRECTOR, quitar_blanco=True)
-
-        dibujar_imagen_contenida_pdf(pdf, firma_prof_preparada, 105, 72, 205, 58)
-        dibujar_imagen_contenida_pdf(pdf, firma_dir_preparada, 460, 70, 175, 62)
+            pdf.setFont("Helvetica", 6.0)
+            pdf.drawCentredString(
+                396, 59, "Abrir diploma digital"
+            )
 
         pdf.setStrokeColor(gris)
         pdf.setLineWidth(0.9)
-        pdf.line(92, 66, 312, 66)
-        pdf.line(438, 66, 596, 66)
+        pdf.line(86, 61, 291, 61)
+        pdf.line(500, 61, 678, 61)
 
-        tam_prof = ajustar_tamano_pdf(profesor, "Helvetica-Bold", 10.5, 8.2, 212)
+        tam_prof = ajustar_tamano_pdf(
+            profesor, "Helvetica-Bold", 10.2, 8, 200
+        )
         pdf.setFillColor(primario)
         pdf.setFont("Helvetica-Bold", tam_prof)
-        pdf.drawCentredString(202, 52, profesor)
+        pdf.drawCentredString(188.5, 48, profesor)
         pdf.setFillColor(gris_suave)
-        pdf.setFont("Helvetica", 8.2)
-        pdf.drawCentredString(202, 40, cargo_profesor)
+        pdf.setFont("Helvetica", 7.8)
+        pdf.drawCentredString(188.5, 37, cargo_profesor)
 
-        tam_dir = ajustar_tamano_pdf(director, "Helvetica-Bold", 10.5, 8.2, 150)
+        tam_dir = ajustar_tamano_pdf(
+            director, "Helvetica-Bold", 10.2, 8, 170
+        )
         pdf.setFillColor(primario)
         pdf.setFont("Helvetica-Bold", tam_dir)
-        pdf.drawCentredString(517, 52, director)
+        pdf.drawCentredString(589, 48, director)
         pdf.setFillColor(gris_suave)
-        pdf.setFont("Helvetica", 8.2)
-        pdf.drawCentredString(517, 40, "Director")
+        pdf.setFont("Helvetica", 7.8)
+        pdf.drawCentredString(589, 37, "Director")
 
         pdf.setFillColor(blanco)
-        pdf.setFont("Helvetica", 6.3)
-        pdf.drawCentredString(page_w / 2, 5, "Diploma digital emitido por el Sistema Institucional CAV")
+        pdf.setFont("Helvetica", 6.2)
+        pdf.drawCentredString(
+            page_w / 2, 4.5,
+            "Diploma digital emitido por el Sistema Institucional CAV",
+        )
 
         pdf.setTitle(f"Diploma - {estudiante}")
         pdf.setAuthor("Colegio Antonio Varas")
         pdf.setSubject(titulo)
         pdf.showPage()
         pdf.save()
-
         return salida.getvalue()
 
     def crear_preview_desde_pdf(pdf_bytes):
@@ -5536,7 +5815,7 @@ Colegio Antonio Varas
         )
 
         st.success(
-            "✅ Motor activo: V16 Digital · Animado + diseño aesthetic. "
+            "✅ Motor activo: V16.1 · Fecha y diseño vectorial corregidos. "
             "Si no ves este mensaje, Streamlit todavía está ejecutando otro archivo."
         )
 
