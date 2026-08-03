@@ -570,6 +570,126 @@ def cargar_diplomas_registrados(creado_por=None):
         desc=True,
     )
 
+
+def normalizar_texto_basico(valor):
+    texto = str(valor or "").strip().lower()
+    reemplazos = {
+        "á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ñ": "n"
+    }
+    for origen, destino in reemplazos.items():
+        texto = texto.replace(origen, destino)
+    return texto
+
+def obtener_tema_visual_diploma(area_texto):
+    area = normalizar_texto_basico(area_texto)
+
+    temas = [
+        {
+            "claves": ["lenguaje", "literatura", "comunicacion", "lectura", "escritura", "debate"],
+            "nombre": "Lenguaje",
+            "primario": "#7A1734",
+            "secundario": "#D7A642",
+            "fondo": "#FFF8F5",
+            "panel": "#FFF3EA",
+            "acento": "#4F0E22",
+            "deco": ["📖", "✍️", "📝"],
+        },
+        {
+            "claves": ["matematica", "calculo", "estadistica", "geometria"],
+            "nombre": "Matemática",
+            "primario": "#173B73",
+            "secundario": "#D3A62E",
+            "fondo": "#F7FAFF",
+            "panel": "#ECF3FF",
+            "acento": "#0B2851",
+            "deco": ["∑", "π", "△"],
+        },
+        {
+            "claves": ["ciencia", "biologia", "quimica", "fisica", "laboratorio", "cientifica"],
+            "nombre": "Ciencias",
+            "primario": "#126B70",
+            "secundario": "#A8B83D",
+            "fondo": "#F5FFFC",
+            "panel": "#E7F8F0",
+            "acento": "#084C50",
+            "deco": ["🧪", "🔬", "⚛️"],
+        },
+        {
+            "claves": ["arte", "artes", "pintura", "dibujo", "visual"],
+            "nombre": "Artes",
+            "primario": "#A23B72",
+            "secundario": "#E39A37",
+            "fondo": "#FFF7FB",
+            "panel": "#FCEAF4",
+            "acento": "#6F1E4A",
+            "deco": ["🎨", "🖌️", "✨"],
+        },
+        {
+            "claves": ["musica", "coro", "banda", "instrumental"],
+            "nombre": "Música",
+            "primario": "#5D3A8E",
+            "secundario": "#D6A83B",
+            "fondo": "#FBF8FF",
+            "panel": "#EFE7FA",
+            "acento": "#3A1E65",
+            "deco": ["🎵", "🎼", "🎶"],
+        },
+        {
+            "claves": ["tecnologia", "robotica", "computacion", "informatica", "programacion", "arduino", "ia"],
+            "nombre": "Tecnología",
+            "primario": "#1769AA",
+            "secundario": "#31A8A0",
+            "fondo": "#F7FBFF",
+            "panel": "#E8F5FF",
+            "acento": "#0E4778",
+            "deco": ["💻", "🤖", "⚙️"],
+        },
+        {
+            "claves": ["educacion fisica", "deporte", "voleibol", "futbol", "basquetbol", "atletismo"],
+            "nombre": "Educación Física",
+            "primario": "#237A57",
+            "secundario": "#E1A833",
+            "fondo": "#F7FFF8",
+            "panel": "#E9F7EC",
+            "acento": "#14533B",
+            "deco": ["🏅", "⚽", "🏃"],
+        },
+        {
+            "claves": ["teatro", "escenica", "danza"],
+            "nombre": "Teatro",
+            "primario": "#7B3049",
+            "secundario": "#D7A642",
+            "fondo": "#FFF9F7",
+            "panel": "#FBEDE7",
+            "acento": "#562034",
+            "deco": ["🎭", "🎬", "🌟"],
+        },
+        {
+            "claves": ["medioambiente", "ecologia", "ambiental", "verde", "reciclaje"],
+            "nombre": "Medioambiente",
+            "primario": "#2C6B2F",
+            "secundario": "#97B93C",
+            "fondo": "#F8FFF7",
+            "panel": "#EAF7E7",
+            "acento": "#1D4A20",
+            "deco": ["🌿", "♻️", "🌎"],
+        },
+    ]
+
+    for tema in temas:
+        if any(clave in area for clave in tema["claves"]):
+            return tema
+
+    return {
+        "nombre": "Institucional",
+        "primario": "#800020",
+        "secundario": "#C7A44A",
+        "fondo": "#FFFDF8",
+        "panel": "#FBF5E8",
+        "acento": "#5E0017",
+        "deco": ["🎓", "🏛️", "⭐"],
+    }
+
 def renderizar_diploma_publico(token):
     try:
         respuesta = (
@@ -594,54 +714,250 @@ def renderizar_diploma_publico(token):
         st.error("⚠️ Este diploma fue anulado por la institución.")
         st.stop()
 
+    tema = obtener_tema_visual_diploma(diploma.get("area"))
+    primario = tema["primario"]
+    secundario = tema["secundario"]
+    fondo = tema["fondo"]
+    panel = tema["panel"]
+    acento = tema["acento"]
+    iconos = tema["deco"]
+
     try:
-        preview_url = crear_url_firmada_diploma(
-            diploma.get("preview_path"),
-            expiracion=1800,
-        )
         pdf_url = crear_url_firmada_diploma(
             diploma.get("pdf_path"),
             expiracion=1800,
             descargar=True,
         )
     except Exception as error:
-        preview_url = ""
         pdf_url = ""
         registrar_error("firmar_urls_diploma", error)
 
+    nombre = html_sanitizer.escape(str(diploma.get("nombre") or ""))
+    titulo = html_sanitizer.escape(str(diploma.get("titulo") or "Diploma Digital"))
+    curso = html_sanitizer.escape(str(diploma.get("curso") or ""))
+    area = html_sanitizer.escape(str(diploma.get("area") or ""))
+    motivo = html_sanitizer.escape(str(diploma.get("motivo") or ""))
+    profesor = html_sanitizer.escape(str(diploma.get("profesor") or ""))
+    director = html_sanitizer.escape(str(diploma.get("director") or "Director"))
+    fecha = html_sanitizer.escape(format_date_es(diploma.get("fecha_diploma") or dt.date.today()))
+    codigo = html_sanitizer.escape(str(diploma.get("codigo") or ""))
+
+    chips_html = "".join(
+        f'<span class="cav-chip">{html_sanitizer.escape(str(icono))}</span>'
+        for icono in iconos
+    )
+
     st.markdown(
-        """
+        f"""
         <style>
-        [data-testid="stSidebar"], [data-testid="stHeader"] {display:none !important;}
-        .block-container {max-width:1100px; padding-top:1.3rem;}
-        .cav-digital-hero {
-            padding:24px 28px;
-            border-radius:24px;
-            background:linear-gradient(135deg,#73001d,#9a0029);
-            color:white;
-            border-bottom:6px solid #c7a44a;
-            box-shadow:0 18px 45px rgba(78,0,20,.22);
-            margin-bottom:22px;
-        }
-        .cav-digital-hero h1 {margin:0 0 7px;font-size:clamp(29px,5vw,48px);}
-        .cav-digital-hero p {margin:0;opacity:.92;}
-        .cav-eco {
-            margin-top:20px;
+        [data-testid="stSidebar"], [data-testid="stHeader"] {{display:none !important;}}
+        .block-container {{max-width:1200px; padding-top:1.2rem; padding-bottom:2rem;}}
+        .stApp {{background:
+            radial-gradient(circle at top left, {panel} 0%, transparent 28%),
+            radial-gradient(circle at bottom right, rgba(199,164,74,.18) 0%, transparent 22%),
+            linear-gradient(180deg, #fcfcfd 0%, #f7f7fa 100%);
+        }}
+        .cav-topbar {{
+            background: linear-gradient(135deg, {primario}, {acento});
+            color: white;
+            padding: 24px 28px;
+            border-radius: 24px;
+            border-bottom: 6px solid {secundario};
+            box-shadow: 0 16px 35px rgba(0,0,0,.12);
+            margin-bottom: 22px;
+            animation: cavFadeUp .7s ease both;
+        }}
+        .cav-topbar h1 {{margin:0; font-size:clamp(28px,5vw,44px);}}
+        .cav-topbar p {{margin:8px 0 0; opacity:.92; font-size:1.03rem;}}
+        .cav-diploma-card {{
+            position: relative;
+            overflow: hidden;
+            background: {fondo};
+            border-radius: 28px;
+            padding: 28px 36px 30px;
+            border: 1px solid rgba(0,0,0,.06);
+            box-shadow: 0 18px 40px rgba(25,25,25,.08);
+            animation: cavFadeUp .85s ease both;
+        }}
+        .cav-diploma-card::before {{
+            content:"";
+            position:absolute;
+            inset:16px;
+            border:1.8px solid {secundario};
+            border-radius:22px;
+            pointer-events:none;
+        }}
+        .cav-diploma-card::after {{
+            content:"";
+            position:absolute;
+            inset:30px;
+            border:1px solid rgba(122,23,52,.12);
+            border-radius:18px;
+            pointer-events:none;
+        }}
+        .cav-badge {{
+            display:inline-flex;
+            align-items:center;
+            gap:9px;
+            background:{panel};
+            color:{acento};
+            border:1px solid rgba(0,0,0,.06);
+            border-radius:999px;
+            padding:9px 14px;
+            font-weight:700;
+            margin-bottom:18px;
+        }}
+        .cav-brand {{
+            text-align:center;
+            color:{primario};
+            margin:4px 0 16px;
+        }}
+        .cav-brand .linea {{
+            width:64%;
+            margin:11px auto 0;
+            height:2px;
+            background:{secundario};
+            opacity:.9;
+        }}
+        .cav-title {{
+            text-align:center;
+            font-size:clamp(34px, 5vw, 56px);
+            line-height:1.04;
+            color:{primario};
+            margin:8px 0 2px;
+            font-weight:800;
+            letter-spacing:-0.02em;
+        }}
+        .cav-sub {{
+            text-align:center;
+            color:#6f7178;
+            font-size:1.07rem;
+            margin-bottom: 10px;
+        }}
+        .cav-name {{
+            text-align:center;
+            font-size:clamp(36px, 6vw, 62px);
+            line-height:1.05;
+            color:{acento};
+            font-weight:900;
+            margin:16px auto 8px;
+            max-width: 900px;
+            text-wrap: balance;
+        }}
+        .cav-divider {{
+            width:min(82%, 800px);
+            height:2px;
+            background:{secundario};
+            margin:10px auto 14px;
+        }}
+        .cav-meta {{
+            text-align:center;
+            color:{primario};
+            font-weight:700;
+            font-size:1.1rem;
+            margin-bottom: 18px;
+        }}
+        .cav-motivo {{
+            max-width: 830px;
+            margin: 0 auto 18px;
+            padding: 18px 22px;
+            background: white;
+            border-radius: 18px;
+            border:1px solid rgba(0,0,0,.08);
+            color:#3d4653;
+            text-align:center;
+            font-size:1.22rem;
+            line-height:1.55;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+        }}
+        .cav-fecha {{
+            text-align:center;
+            color:#5f6470;
+            font-size:1rem;
+            margin-bottom: 18px;
+        }}
+        .cav-icons {{
+            display:flex;
+            justify-content:center;
+            gap:16px;
+            flex-wrap:wrap;
+            margin-bottom: 22px;
+        }}
+        .cav-chip {{
+            display:inline-flex;
+            justify-content:center;
+            align-items:center;
+            width:56px;
+            height:56px;
+            border-radius:18px;
+            font-size:1.5rem;
+            background: white;
+            border:1px solid rgba(0,0,0,.08);
+            box-shadow:0 8px 18px rgba(0,0,0,.06);
+            animation:cavFloat 3.4s ease-in-out infinite;
+        }}
+        .cav-chip:nth-child(2) {{animation-delay:.35s;}}
+        .cav-chip:nth-child(3) {{animation-delay:.7s;}}
+        .cav-footer {{
+            display:grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap:22px;
+            align-items:end;
+            margin-top: 22px;
+        }}
+        .cav-sign {{
+            text-align:center;
+            padding-top: 16px;
+        }}
+        .cav-sign-line {{
+            border-top:2px solid #6d7581;
+            margin-bottom:8px;
+        }}
+        .cav-sign strong {{color:{primario}; font-size:1rem;}}
+        .cav-sign small {{display:block; color:#6f7178; margin-top:4px;}}
+        .cav-qrbox {{
+            text-align:center;
+            padding:12px 14px;
+            border-radius:18px;
+            background:white;
+            border:1px solid rgba(0,0,0,.08);
+            min-width: 176px;
+        }}
+        .cav-code {{
+            display:inline-block;
+            margin-top:8px;
+            padding:7px 12px;
+            border-radius:999px;
+            background:{panel};
+            color:{primario};
+            font-weight:800;
+            font-size:.88rem;
+        }}
+        .cav-actions {{
+            margin-top:24px;
+        }}
+        .cav-eco {{
+            margin-top:22px;
             padding:18px 20px;
             border-radius:18px;
-            background:#effaf2;
-            border:1px solid #b6dfbf;
-            color:#174f2a;
-        }
-        .cav-code {
-            display:inline-block;
-            margin-top:12px;
-            padding:8px 13px;
-            border-radius:999px;
-            background:#fff6db;
-            color:#680018;
-            font-weight:800;
-        }
+            background:#eff9f1;
+            border:1px solid #b7dec0;
+            color:#184d2a;
+            animation: cavFadeUp 1s ease both;
+        }}
+        @keyframes cavFadeUp {{
+            from {{opacity:0; transform: translateY(16px);}}
+            to {{opacity:1; transform: translateY(0);}}
+        }}
+        @keyframes cavFloat {{
+            0%,100% {{transform: translateY(0);}}
+            50% {{transform: translateY(-7px);}}
+        }}
+        @media (max-width: 900px) {{
+            .cav-diploma-card {{padding: 22px 18px 24px;}}
+            .cav-footer {{grid-template-columns: 1fr;}}
+            .cav-qrbox {{order:-1;}}
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -649,42 +965,63 @@ def renderizar_diploma_publico(token):
 
     st.markdown(
         f"""
-        <div class="cav-digital-hero">
+        <div class="cav-topbar">
             <h1>🎓 Diploma Digital CAV</h1>
-            <p>Liceo Bicentenario de Excelencia Colegio Antonio Varas</p>
+            <p>Versión 100 % digital, verificable y amigable con el medio ambiente.</p>
+        </div>
+
+        <div class="cav-diploma-card">
+            <div class="cav-badge">{html_sanitizer.escape(tema["nombre"])} · Reconocimiento digital</div>
+
+            <div class="cav-brand">
+                <div style="font-size:1.8rem;font-weight:800;">Liceo Bicentenario de Excelencia</div>
+                <div style="font-size:2rem;font-weight:900;">Colegio Antonio Varas</div>
+                <div class="linea"></div>
+            </div>
+
+            <div class="cav-title">{titulo}</div>
+            <div class="cav-sub">Se otorga el presente diploma a</div>
+            <div class="cav-name">{nombre}</div>
+            <div class="cav-divider"></div>
+            <div class="cav-meta">{curso} · {area}</div>
+            <div class="cav-motivo">{motivo}</div>
+            <div class="cav-fecha">Vicuña, {fecha}</div>
+            <div class="cav-icons">{chips_html}</div>
+
+            <div class="cav-footer">
+                <div class="cav-sign">
+                    <div class="cav-sign-line"></div>
+                    <strong>{profesor}</strong>
+                    <small>Profesor responsable</small>
+                </div>
+
+                <div class="cav-qrbox">
+                    <div style="font-weight:800;color:{primario};margin-bottom:4px;">Código oficial</div>
+                    <div class="cav-code">{codigo}</div>
+                    <div style="font-size:.82rem;color:#737882;margin-top:8px;">
+                        Diploma digital verificable
+                    </div>
+                </div>
+
+                <div class="cav-sign">
+                    <div class="cav-sign-line"></div>
+                    <strong>{director}</strong>
+                    <small>Director</small>
+                </div>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    c1, c2, c3 = st.columns([1.35, 1, 1])
+    c1, c2, c3 = st.columns(3)
     c1.metric("Persona reconocida", diploma.get("nombre") or "—")
-    c2.metric("Curso / unidad", diploma.get("curso") or "—")
+    c2.metric("Área", diploma.get("area") or "—")
     c3.metric("Estado", diploma.get("estado") or "—")
-
-    st.markdown(
-        f"""
-        <div style="text-align:center;margin:14px 0 20px;">
-            <h2 style="color:#800020;margin-bottom:5px;">{html_sanitizer.escape(str(diploma.get("titulo") or "Diploma de Reconocimiento"))}</h2>
-            <div style="font-size:1.1rem;color:#555;">{html_sanitizer.escape(str(diploma.get("area") or ""))}</div>
-            <div class="cav-code">Código: {html_sanitizer.escape(str(diploma.get("codigo") or ""))}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    if preview_url:
-        st.image(
-            preview_url,
-            caption="Diploma digital oficial",
-            use_container_width=True,
-        )
-    else:
-        st.info("La vista previa no está disponible temporalmente.")
 
     if pdf_url:
         st.link_button(
-            "📥 Descargar diploma en PDF",
+            "📥 Descargar respaldo PDF",
             pdf_url,
             type="primary",
             use_container_width=True,
@@ -693,9 +1030,9 @@ def renderizar_diploma_publico(token):
     st.markdown(
         """
         <div class="cav-eco">
-            <strong>🌱 Reconocimiento digital con impacto ambiental positivo</strong><br>
-            Este diploma evita una impresión en papel opalina y contribuye a
-            reducir el uso de papel, tóner y residuos de impresión.
+            <strong>🌱 Acción ambiental institucional</strong><br>
+            Este reconocimiento digital evita el uso de papel opalina y ayuda a reducir
+            el consumo de papel, tóner y residuos de impresión.
         </div>
         """,
         unsafe_allow_html=True,
@@ -704,7 +1041,7 @@ def renderizar_diploma_publico(token):
     registrar_evento_diploma(
         diploma.get("id"),
         "VISTO",
-        {"origen": "enlace_publico"},
+        {"origen": "enlace_publico_animado"},
     )
     st.stop()
 
@@ -4035,7 +4372,7 @@ elif page == "Diplomas":
     import unicodedata
     import ssl
 
-    st.title("🎓 Diplomas Digitales CAV · V15.2 · URL pública automática")
+    st.title("🎓 Diplomas Digitales CAV · V16 · Animado + Aesthetic")
 
     st.caption(
         "Reconocimientos digitales con registro oficial, enlace personal, "
@@ -4139,8 +4476,8 @@ elif page == "Diplomas":
     st.markdown("## ✨ Crear diploma digital")
 
     st.caption(
-        "Genera diplomas institucionales legibles, descárgalos en PDF o PNG "
-        "y envíalos directamente al correo institucional mediante Google Workspace."
+        "Genera diplomas digitales con mejor jerarquía visual, versión pública animada, "
+        "elementos gráficos por área y respaldo PDF ordenado."
     )
 
     BASE_DIPLOMAS = Path(__file__).parent
@@ -4508,7 +4845,7 @@ elif page == "Diplomas":
                     draw.line((x + 12, y, x + 31, y), fill=suave, width=4)
                     draw.line((x + 55, y, x + 74, y), fill=suave, width=4)
 
-    DIPLOMA_RENDER_VERSION = "V15.2-AUTO-PUBLIC-URL-2026-07-31"
+    DIPLOMA_RENDER_VERSION = "V16-ANIMATED-AESTHETIC-2026-08-03"
 
     def preparar_imagen_para_pdf(origen, quitar_blanco=False):
         """Convierte logo o firma a PNG en memoria, recortado y transparente."""
@@ -4614,24 +4951,26 @@ elif page == "Diplomas":
         firma_profesor_bytes=None,
     ):
         """
-        Genera el diploma directamente como PDF vectorial.
-        Esto elimina los problemas de fuentes, caracteres y escala de Pillow.
+        Genera un diploma más limpio, con mejor jerarquía visual,
+        texto correctamente distribuido y detalles gráficos del área.
         """
         salida = BytesIO()
         pdf = rl_canvas.Canvas(salida, pagesize=landscape(letter))
-        page_w, page_h = landscape(letter)  # 792 x 612 puntos
+        page_w, page_h = landscape(letter)
 
         estilo = ESTILOS_DIPLOMA[datos["estilo"]]
-        primario = HexColor(estilo["primario"])
-        dorado = HexColor("#C7A44A")
-        fondo = HexColor("#FFFDF8")
-        gris = HexColor("#434852")
-        gris_suave = HexColor("#777D87")
-        blanco = HexColor("#FFFFFF")
-        caja = HexColor("#FBF8F0")
-        borde_caja = HexColor("#DED2B5")
+        tema = obtener_tema_visual_diploma(datos.get("area") or datos["estilo"])
 
-        # Textos normalizados.
+        primario = HexColor(estilo["primario"])
+        secundario = HexColor(estilo["secundario"])
+        fondo = HexColor(estilo["fondo"])
+        suave = HexColor(estilo["suave"])
+        acento = HexColor(estilo["acento"])
+        gris = HexColor("#404654")
+        gris_suave = HexColor("#737A84")
+        blanco = HexColor("#FFFFFF")
+        panel = HexColor("#FCFAF4")
+
         titulo = limpiar_texto_diploma(datos["titulo"], mayusculas=True)
         estudiante = limpiar_texto_diploma(datos["estudiante"], mayusculas=True)
         curso = limpiar_texto_diploma(datos["curso"])
@@ -4644,299 +4983,235 @@ elif page == "Diplomas":
         codigo_diploma = limpiar_texto_diploma(datos.get("codigo", ""))
         url_publica_diploma = str(datos.get("url_publica", "") or "").strip()
 
-        # Fondo.
         pdf.setFillColor(fondo)
         pdf.rect(0, 0, page_w, page_h, fill=1, stroke=0)
 
-        # Franjas institucionales.
+        # Franja superior e inferior institucional.
         pdf.setFillColor(primario)
-        pdf.rect(0, page_h - 25, page_w, 25, fill=1, stroke=0)
-        pdf.rect(0, 0, page_w, 18, fill=1, stroke=0)
+        pdf.rect(0, page_h - 24, page_w, 24, fill=1, stroke=0)
+        pdf.rect(0, 0, page_w, 16, fill=1, stroke=0)
 
-        # Marcos.
-        pdf.setStrokeColor(dorado)
-        pdf.setLineWidth(3.2)
+        # Marcos decorativos.
+        pdf.setStrokeColor(secundario)
+        pdf.setLineWidth(3)
         pdf.rect(14, 14, page_w - 28, page_h - 28, fill=0, stroke=1)
 
         pdf.setStrokeColor(primario)
-        pdf.setLineWidth(1.4)
+        pdf.setLineWidth(1.15)
         pdf.rect(24, 24, page_w - 48, page_h - 48, fill=0, stroke=1)
 
-        pdf.setStrokeColor(dorado)
+        pdf.setStrokeColor(secundario)
         pdf.setLineWidth(0.7)
-        pdf.rect(31, 31, page_w - 62, page_h - 62, fill=0, stroke=1)
+        pdf.roundRect(37, 37, page_w - 74, page_h - 74, 10, fill=0, stroke=1)
 
-        # Esquinas doradas discretas.
-        pdf.setStrokeColor(dorado)
-        pdf.setLineWidth(2.4)
-        largo = 22
+        # Esquinas.
+        pdf.setStrokeColor(secundario)
+        pdf.setLineWidth(2)
+        tramo = 26
         for x, y, sx, sy in [
-            (32, page_h - 32, 1, -1),
-            (page_w - 32, page_h - 32, -1, -1),
-            (32, 32, 1, 1),
-            (page_w - 32, 32, -1, 1),
+            (34, page_h - 34, 1, -1),
+            (page_w - 34, page_h - 34, -1, -1),
+            (34, 34, 1, 1),
+            (page_w - 34, 34, -1, 1),
         ]:
-            pdf.line(x, y, x + sx * largo, y)
-            pdf.line(x, y, x, y + sy * largo)
+            pdf.line(x, y, x + sx * tramo, y)
+            pdf.line(x, y, x, y + sy * tramo)
 
-        # Logo.
+        # Marca de agua suave.
         logo_preparado = preparar_imagen_para_pdf(logo_bytes)
         if logo_preparado is None and RUTA_LOGO_DIPLOMA.exists():
             logo_preparado = preparar_imagen_para_pdf(RUTA_LOGO_DIPLOMA)
 
-        dibujar_imagen_contenida_pdf(
-            pdf,
-            logo_preparado,
-            x=356,
-            y=506,
-            ancho=80,
-            alto=78,
-        )
+        if logo_preparado:
+            try:
+                img_logo = Image.open(BytesIO(logo_preparado)).convert("RGBA")
+                alpha = img_logo.getchannel("A").point(lambda p: int(p * 0.10))
+                img_logo.putalpha(alpha)
+                tmp = BytesIO()
+                img_logo.save(tmp, format="PNG", optimize=True)
+                marca_agua = tmp.getvalue()
+                dibujar_imagen_contenida_pdf(pdf, marca_agua, 305, 188, 182, 182)
+            except Exception:
+                pass
+
+            dibujar_imagen_contenida_pdf(pdf, logo_preparado, 357, 505, 78, 75)
 
         # Encabezado.
         dibujar_texto_centrado_pdf(
             pdf,
             "LICEO BICENTENARIO DE EXCELENCIA",
-            493,
+            488,
             "Helvetica-Bold",
-            11.5,
+            11.4,
             primario,
         )
         dibujar_texto_centrado_pdf(
             pdf,
             "COLEGIO ANTONIO VARAS",
-            476,
+            471,
             "Helvetica-Bold",
-            16.5,
+            18.2,
             primario,
         )
+        pdf.setStrokeColor(secundario)
+        pdf.setLineWidth(1.3)
+        pdf.line(215, 458, 577, 458)
 
-        pdf.setStrokeColor(dorado)
-        pdf.setLineWidth(1.2)
-        pdf.line(225, 464, 567, 464)
-
-        # Título.
-        tam_titulo = ajustar_tamano_pdf(
-            titulo,
-            "Helvetica-Bold",
-            maximo=29,
-            minimo=21,
-            ancho_maximo=590,
-        )
+        # Insignia de área.
+        pdf.setFillColor(suave)
+        pdf.setStrokeColor(secundario)
+        pdf.roundRect(284, 437, 224, 20, 10, fill=1, stroke=0)
         dibujar_texto_centrado_pdf(
             pdf,
-            titulo,
-            430,
+            f"ÁREA · {area}",
+            443,
             "Helvetica-Bold",
-            tam_titulo,
-            primario,
+            9.1,
+            acento,
         )
+
+        # Título con posibilidad de 2 líneas.
+        tam_titulo = 28
+        lineas_titulo = envolver_texto_pdf(titulo, "Helvetica-Bold", tam_titulo, 610)
+        while len(lineas_titulo) > 2 and tam_titulo > 20:
+            tam_titulo -= 1
+            lineas_titulo = envolver_texto_pdf(titulo, "Helvetica-Bold", tam_titulo, 610)
+        inter_titulo = tam_titulo + 4
+        y_titulo = 420 if len(lineas_titulo) == 1 else 428
+        pdf.setFillColor(primario)
+        pdf.setFont("Helvetica-Bold", tam_titulo)
+        for i, linea in enumerate(lineas_titulo[:2]):
+            pdf.drawCentredString(page_w / 2, y_titulo - i * inter_titulo, linea)
 
         dibujar_texto_centrado_pdf(
             pdf,
             "Se otorga el presente diploma a",
-            407,
+            389 if len(lineas_titulo) == 1 else 378,
             "Helvetica-Oblique",
-            11.5,
+            11.3,
             gris_suave,
         )
 
-        # Nombre.
-        tam_nombre = ajustar_tamano_pdf(
-            estudiante,
-            "Helvetica-Bold",
-            maximo=37,
-            minimo=24,
-            ancho_maximo=620,
-        )
-        dibujar_texto_centrado_pdf(
-            pdf,
-            estudiante,
-            368,
-            "Helvetica-Bold",
-            tam_nombre,
-            primario,
-        )
+        # Nombre del estudiante en una o dos líneas.
+        tam_nombre = 34
+        lineas_nombre = envolver_texto_pdf(estudiante, "Helvetica-Bold", tam_nombre, 620)
+        while len(lineas_nombre) > 2 and tam_nombre > 22:
+            tam_nombre -= 1
+            lineas_nombre = envolver_texto_pdf(estudiante, "Helvetica-Bold", tam_nombre, 620)
 
-        ancho_nombre = min(
-            max(stringWidth(estudiante, "Helvetica-Bold", tam_nombre) + 34, 260),
-            620,
+        inter_nombre = tam_nombre + 5
+        y_nombre = 350 if len(lineas_nombre) == 1 else 362
+        pdf.setFillColor(acento)
+        pdf.setFont("Helvetica-Bold", tam_nombre)
+        for i, linea in enumerate(lineas_nombre[:2]):
+            pdf.drawCentredString(page_w / 2, y_nombre - i * inter_nombre, linea)
+
+        ancho_linea_nombre = min(
+            max(max(stringWidth(l, "Helvetica-Bold", tam_nombre) for l in lineas_nombre[:2]) + 40, 260),
+            640,
         )
-        pdf.setStrokeColor(dorado)
+        pdf.setStrokeColor(secundario)
         pdf.setLineWidth(1.2)
-        pdf.line(
-            (page_w - ancho_nombre) / 2,
-            356,
-            (page_w + ancho_nombre) / 2,
-            356,
-        )
+        pdf.line((page_w - ancho_linea_nombre) / 2, 318, (page_w + ancho_linea_nombre) / 2, 318)
 
-        # Curso y área.
-        subtitulo = f"{curso}  |  {area}"
-        tam_sub = ajustar_tamano_pdf(
-            subtitulo,
-            "Helvetica-Bold",
-            maximo=14,
-            minimo=10,
-            ancho_maximo=500,
-        )
-        dibujar_texto_centrado_pdf(
-            pdf,
-            subtitulo,
-            337,
-            "Helvetica-Bold",
-            tam_sub,
-            primario,
-        )
+        # Curso y modalidad, cada dato en su propia línea para evitar amontonamiento.
+        dibujar_texto_centrado_pdf(pdf, curso, 300, "Helvetica-Bold", 13, primario)
+        dibujar_texto_centrado_pdf(pdf, area, 284, "Helvetica", 11.5, gris)
 
-        # Caja de reconocimiento.
-        caja_x = 132
-        caja_y = 236
-        caja_w = 528
-        caja_h = 76
+        # Caja central del motivo.
+        caja_x, caja_y, caja_w, caja_h = 116, 187, 560, 76
+        pdf.setFillColor(blanco)
+        pdf.setStrokeColor(HexColor("#E5DABF"))
+        pdf.setLineWidth(0.85)
+        pdf.roundRect(caja_x, caja_y, caja_w, caja_h, 12, fill=1, stroke=1)
 
-        pdf.setFillColor(caja)
-        pdf.setStrokeColor(borde_caja)
-        pdf.setLineWidth(0.8)
-        pdf.roundRect(caja_x, caja_y, caja_w, caja_h, 8, fill=1, stroke=1)
-
-        tam_motivo = 14.5
-        lineas = envolver_texto_pdf(
-            motivo,
-            "Helvetica",
-            tam_motivo,
-            caja_w - 56,
-        )
-        while len(lineas) > 3 and tam_motivo > 11:
+        tam_motivo = 13.7
+        lineas_motivo = envolver_texto_pdf(motivo, "Helvetica", tam_motivo, caja_w - 46)
+        while len(lineas_motivo) > 4 and tam_motivo > 10.5:
             tam_motivo -= 0.5
-            lineas = envolver_texto_pdf(
-                motivo,
-                "Helvetica",
-                tam_motivo,
-                caja_w - 56,
-            )
+            lineas_motivo = envolver_texto_pdf(motivo, "Helvetica", tam_motivo, caja_w - 46)
 
-        interlineado = tam_motivo + 4
-        altura_total = len(lineas) * interlineado
-        y_linea = caja_y + (caja_h + altura_total) / 2 - interlineado + 1
+        inter_motivo = tam_motivo + 3.6
+        bloque_h = len(lineas_motivo[:4]) * inter_motivo
+        y_base = caja_y + (caja_h + bloque_h) / 2 - inter_motivo + 3
 
         pdf.setFillColor(gris)
         pdf.setFont("Helvetica", tam_motivo)
-        for linea in lineas[:4]:
-            pdf.drawCentredString(page_w / 2, y_linea, linea)
-            y_linea -= interlineado
+        for linea in lineas_motivo[:4]:
+            pdf.drawCentredString(page_w / 2, y_base, linea)
+            y_base -= inter_motivo
 
         # Fecha.
         dibujar_texto_centrado_pdf(
             pdf,
             f"Vicuña, {fecha_texto}",
-            210,
+            165,
             "Helvetica-Oblique",
             10.5,
             gris,
         )
 
-        pdf.setStrokeColor(dorado)
-        pdf.setLineWidth(0.8)
-        pdf.line(300, 199, 492, 199)
+        # Motivos gráficos del área.
+        iconos = tema["deco"]
+        posiciones_x = [286, 396, 506]
+        for idx, simbolo in enumerate(iconos[:3]):
+            x = posiciones_x[idx]
+            pdf.setFillColor(blanco)
+            pdf.setStrokeColor(secundario)
+            pdf.setLineWidth(0.8)
+            pdf.roundRect(x - 24, 128, 48, 34, 10, fill=1, stroke=1)
+            pdf.setFillColor(primario)
+            pdf.setFont("Helvetica-Bold", 14)
+            pdf.drawCentredString(x, 139, str(simbolo))
 
-        # QR y código de acceso digital.
+        # QR y código.
         qr_bytes = crear_qr_diploma(url_publica_diploma)
         if qr_bytes:
-            dibujar_imagen_contenida_pdf(
-                pdf,
-                qr_bytes,
-                x=365,
-                y=96,
-                ancho=62,
-                alto=62,
-            )
+            pdf.setFillColor(blanco)
+            pdf.setStrokeColor(HexColor("#E6E2D6"))
+            pdf.roundRect(620, 82, 108, 90, 10, fill=1, stroke=1)
+            dibujar_imagen_contenida_pdf(pdf, qr_bytes, 633, 102, 52, 52)
             pdf.setFillColor(primario)
             pdf.setFont("Helvetica-Bold", 6.8)
-            pdf.drawCentredString(396, 89, codigo_diploma)
+            pdf.drawCentredString(674, 95, codigo_diploma)
             pdf.setFillColor(gris_suave)
-            pdf.setFont("Helvetica", 6.4)
-            pdf.drawCentredString(396, 80, "Escanea para abrir el diploma digital")
+            pdf.setFont("Helvetica", 6.2)
+            pdf.drawCentredString(674, 86, "Abrir diploma digital")
 
-        # Firmas preparadas.
-        firma_prof_preparada = preparar_imagen_para_pdf(
-            firma_profesor_bytes,
-            quitar_blanco=True,
-        )
-        firma_dir_preparada = preparar_imagen_para_pdf(
-            firma_director_bytes,
-            quitar_blanco=True,
-        )
+        # Firmas.
+        firma_prof_preparada = preparar_imagen_para_pdf(firma_profesor_bytes, quitar_blanco=True)
+        firma_dir_preparada = preparar_imagen_para_pdf(firma_director_bytes, quitar_blanco=True)
         if firma_dir_preparada is None and RUTA_FIRMA_DIRECTOR.exists():
-            firma_dir_preparada = preparar_imagen_para_pdf(
-                RUTA_FIRMA_DIRECTOR,
-                quitar_blanco=True,
-            )
+            firma_dir_preparada = preparar_imagen_para_pdf(RUTA_FIRMA_DIRECTOR, quitar_blanco=True)
 
-        dibujar_imagen_contenida_pdf(
-            pdf,
-            firma_prof_preparada,
-            x=115,
-            y=88,
-            ancho=210,
-            alto=78,
-        )
-        dibujar_imagen_contenida_pdf(
-            pdf,
-            firma_dir_preparada,
-            x=467,
-            y=82,
-            ancho=210,
-            alto=88,
-        )
+        dibujar_imagen_contenida_pdf(pdf, firma_prof_preparada, 105, 72, 205, 58)
+        dibujar_imagen_contenida_pdf(pdf, firma_dir_preparada, 460, 70, 175, 62)
 
-        # Líneas de firma.
         pdf.setStrokeColor(gris)
         pdf.setLineWidth(0.9)
-        pdf.line(110, 76, 330, 76)
-        pdf.line(462, 76, 682, 76)
+        pdf.line(92, 66, 312, 66)
+        pdf.line(438, 66, 596, 66)
 
-        # Nombres y cargos.
-        tam_prof = ajustar_tamano_pdf(
-            profesor,
-            "Helvetica-Bold",
-            maximo=10.5,
-            minimo=8,
-            ancho_maximo=210,
-        )
+        tam_prof = ajustar_tamano_pdf(profesor, "Helvetica-Bold", 10.5, 8.2, 212)
         pdf.setFillColor(primario)
         pdf.setFont("Helvetica-Bold", tam_prof)
-        pdf.drawCentredString(220, 61, profesor)
-
+        pdf.drawCentredString(202, 52, profesor)
         pdf.setFillColor(gris_suave)
-        pdf.setFont("Helvetica", 8.5)
-        pdf.drawCentredString(220, 48, cargo_profesor)
+        pdf.setFont("Helvetica", 8.2)
+        pdf.drawCentredString(202, 40, cargo_profesor)
 
-        tam_dir = ajustar_tamano_pdf(
-            director,
-            "Helvetica-Bold",
-            maximo=10.5,
-            minimo=8,
-            ancho_maximo=210,
-        )
+        tam_dir = ajustar_tamano_pdf(director, "Helvetica-Bold", 10.5, 8.2, 150)
         pdf.setFillColor(primario)
         pdf.setFont("Helvetica-Bold", tam_dir)
-        pdf.drawCentredString(572, 61, director)
-
+        pdf.drawCentredString(517, 52, director)
         pdf.setFillColor(gris_suave)
-        pdf.setFont("Helvetica", 8.5)
-        pdf.drawCentredString(572, 48, "Director")
+        pdf.setFont("Helvetica", 8.2)
+        pdf.drawCentredString(517, 40, "Director")
 
-        # Pie.
         pdf.setFillColor(blanco)
-        pdf.setFont("Helvetica", 6.5)
-        pdf.drawCentredString(
-            page_w / 2,
-            6,
-            "Diploma digital emitido por el Sistema Institucional CAV",
-        )
+        pdf.setFont("Helvetica", 6.3)
+        pdf.drawCentredString(page_w / 2, 5, "Diploma digital emitido por el Sistema Institucional CAV")
 
-        # Metadatos PDF.
         pdf.setTitle(f"Diploma - {estudiante}")
         pdf.setAuthor("Colegio Antonio Varas")
         pdf.setSubject(titulo)
@@ -5261,7 +5536,7 @@ Colegio Antonio Varas
         )
 
         st.success(
-            "✅ Motor activo: V15.2 Digital · URL pública automática. "
+            "✅ Motor activo: V16 Digital · Animado + diseño aesthetic. "
             "Si no ves este mensaje, Streamlit todavía está ejecutando otro archivo."
         )
 
