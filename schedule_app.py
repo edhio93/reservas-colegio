@@ -1267,6 +1267,867 @@ _token_publico_diploma = st.query_params.get("diploma")
 if _token_publico_diploma:
     renderizar_diploma_publico(_token_publico_diploma)
 
+
+def renderizar_monitor_semanal_publico():
+    """
+    Monitor semanal público de Enlaces.
+
+    Se abre mediante:
+        ?monitor=semana
+
+    No requiere iniciar sesión y solo muestra información de agenda:
+    fecha, horario, recurso, profesor y curso.
+    """
+    tz_monitor = pytz.timezone("America/Santiago")
+    ahora = dt_datetime.now(tz_monitor)
+    hoy = ahora.date()
+
+    # Permite compartir semanas específicas:
+    # ?monitor=semana&semana=2026-08-03
+    semana_param = str(st.query_params.get("semana") or "").strip()
+    if semana_param:
+        try:
+            fecha_referencia = pd.to_datetime(semana_param).date()
+        except Exception:
+            fecha_referencia = hoy
+    else:
+        fecha_referencia = hoy
+
+    lunes = fecha_referencia - dt.timedelta(days=fecha_referencia.weekday())
+    viernes = lunes + dt.timedelta(days=4)
+
+    # Refresco automático cada minuto.
+    st_autorefresh(
+        interval=60_000,
+        key=f"monitor_semanal_publico_{lunes.isoformat()}",
+    )
+
+    try:
+        respuesta = (
+            supabase.table("reservas")
+            .select(
+                "id, fecha, hora_inicio, hora_fin, "
+                "profesores(nombre), cursos(nombre), recursos(nombre)"
+            )
+            .gte("fecha", lunes.isoformat())
+            .lte("fecha", viernes.isoformat())
+            .order("fecha")
+            .order("hora_inicio")
+            .execute()
+        )
+        reservas = respuesta.data or []
+    except Exception as error:
+        registrar_error("monitor_semanal_publico", error)
+        reservas = []
+        error_carga = str(error)
+    else:
+        error_carga = ""
+
+    dias_nombres = {
+        0: "Lunes",
+        1: "Martes",
+        2: "Miércoles",
+        3: "Jueves",
+        4: "Viernes",
+    }
+
+    agenda_por_dia = {
+        lunes + dt.timedelta(days=i): []
+        for i in range(5)
+    }
+
+    reservas_activas = []
+    total_reservas = 0
+    recursos_unicos = set()
+
+    paleta = [
+        "#800020",
+        "#0F6B78",
+        "#3659A8",
+        "#2E7D4F",
+        "#8952A8",
+        "#B56818",
+        "#A33B5B",
+    ]
+
+    def color_para_recurso(nombre):
+        nombre = str(nombre or "Recurso")
+        indice = sum(ord(caracter) for caracter in nombre) % len(paleta)
+        return paleta[indice]
+
+    for registro in reservas:
+        try:
+            fecha_reserva = pd.to_datetime(registro.get("fecha")).date()
+        except Exception:
+            continue
+
+        if fecha_reserva not in agenda_por_dia:
+            continue
+
+        hora_inicio = str(registro.get("hora_inicio") or "")[:5]
+        hora_fin = str(registro.get("hora_fin") or "")[:5]
+        profesor = (
+            (registro.get("profesores") or {}).get("nombre")
+            or "Sin profesor"
+        )
+        curso = (
+            (registro.get("cursos") or {}).get("nombre")
+            or "Sin curso"
+        )
+        recurso = (
+            (registro.get("recursos") or {}).get("nombre")
+            or "Recurso de Enlaces"
+        )
+
+        item = {
+            "id": registro.get("id"),
+            "fecha": fecha_reserva,
+            "hora_inicio": hora_inicio,
+            "hora_fin": hora_fin,
+            "profesor": str(profesor),
+            "curso": str(curso),
+            "recurso": str(recurso),
+            "color": color_para_recurso(recurso),
+        }
+        agenda_por_dia[fecha_reserva].append(item)
+        total_reservas += 1
+        recursos_unicos.add(str(recurso))
+
+        if fecha_reserva == hoy and hora_inicio and hora_fin:
+            hora_actual = ahora.strftime("%H:%M")
+            if hora_inicio <= hora_actual <= hora_fin:
+                reservas_activas.append(item)
+
+    for fecha_dia in agenda_por_dia:
+        agenda_por_dia[fecha_dia].sort(
+            key=lambda item: (
+                item["hora_inicio"],
+                item["recurso"].lower(),
+            )
+        )
+
+    def escapar(valor):
+        return html_sanitizer.escape(str(valor or ""))
+
+    def construir_url_semana(fecha_lunes):
+        base_url = obtener_url_base_aplicacion()
+        ruta = (
+            f"?monitor=semana&semana={fecha_lunes.isoformat()}"
+        )
+        return f"{base_url}/{ruta}" if base_url else ruta
+
+    url_anterior = construir_url_semana(lunes - dt.timedelta(days=7))
+    url_actual = construir_url_semana(hoy - dt.timedelta(days=hoy.weekday()))
+    url_siguiente = construir_url_semana(lunes + dt.timedelta(days=7))
+    url_login = obtener_url_base_aplicacion() or "/"
+
+    logo_html = ""
+    try:
+        ruta_logo = Path(__file__).resolve().parent / "logocav.png"
+        if ruta_logo.exists():
+            logo_b64 = base64.b64encode(
+                ruta_logo.read_bytes()
+            ).decode("ascii")
+            logo_html = (
+                '<img class="monitor-logo" '
+                f'src="data:image/png;base64,{logo_b64}" '
+                'alt="Logo Colegio Antonio Varas">'
+            )
+    except Exception as error:
+        registrar_error("logo_monitor_semanal", error)
+
+    if reservas_activas:
+        ahora_html = "".join(
+            f"""
+            <div class="monitor-now-item">
+                <span class="monitor-now-dot"></span>
+                <div>
+                    <strong>{escapar(item["recurso"])}</strong>
+                    <span>
+                        {escapar(item["hora_inicio"])}–{escapar(item["hora_fin"])}
+                        · {escapar(item["curso"])}
+                        · {escapar(item["profesor"])}
+                    </span>
+                </div>
+            </div>
+            """
+            for item in reservas_activas
+        )
+        ahora_estado = (
+            f'<div class="monitor-now-list">{ahora_html}</div>'
+        )
+    else:
+        ahora_estado = """
+        <div class="monitor-now-empty">
+            No hay una reserva en curso en este momento.
+        </div>
+        """
+
+    columnas_dias = []
+    for fecha_dia, items in agenda_por_dia.items():
+        es_hoy = fecha_dia == hoy
+        clase_hoy = " monitor-day-today" if es_hoy else ""
+
+        if items:
+            tarjetas = []
+            for item in items:
+                tarjetas.append(
+                    f"""
+                    <article
+                        class="monitor-reserva"
+                        style="--recurso-color:{item['color']};"
+                    >
+                        <div class="monitor-time">
+                            {escapar(item["hora_inicio"])}
+                            <span>–</span>
+                            {escapar(item["hora_fin"])}
+                        </div>
+                        <div class="monitor-resource">
+                            {escapar(item["recurso"])}
+                        </div>
+                        <div class="monitor-detail">
+                            <span>👨‍🏫</span>
+                            {escapar(item["profesor"])}
+                        </div>
+                        <div class="monitor-detail">
+                            <span>📚</span>
+                            {escapar(item["curso"])}
+                        </div>
+                    </article>
+                    """
+                )
+            contenido_dia = "".join(tarjetas)
+        else:
+            contenido_dia = """
+            <div class="monitor-empty">
+                <span>✓</span>
+                Sin reservas
+            </div>
+            """
+
+        columnas_dias.append(
+            f"""
+            <section class="monitor-day{clase_hoy}">
+                <header class="monitor-day-header">
+                    <div>
+                        <div class="monitor-day-name">
+                            {dias_nombres[fecha_dia.weekday()]}
+                        </div>
+                        <div class="monitor-day-date">
+                            {fecha_dia.strftime("%d/%m/%Y")}
+                        </div>
+                    </div>
+                    {
+                        '<span class="monitor-today-pill">HOY</span>'
+                        if es_hoy else ""
+                    }
+                </header>
+                <div class="monitor-day-list">
+                    {contenido_dia}
+                </div>
+            </section>
+            """
+        )
+
+    mensaje_error = ""
+    if error_carga:
+        mensaje_error = """
+        <div class="monitor-error">
+            No fue posible actualizar la agenda en este momento.
+            La pantalla volverá a intentarlo automáticamente.
+        </div>
+        """
+
+    periodo = (
+        f"{lunes.strftime('%d/%m')} al "
+        f"{viernes.strftime('%d/%m/%Y')}"
+    )
+
+    documento = f"""
+    <!doctype html>
+    <html lang="es">
+    <head>
+    <meta charset="utf-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+    <style>
+    :root {{
+        --burdeo:#800020;
+        --burdeo-oscuro:#590016;
+        --dorado:#C7A44A;
+        --fondo:#F5F7FA;
+        --texto:#1F2937;
+        --suave:#667085;
+    }}
+
+    * {{ box-sizing:border-box; }}
+
+    html, body {{
+        margin:0;
+        padding:0;
+        font-family:Inter, "Segoe UI", Arial, sans-serif;
+        color:var(--texto);
+        background:
+            radial-gradient(
+                circle at 7% 0%,
+                rgba(199,164,74,.14),
+                transparent 24%
+            ),
+            linear-gradient(180deg, #FCFCFD, var(--fondo));
+    }}
+
+    .monitor-page {{
+        width:min(1500px, calc(100% - 24px));
+        margin:12px auto 28px;
+    }}
+
+    .monitor-header {{
+        display:grid;
+        grid-template-columns:auto 1fr auto;
+        align-items:center;
+        gap:18px;
+        padding:20px 24px;
+        color:white;
+        background:
+            linear-gradient(
+                135deg,
+                var(--burdeo),
+                var(--burdeo-oscuro)
+            );
+        border-radius:24px;
+        border-bottom:5px solid var(--dorado);
+        box-shadow:0 16px 36px rgba(70,0,18,.18);
+    }}
+
+    .monitor-logo {{
+        width:70px;
+        height:70px;
+        object-fit:contain;
+        padding:5px;
+        background:white;
+        border-radius:16px;
+    }}
+
+    .monitor-title {{
+        margin:0;
+        font-size:clamp(25px, 4vw, 42px);
+        line-height:1.02;
+        letter-spacing:-.025em;
+    }}
+
+    .monitor-subtitle {{
+        margin-top:6px;
+        color:rgba(255,255,255,.88);
+        font-size:clamp(13px, 1.6vw, 17px);
+    }}
+
+    .monitor-clock {{
+        min-width:174px;
+        padding:12px 15px;
+        text-align:center;
+        color:var(--burdeo);
+        background:white;
+        border-radius:17px;
+        font-weight:800;
+    }}
+
+    .monitor-clock-time {{
+        display:block;
+        margin-top:2px;
+        font-size:1.35rem;
+        font-variant-numeric:tabular-nums;
+    }}
+
+    .monitor-toolbar {{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:12px;
+        margin:16px 0;
+        padding:12px 14px;
+        background:white;
+        border:1px solid rgba(0,0,0,.06);
+        border-radius:18px;
+        box-shadow:0 7px 18px rgba(0,0,0,.04);
+    }}
+
+    .monitor-week {{
+        color:var(--burdeo);
+        font-size:1.05rem;
+        font-weight:850;
+    }}
+
+    .monitor-nav {{
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+    }}
+
+    .monitor-nav a {{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-height:39px;
+        padding:8px 13px;
+        color:var(--burdeo);
+        background:#FFF8E8;
+        border:1px solid rgba(128,0,32,.10);
+        border-radius:12px;
+        text-decoration:none;
+        font-size:.9rem;
+        font-weight:800;
+    }}
+
+    .monitor-nav a:hover {{
+        background:#F7E8BE;
+    }}
+
+    .monitor-stats {{
+        display:grid;
+        grid-template-columns:repeat(3, minmax(0, 1fr));
+        gap:12px;
+        margin-bottom:14px;
+    }}
+
+    .monitor-stat {{
+        padding:14px 16px;
+        background:white;
+        border:1px solid rgba(0,0,0,.06);
+        border-radius:17px;
+    }}
+
+    .monitor-stat-label {{
+        color:var(--suave);
+        font-size:.78rem;
+        font-weight:750;
+        text-transform:uppercase;
+        letter-spacing:.05em;
+    }}
+
+    .monitor-stat-value {{
+        margin-top:4px;
+        color:var(--burdeo);
+        font-size:1.5rem;
+        font-weight:900;
+    }}
+
+    .monitor-now {{
+        margin-bottom:14px;
+        padding:15px 17px;
+        color:#174A2A;
+        background:#EDF9F0;
+        border:1px solid #B9DEC2;
+        border-radius:18px;
+    }}
+
+    .monitor-now-title {{
+        margin-bottom:8px;
+        font-weight:900;
+    }}
+
+    .monitor-now-list {{
+        display:grid;
+        gap:7px;
+    }}
+
+    .monitor-now-item {{
+        display:flex;
+        align-items:flex-start;
+        gap:9px;
+    }}
+
+    .monitor-now-dot {{
+        width:10px;
+        height:10px;
+        margin-top:5px;
+        flex:none;
+        background:#20A45A;
+        border-radius:999px;
+        box-shadow:0 0 0 5px rgba(32,164,90,.13);
+    }}
+
+    .monitor-now-item strong {{
+        display:block;
+    }}
+
+    .monitor-now-item span {{
+        color:#41624B;
+        font-size:.9rem;
+    }}
+
+    .monitor-now-empty {{
+        color:#41624B;
+    }}
+
+    .monitor-grid {{
+        display:grid;
+        grid-template-columns:repeat(5, minmax(0, 1fr));
+        gap:12px;
+        align-items:start;
+    }}
+
+    .monitor-day {{
+        min-width:0;
+        overflow:hidden;
+        background:white;
+        border:1px solid rgba(0,0,0,.07);
+        border-radius:20px;
+        box-shadow:0 9px 22px rgba(0,0,0,.045);
+    }}
+
+    .monitor-day-today {{
+        border:2px solid var(--dorado);
+        box-shadow:0 11px 28px rgba(199,164,74,.16);
+    }}
+
+    .monitor-day-header {{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:8px;
+        padding:14px 14px 12px;
+        color:white;
+        background:
+            linear-gradient(
+                135deg,
+                var(--burdeo),
+                #A41A42
+            );
+    }}
+
+    .monitor-day-name {{
+        font-size:1.05rem;
+        font-weight:900;
+    }}
+
+    .monitor-day-date {{
+        margin-top:2px;
+        color:rgba(255,255,255,.82);
+        font-size:.8rem;
+    }}
+
+    .monitor-today-pill {{
+        padding:5px 8px;
+        color:var(--burdeo);
+        background:var(--dorado);
+        border-radius:999px;
+        font-size:.68rem;
+        font-weight:950;
+    }}
+
+    .monitor-day-list {{
+        display:grid;
+        gap:9px;
+        padding:10px;
+    }}
+
+    .monitor-reserva {{
+        position:relative;
+        overflow:hidden;
+        padding:11px 11px 12px 15px;
+        background:#FCFCFD;
+        border:1px solid rgba(0,0,0,.06);
+        border-radius:14px;
+    }}
+
+    .monitor-reserva::before {{
+        content:"";
+        position:absolute;
+        inset:0 auto 0 0;
+        width:5px;
+        background:var(--recurso-color);
+    }}
+
+    .monitor-time {{
+        color:var(--recurso-color);
+        font-size:.84rem;
+        font-weight:900;
+        font-variant-numeric:tabular-nums;
+    }}
+
+    .monitor-time span {{
+        color:#9AA1AC;
+        margin:0 2px;
+    }}
+
+    .monitor-resource {{
+        margin-top:4px;
+        color:#202733;
+        font-size:.98rem;
+        font-weight:900;
+        line-height:1.16;
+        overflow-wrap:anywhere;
+    }}
+
+    .monitor-detail {{
+        display:flex;
+        gap:6px;
+        margin-top:6px;
+        color:#5E6672;
+        font-size:.79rem;
+        line-height:1.25;
+    }}
+
+    .monitor-empty {{
+        display:grid;
+        place-items:center;
+        min-height:94px;
+        color:#8A929E;
+        font-size:.84rem;
+        text-align:center;
+    }}
+
+    .monitor-empty span {{
+        display:grid;
+        place-items:center;
+        width:30px;
+        height:30px;
+        margin-bottom:4px;
+        color:#2E8B57;
+        background:#ECF8F0;
+        border-radius:999px;
+        font-weight:900;
+    }}
+
+    .monitor-error {{
+        margin-bottom:14px;
+        padding:13px 15px;
+        color:#7B241C;
+        background:#FDEDEC;
+        border:1px solid #F5B7B1;
+        border-radius:15px;
+    }}
+
+    .monitor-footer {{
+        display:flex;
+        justify-content:space-between;
+        gap:12px;
+        margin-top:15px;
+        color:#777F8B;
+        font-size:.78rem;
+    }}
+
+    .monitor-footer a {{
+        color:var(--burdeo);
+        font-weight:800;
+        text-decoration:none;
+    }}
+
+    @media (max-width:1100px) {{
+        .monitor-grid {{
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+        }}
+
+        .monitor-day:last-child {{
+            grid-column:1 / -1;
+        }}
+    }}
+
+    @media (max-width:720px) {{
+        .monitor-page {{
+            width:min(100% - 12px, 1500px);
+            margin-top:6px;
+        }}
+
+        .monitor-header {{
+            grid-template-columns:auto 1fr;
+            padding:16px;
+            border-radius:18px;
+        }}
+
+        .monitor-logo {{
+            width:56px;
+            height:56px;
+            border-radius:13px;
+        }}
+
+        .monitor-clock {{
+            grid-column:1 / -1;
+            width:100%;
+            min-width:0;
+        }}
+
+        .monitor-toolbar {{
+            align-items:flex-start;
+            flex-direction:column;
+        }}
+
+        .monitor-nav {{
+            width:100%;
+        }}
+
+        .monitor-nav a {{
+            flex:1;
+            padding:8px 7px;
+            font-size:.8rem;
+        }}
+
+        .monitor-stats {{
+            grid-template-columns:repeat(3, 1fr);
+            gap:7px;
+        }}
+
+        .monitor-stat {{
+            padding:10px;
+        }}
+
+        .monitor-stat-value {{
+            font-size:1.2rem;
+        }}
+
+        .monitor-grid {{
+            grid-template-columns:1fr;
+        }}
+
+        .monitor-day:last-child {{
+            grid-column:auto;
+        }}
+
+        .monitor-day-header {{
+            position:sticky;
+            top:0;
+            z-index:2;
+        }}
+
+        .monitor-footer {{
+            flex-direction:column;
+            text-align:center;
+        }}
+    }}
+    </style>
+    </head>
+    <body>
+    <main class="monitor-page">
+        <header class="monitor-header">
+            {logo_html}
+            <div>
+                <h1 class="monitor-title">
+                    Monitor Semanal de Enlaces
+                </h1>
+                <div class="monitor-subtitle">
+                    Reservas de laboratorios, salas y recursos tecnológicos
+                </div>
+            </div>
+            <div class="monitor-clock">
+                Actualizado
+                <span class="monitor-clock-time">
+                    {ahora.strftime("%H:%M")}
+                </span>
+            </div>
+        </header>
+
+        <nav class="monitor-toolbar">
+            <div class="monitor-week">
+                🗓️ Semana del {periodo}
+            </div>
+            <div class="monitor-nav">
+                <a href="{escapar(url_anterior)}">← Anterior</a>
+                <a href="{escapar(url_actual)}">Semana actual</a>
+                <a href="{escapar(url_siguiente)}">Siguiente →</a>
+            </div>
+        </nav>
+
+        {mensaje_error}
+
+        <section class="monitor-stats">
+            <div class="monitor-stat">
+                <div class="monitor-stat-label">
+                    Reservas
+                </div>
+                <div class="monitor-stat-value">
+                    {total_reservas}
+                </div>
+            </div>
+            <div class="monitor-stat">
+                <div class="monitor-stat-label">
+                    Recursos
+                </div>
+                <div class="monitor-stat-value">
+                    {len(recursos_unicos)}
+                </div>
+            </div>
+            <div class="monitor-stat">
+                <div class="monitor-stat-label">
+                    En curso
+                </div>
+                <div class="monitor-stat-value">
+                    {len(reservas_activas)}
+                </div>
+            </div>
+        </section>
+
+        <section class="monitor-now">
+            <div class="monitor-now-title">
+                🟢 En curso ahora
+            </div>
+            {ahora_estado}
+        </section>
+
+        <section class="monitor-grid">
+            {''.join(columnas_dias)}
+        </section>
+
+        <footer class="monitor-footer">
+            <span>
+                Actualización automática cada 60 segundos ·
+                Horario de Chile
+            </span>
+            <a href="{escapar(url_login)}">
+                Volver al acceso principal
+            </a>
+        </footer>
+    </main>
+    </body>
+    </html>
+    """
+
+    st.markdown(
+        """
+        <style>
+        [data-testid="stHeader"],
+        [data-testid="stSidebar"],
+        [data-testid="stToolbar"],
+        #MainMenu,
+        footer {
+            display:none !important;
+        }
+
+        .block-container {
+            max-width:none !important;
+            width:100% !important;
+            padding:0 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if hasattr(st, "html"):
+        st.html(documento)
+    else:
+        components.html(
+            documento,
+            height=1350,
+            scrolling=True,
+        )
+
+    st.stop()
+
+
+_modo_monitor_publico = str(
+    st.query_params.get("monitor") or ""
+).strip().lower()
+
+if _modo_monitor_publico in {
+    "semana",
+    "semanal",
+    "enlaces",
+}:
+    renderizar_monitor_semanal_publico()
+
+
 TZ_CHILE = pytz.timezone("America/Santiago")
 
 def convertir_datetime_chile(valor, por_defecto=None):
@@ -2438,7 +3299,7 @@ if not st.session_state.logged:
 
         with col_form:
             st.markdown("<h2 style='text-align: center; color: #1E3A8A; margin-bottom: 0px;'>SISTEMA CAV</h2>", unsafe_allow_html=True)
-            st.markdown("<p style='text-align: center; color: gray; font-size: 0.9rem;'>Reservas, recursos y diplomas digitales</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: gray; font-size: 0.9rem;'>Reservas, recursos, diplomas y monitor semanal público</p>", unsafe_allow_html=True)
             
             with st.container(border=True):
                 # Quitamos "Profesor" de las opciones. Ahora solo quedan Admin y Mensajería
@@ -2513,10 +3374,38 @@ if not st.session_state.logged:
             st.markdown("---")
             st.markdown("<h4 style='text-align:center;'>Acceso Público</h4>", unsafe_allow_html=True)
 
-            # Este botón activa la pantalla TV sin necesidad de contraseñas
-            if st.button("📺 Abrir Pantalla Informativa", use_container_width=True):
+            # Pantalla informativa pública dentro de la sesión actual.
+            if st.button(
+                "📺 Abrir Pantalla Informativa",
+                use_container_width=True,
+            ):
                 st.session_state.ver_pantalla_tv = True
                 st.rerun()
+
+            # Monitor semanal mediante enlace público compartible.
+            base_publica = obtener_url_base_aplicacion()
+            enlace_monitor = (
+                f"{base_publica}/?monitor=semana"
+                if base_publica
+                else "?monitor=semana"
+            )
+
+            st.link_button(
+                "🗓️ Abrir Monitor Semanal de Enlaces",
+                enlace_monitor,
+                type="primary",
+                use_container_width=True,
+            )
+
+            with st.expander(
+                "🔗 Copiar enlace público del monitor",
+                expanded=False,
+            ):
+                st.code(enlace_monitor, language=None)
+                st.caption(
+                    "Este enlace puede abrirse desde celulares, tablets, "
+                    "televisores o computadores sin iniciar sesión."
+                )
             # -------------------------------------------------------------
 
     # ESTO SIEMPRE DEBE IR AL FINAL DEL BLOQUE DE LOGIN
