@@ -1,36 +1,116 @@
 name: Mantener Supabase Activo
 
 on:
-  schedule:
-    - cron: '0 12 * * *'
   workflow_dispatch:
+  schedule:
+    - cron: "17 08,20 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mantener-supabase-activo
+  cancel-in-progress: true
 
 jobs:
   ping:
+    name: Verificar Supabase
     runs-on: ubuntu-latest
+    timeout-minutes: 4
+
     steps:
-      - name: Hacer consulta directa a Supabase
+      - name: Preparar URL del proyecto
+        id: prepare
+        shell: bash
         env:
-          URL_RAW: ${{ secrets.SUPABASE_URL }}
-          KEY_RAW: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         run: |
-          # 1. Limpiar comillas, espacios y barras al final de la URL
-          URL=$(echo "$URL_RAW" | tr -d '"' | tr -d "'" | tr -d ' ' | sed 's/\/*$//')
-          KEY=$(echo "$KEY_RAW" | tr -d '"' | tr -d "'" | tr -d ' ')
+          set -euo pipefail
 
-          echo "Probando conexión con Supabase..."
+          REF="$(printf '%s' "${SUPABASE_PROJECT_REF:-}" | tr -d '\r\n "' | tr '[:upper:]' '[:lower:]')"
+          RAW_URL="$(printf '%s' "${SUPABASE_URL:-}" | tr -d '\r\n "')"
 
-          # 2. Realizar la consulta a la API
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$URL/rest/v1/recursos?select=id&limit=1" \
-            -H "apikey: $KEY" \
-            -H "Authorization: Bearer $KEY")
+          if [ -n "$REF" ]; then
+            if ! printf '%s' "$REF" | grep -Eq '^[a-z0-9]+$'; then
+              echo "::error::SUPABASE_PROJECT_REF contiene caracteres inválidos."
+              exit 1
+            fi
+            BASE_URL="https://${REF}.supabase.co"
+          elif [ -n "$RAW_URL" ]; then
+            BASE_URL="$(
+              python - "$RAW_URL" <<'PY'
+import sys
+from urllib.parse import urlsplit
 
-          echo "Respuesta de Supabase (Código HTTP): $HTTP_STATUS"
+raw = sys.argv[1].strip().rstrip("/")
+if "://" not in raw:
+    raw = "https://" + raw
 
-          # 3. Validar si respondió con éxito (Código 200 o 206)
-          if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 206 ]; then
-            echo "✅ ¡Conexión exitosa! Supabase está activo y despierto."
+parts = urlsplit(raw)
+if parts.scheme != "https" or not parts.netloc:
+    raise SystemExit("URL inválida")
+
+print(f"https://{parts.netloc}")
+PY
+            )"
           else
-            echo "❌ Error de conexión (Código HTTP: $HTTP_STATUS). Revisa tus Secretos en GitHub."
+            echo "::error::Falta SUPABASE_PROJECT_REF o SUPABASE_URL en Repository secrets."
             exit 1
           fi
+
+          HOST="$(
+            python - "$BASE_URL" <<'PY'
+import sys
+from urllib.parse import urlsplit
+print(urlsplit(sys.argv[1]).hostname or "")
+PY
+          )"
+
+          if [ -z "$HOST" ]; then
+            echo "::error::No se pudo extraer el host de Supabase."
+            exit 1
+          fi
+
+          echo "base_url=$BASE_URL" >> "$GITHUB_OUTPUT"
+          echo "host=$HOST" >> "$GITHUB_OUTPUT"
+          echo "Proyecto preparado: $HOST"
+
+      - name: Comprobar resolución DNS
+        shell: bash
+        env:
+          HOST: ${{ steps.prepare.outputs.host }}
+        run: |
+          set -euo pipefail
+
+          echo "Resolviendo DNS para: $HOST"
+
+          if ! getent ahosts "$HOST"; then
+            echo "::error::No se pudo resolver $HOST."
+            echo "::error::Revisa que el Project URL o Project Ref coincida exactamente con Supabase."
+            exit 1
+          fi
+
+      - name: Consultar salud del servicio
+        shell: bash
+        env:
+          BASE_URL: ${{ steps.prepare.outputs.base_url }}
+        run: |
+          set -euo pipefail
+
+          URL="${BASE_URL%/}/auth/v1/health"
+          echo "Consultando: $URL"
+
+          HTTP_CODE="$(
+            curl               --silent               --show-error               --location               --retry 3               --retry-delay 4               --retry-all-errors               --connect-timeout 15               --max-time 45               --output health.json               --write-out "%{http_code}"               "$URL"
+          )"
+
+          echo "Código HTTP: $HTTP_CODE"
+          cat health.json || true
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Supabase respondió con HTTP $HTTP_CODE."
+            exit 1
+          fi
+
+          echo "Supabase respondió correctamente."
