@@ -133,11 +133,44 @@ def aplicar_diseno_responsivo_inteligente():
 
     img,
     video,
-    iframe,
     canvas,
     svg {
         max-width: 100% !important;
         height: auto;
+    }
+
+    iframe {
+        max-width: 100% !important;
+    }
+
+    /* streamlit-autorefresh usa un iframe invisible.
+       No se debe convertir en un bloque alto con height:auto. */
+    iframe[title*="autorefresh"],
+    iframe[src*="streamlit_autorefresh"] {
+        position: absolute !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        border: 0 !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        overflow: hidden !important;
+    }
+
+    div[data-testid="stElementContainer"]:has(
+        iframe[title*="autorefresh"]
+    ),
+    div[data-testid="stElementContainer"]:has(
+        iframe[src*="streamlit_autorefresh"]
+    ) {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
     }
 
     [data-testid="stImage"] img {
@@ -2499,13 +2532,19 @@ if st.session_state.get("ver_pantalla_tv", False):
         st.session_state.tv_scale_saved = 100
 
     escala_pct = int(st.session_state.get("tv_scale_saved", 100))
-    escala_pct = max(50, min(200, escala_pct))
+
+    # La pantalla se adapta automáticamente con CSS. El control manual queda
+    # solo como ajuste fino y no puede volver a dejar la pantalla diminuta.
+    if escala_pct < 80 or escala_pct > 130:
+        escala_pct = 100
+
+    escala_pct = max(80, min(130, escala_pct))
     st.session_state.tv_scale_saved = escala_pct
     escala = escala_pct / 100.0
 
     def guardar_escala_tv():
         valor = int(st.session_state.get("tv_scale_widget", 100))
-        st.session_state.tv_scale_saved = max(50, min(200, valor))
+        st.session_state.tv_scale_saved = max(80, min(130, valor))
 
     # 🕒 Sincronización absoluta con la hora local de Chile
     import pytz
@@ -2822,55 +2861,260 @@ if st.session_state.get("ver_pantalla_tv", False):
     st.markdown(f"""
     <style>
         @import url('https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css');
-        :root {{ --tv-scale: {escala}; }}
-        .stApp {{ background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }}
-        [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display: none !important; }}
-        
-        .tv-header {{ background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); color: #0f172a; padding: 15px 30px; border-radius: 20px; margin-bottom: 25px; border: 1px solid #e2e8f0; box-shadow: 0 10px 30px rgba(0,0,0,0.4); display: flex; justify-content: space-between; align-items: center; }}
-        .header-logo-img {{ height: calc(75px * var(--tv-scale)); width: auto; }}
-        .header-info {{ display: flex; align-items: center; gap: 24px; font-size: calc(1.35rem * var(--tv-scale)); font-weight: 800; color: #334155; }}
-        .time-highlight {{ color: #2563eb !important; font-weight: 900; background: #eff6ff; padding: 6px 16px; border-radius: 10px; border: 1px solid #bfdbfe; }}
-        
-        .progress-bar {{ height: 6px; background: linear-gradient(90deg, #3b82f6, #60a5fa); width: 0%; animation: load 20s linear infinite; margin-top: -10px; margin-bottom: 25px; border-radius: 10px; }}
-        @keyframes load {{ 0% {{ width: 0%; }} 100% {{ width: 100%; }} }}
-        @keyframes slideIn {{ from {{ opacity: 0; transform: translateY(20px); }} to {{ opacity: 1; transform: translateY(0); }} }}
-        
-        .stExpander {{ background-color: #1e293b !important; border: 1px solid #3b82f640 !important; border-radius: 14px !important; margin-top: 20px !important; }}
-        .stExpander * {{ color: #f8fafc !important; }}
-        .stExpander summary {{ font-weight: 800 !important; font-size: 1.05rem !important; }}
 
-        /* ==============================================================
-           NUEVA COMPOSICIÓN: AVISOS DESTACADOS + AGENDA COMPACTA
-           ============================================================== */
+        :root {{
+            --tv-scale: {escala};
+            --tv-page-gap: clamp(8px, min(1.2vw, 1.8vh), 24px);
+            --tv-card-gap: clamp(9px, min(1vw, 1.4vh), 18px);
+            --tv-header-pad-y: clamp(10px, min(1.2vw, 1.7vh), 18px);
+            --tv-header-pad-x: clamp(14px, min(2vw, 2.2vh), 30px);
+            --tv-heading-size:
+                clamp(1.25rem, min(2.15vw, 3.15vh), 2.55rem);
+            --tv-subtitle-size:
+                clamp(.78rem, min(1vw, 1.55vh), 1.05rem);
+            --tv-notice-title-size:
+                clamp(1.05rem, min(1.75vw, 2.55vh), 2.15rem);
+            --tv-notice-body-size:
+                clamp(.9rem, min(1.22vw, 1.9vh), 1.5rem);
+            --tv-agenda-title-size:
+                clamp(.9rem, min(1.05vw, 1.65vh), 1.2rem);
+        }}
+
+        html,
+        body,
+        .stApp,
+        [data-testid="stAppViewContainer"],
+        [data-testid="stMain"] {{
+            width: 100% !important;
+            min-width: 100% !important;
+            min-height: 100dvh !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow-x: hidden !important;
+        }}
+
+        .stApp {{
+            background-color: #0f172a !important;
+            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+        }}
+
+        [data-testid="stHeader"],
+        [data-testid="stSidebar"],
+        [data-testid="stToolbar"],
+        #MainMenu,
+        footer {{
+            display: none !important;
+        }}
+
+        [data-testid="stMainBlockContainer"],
+        .block-container {{
+            width: 100% !important;
+            max-width: none !important;
+            min-height: 100dvh !important;
+            margin: 0 !important;
+            padding: var(--tv-page-gap) !important;
+        }}
+
+        /* El autorefresh no debe reservar altura visible. */
+        iframe[title*="autorefresh"],
+        iframe[src*="streamlit_autorefresh"] {{
+            position: absolute !important;
+            width: 0 !important;
+            height: 0 !important;
+            min-height: 0 !important;
+            opacity: 0 !important;
+            border: 0 !important;
+            pointer-events: none !important;
+        }}
+
+        div[data-testid="stElementContainer"]:has(
+            iframe[title*="autorefresh"]
+        ),
+        div[data-testid="stElementContainer"]:has(
+            iframe[src*="streamlit_autorefresh"]
+        ) {{
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+        }}
+
+        [data-testid="stHorizontalBlock"] {{
+            gap: clamp(12px, 1.45vw, 30px) !important;
+            align-items: flex-start !important;
+        }}
+
+        [data-testid="column"] {{
+            min-width: 0 !important;
+        }}
+
+        .tv-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: clamp(12px, 1.5vw, 28px);
+            min-height: clamp(72px, 11vh, 126px);
+            margin: 0 0 clamp(9px, 1.7vh, 22px) 0;
+            padding:
+                var(--tv-header-pad-y)
+                var(--tv-header-pad-x);
+            color: #0f172a;
+            background:
+                linear-gradient(
+                    135deg,
+                    #ffffff 0%,
+                    #f8fafc 100%
+                );
+            border: 1px solid #e2e8f0;
+            border-radius: clamp(14px, 1.4vw, 22px);
+            box-shadow: 0 10px 30px rgba(0,0,0,.34);
+        }}
+
+        .header-logo-img {{
+            width: auto;
+            height:
+                clamp(
+                    54px,
+                    min(7.5vw, 10vh),
+                    112px
+                );
+            object-fit: contain;
+        }}
+
+        .header-info {{
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: clamp(10px, 1.45vw, 26px);
+            min-width: 0;
+            color: #334155;
+            font-size:
+                calc(
+                    clamp(
+                        .82rem,
+                        min(1.32vw, 2.05vh),
+                        1.55rem
+                    )
+                    * var(--tv-scale)
+                );
+            font-weight: 800;
+            flex-wrap: wrap;
+        }}
+
+        .time-highlight {{
+            padding:
+                clamp(5px, .55vh, 8px)
+                clamp(10px, .95vw, 17px);
+            color: #2563eb !important;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 10px;
+            font-weight: 900;
+            white-space: nowrap;
+        }}
+
+        .progress-bar {{
+            width: 0%;
+            height: clamp(3px, .55vh, 6px);
+            margin-top: calc(-1 * clamp(4px, .7vh, 9px));
+            margin-bottom: clamp(8px, 1.6vh, 20px);
+            background:
+                linear-gradient(
+                    90deg,
+                    #3b82f6,
+                    #60a5fa
+                );
+            border-radius: 10px;
+            animation: load 20s linear infinite;
+        }}
+
+        @keyframes load {{
+            0% {{ width: 0%; }}
+            100% {{ width: 100%; }}
+        }}
+
+        @keyframes slideIn {{
+            from {{
+                opacity: 0;
+                transform: translateY(14px);
+            }}
+            to {{
+                opacity: 1;
+                transform: translateY(0);
+            }}
+        }}
+
+        .stExpander {{
+            margin-top: clamp(8px, 1.4vh, 18px) !important;
+            background-color: #1e293b !important;
+            border: 1px solid #3b82f640 !important;
+            border-radius: 14px !important;
+        }}
+
+        .stExpander * {{
+            color: #f8fafc !important;
+        }}
+
+        .stExpander summary {{
+            font-size:
+                calc(
+                    clamp(.88rem, min(1vw, 1.55vh), 1.08rem)
+                    * var(--tv-scale)
+                ) !important;
+            font-weight: 800 !important;
+        }}
+
         .tv-section-head {{
             display: flex;
             align-items: flex-start;
             justify-content: space-between;
-            gap: 16px;
-            margin: 0 0 14px 0;
+            gap: clamp(10px, 1vw, 18px);
+            margin: 0 0 clamp(8px, 1.2vh, 14px) 0;
         }}
+
         .tv-section-title {{
-            margin: 0;
-            color: #f8fafc;
-            font-size: calc(1.72rem * var(--tv-scale));
-            line-height: 1.1;
-            font-weight: 900;
+            margin: 0 !important;
+            color: #f8fafc !important;
+            font-size:
+                calc(
+                    var(--tv-heading-size)
+                    * var(--tv-scale)
+                ) !important;
+            line-height: 1.08 !important;
+            font-weight: 900 !important;
             text-shadow: 2px 2px 5px rgba(0,0,0,.34);
+            text-wrap: balance;
         }}
+
         .tv-section-subtitle {{
-            margin-top: 5px;
+            margin-top: clamp(3px, .55vh, 6px);
             color: #94a3b8;
-            font-size: calc(.92rem * var(--tv-scale));
+            font-size:
+                calc(
+                    var(--tv-subtitle-size)
+                    * var(--tv-scale)
+                );
             font-weight: 650;
         }}
+
         .tv-count-badge {{
             flex-shrink: 0;
+            padding:
+                clamp(5px, .65vh, 8px)
+                clamp(9px, .8vw, 13px);
+            color: #e2e8f0;
+            background: rgba(255,255,255,.08);
             border: 1px solid rgba(255,255,255,.16);
             border-radius: 999px;
-            padding: 7px 12px;
-            background: rgba(255,255,255,.08);
-            color: #e2e8f0;
-            font-size: calc(.82rem * var(--tv-scale));
+            font-size:
+                calc(
+                    clamp(.68rem, min(.82vw, 1.25vh), .92rem)
+                    * var(--tv-scale)
+                );
             font-weight: 850;
             white-space: nowrap;
         }}
@@ -2878,181 +3122,427 @@ if st.session_state.get("ver_pantalla_tv", False):
         .tv-notice-card {{
             position: relative;
             overflow: hidden;
-            min-height: 205px;
-            margin-bottom: 18px;
-            padding: 25px 28px 22px 30px;
-            border-radius: 20px;
+            min-height: 0;
+            margin-bottom: var(--tv-card-gap);
+            padding:
+                clamp(14px, min(1.45vw, 2.1vh), 27px)
+                clamp(16px, min(1.55vw, 2.1vh), 29px)
+                clamp(13px, min(1.35vw, 1.9vh), 24px)
+                clamp(20px, min(1.75vw, 2.25vh), 33px);
             border: 1px solid rgba(255,255,255,.78);
-            box-shadow: 0 12px 28px rgba(0,0,0,.28);
-            animation: slideIn .48s ease-out;
+            border-radius: clamp(14px, 1.3vw, 21px);
+            box-shadow: 0 10px 25px rgba(0,0,0,.25);
+            animation: slideIn .42s ease-out;
         }}
+
         .tv-notice-card::before {{
             content: "";
             position: absolute;
             inset: 0 auto 0 0;
-            width: 11px;
+            width: clamp(7px, .7vw, 11px);
         }}
+
         .tv-notice-high {{
-            background: linear-gradient(135deg, #fff1f2 0%, #ffffff 72%);
             color: #1e293b;
+            background:
+                linear-gradient(
+                    135deg,
+                    #fff1f2 0%,
+                    #ffffff 72%
+                );
         }}
-        .tv-notice-high::before {{ background: #e11d48; }}
+
+        .tv-notice-high::before {{
+            background: #e11d48;
+        }}
+
         .tv-notice-medium {{
-            background: linear-gradient(135deg, #fffbeb 0%, #ffffff 72%);
             color: #1e293b;
+            background:
+                linear-gradient(
+                    135deg,
+                    #fffbeb 0%,
+                    #ffffff 72%
+                );
         }}
-        .tv-notice-medium::before {{ background: #d97706; }}
+
+        .tv-notice-medium::before {{
+            background: #d97706;
+        }}
 
         .tv-notice-top {{
             display: flex;
             align-items: flex-start;
             justify-content: space-between;
-            gap: 18px;
+            gap: clamp(10px, 1vw, 18px);
         }}
+
         .tv-notice-heading {{
             display: flex;
             align-items: center;
-            gap: 13px;
+            gap: clamp(8px, .9vw, 14px);
             min-width: 0;
         }}
+
         .tv-notice-symbol {{
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 48px;
-            height: 48px;
-            flex: 0 0 48px;
-            border-radius: 14px;
+            width:
+                clamp(
+                    38px,
+                    min(4vw, 6vh),
+                    54px
+                );
+            height:
+                clamp(
+                    38px,
+                    min(4vw, 6vh),
+                    54px
+                );
+            flex: 0 0 auto;
             background: rgba(255,255,255,.82);
             border: 1px solid rgba(15,23,42,.08);
-            font-size: calc(1.35rem * var(--tv-scale));
+            border-radius: clamp(10px, 1vw, 15px);
+            font-size:
+                calc(
+                    clamp(1.05rem, min(1.5vw, 2.3vh), 1.55rem)
+                    * var(--tv-scale)
+                );
         }}
+
         .tv-notice-title {{
             color: #0f172a;
-            font-size: calc(1.62rem * var(--tv-scale));
-            line-height: 1.13;
+            font-size:
+                calc(
+                    var(--tv-notice-title-size)
+                    * var(--tv-scale)
+                );
+            line-height: 1.11;
             font-weight: 950;
             overflow-wrap: anywhere;
+            text-wrap: balance;
         }}
+
         .tv-priority-pill {{
             flex-shrink: 0;
+            padding:
+                clamp(5px, .6vh, 8px)
+                clamp(8px, .75vw, 13px);
             border-radius: 999px;
-            padding: 7px 12px;
-            font-size: calc(.72rem * var(--tv-scale));
+            font-size:
+                calc(
+                    clamp(.62rem, min(.72vw, 1.1vh), .83rem)
+                    * var(--tv-scale)
+                );
             font-weight: 950;
             letter-spacing: .04em;
             white-space: nowrap;
         }}
+
         .tv-priority-high {{
-            background: #ffe4e6;
             color: #9f1239;
+            background: #ffe4e6;
             border: 1px solid #fecdd3;
         }}
+
         .tv-priority-medium {{
-            background: #fef3c7;
             color: #92400e;
+            background: #fef3c7;
             border: 1px solid #fde68a;
         }}
+
         .tv-notice-text {{
             display: flex;
             flex-direction: column;
-            gap: 9px;
-            margin: 18px 0 0 61px;
+            gap: clamp(5px, .8vh, 10px);
+            margin:
+                clamp(10px, 1.3vh, 19px)
+                0 0
+                clamp(0px, 4.3vw, 61px);
             color: #334155;
-            font-size: calc(1.22rem * var(--tv-scale));
-            line-height: 1.42;
+            font-size:
+                calc(
+                    var(--tv-notice-body-size)
+                    * var(--tv-scale)
+                );
+            line-height: 1.36;
             font-weight: 700;
             text-align: left;
             overflow-wrap: anywhere;
         }}
+
         .tv-notice-line {{
             display: block;
             width: 100%;
         }}
+
         .tv-notice-footer {{
             display: flex;
             justify-content: flex-end;
-            margin: 18px 0 0 61px;
+            margin:
+                clamp(9px, 1.2vh, 18px)
+                0 0
+                clamp(0px, 4.3vw, 61px);
             color: #64748b;
-            font-size: calc(.79rem * var(--tv-scale));
+            font-size:
+                calc(
+                    clamp(.67rem, min(.78vw, 1.18vh), .88rem)
+                    * var(--tv-scale)
+                );
             font-weight: 750;
         }}
 
         .tv-agenda-card {{
-            margin-bottom: 11px;
-            padding: 13px 14px;
-            border-radius: 14px;
+            margin-bottom: clamp(7px, .95vh, 12px);
+            padding:
+                clamp(10px, min(1vw, 1.45vh), 14px);
             background: #ffffff;
             border: 1px solid #e2e8f0;
-            border-left: 7px solid #3b82f6;
-            box-shadow: 0 5px 15px rgba(0,0,0,.20);
-            animation: slideIn .42s ease-out;
+            border-left: clamp(5px, .5vw, 7px) solid #3b82f6;
+            border-radius: clamp(11px, 1vw, 15px);
+            box-shadow: 0 5px 15px rgba(0,0,0,.18);
+            animation: slideIn .38s ease-out;
         }}
-        .tv-agenda-card.reserva {{ border-left-color: #10b981; }}
-        .tv-agenda-card.calendario {{ border-left-color: #8b5cf6; }}
+
+        .tv-agenda-card.reserva {{
+            border-left-color: #10b981;
+        }}
+
+        .tv-agenda-card.calendario {{
+            border-left-color: #8b5cf6;
+        }}
+
         .tv-agenda-time {{
             display: inline-flex;
             align-items: center;
-            margin-bottom: 7px;
-            padding: 4px 8px;
-            border-radius: 8px;
-            background: #eff6ff;
+            margin-bottom: clamp(4px, .55vh, 7px);
+            padding:
+                clamp(3px, .4vh, 5px)
+                clamp(6px, .55vw, 9px);
             color: #1e40af;
+            background: #eff6ff;
             border: 1px solid #bfdbfe;
-            font-size: calc(.76rem * var(--tv-scale));
+            border-radius: 8px;
+            font-size:
+                calc(
+                    clamp(.64rem, min(.75vw, 1.15vh), .86rem)
+                    * var(--tv-scale)
+                );
             font-weight: 900;
         }}
+
         .tv-agenda-title {{
             color: #0f172a;
-            font-size: calc(1rem * var(--tv-scale));
-            line-height: 1.22;
+            font-size:
+                calc(
+                    var(--tv-agenda-title-size)
+                    * var(--tv-scale)
+                );
+            line-height: 1.18;
             font-weight: 900;
             overflow-wrap: anywhere;
         }}
+
         .tv-agenda-desc {{
-            margin-top: 5px;
+            margin-top: clamp(3px, .45vh, 6px);
             color: #64748b;
-            font-size: calc(.79rem * var(--tv-scale));
-            line-height: 1.25;
+            font-size:
+                calc(
+                    clamp(.68rem, min(.8vw, 1.2vh), .9rem)
+                    * var(--tv-scale)
+                );
+            line-height: 1.23;
             font-weight: 650;
             overflow-wrap: anywhere;
         }}
+
         .tv-empty-state {{
             display: flex;
-            min-height: 210px;
+            min-height:
+                clamp(
+                    120px,
+                    24vh,
+                    220px
+                );
             align-items: center;
             justify-content: center;
             flex-direction: column;
-            gap: 8px;
-            padding: 28px;
-            border-radius: 18px;
-            border: 1px dashed rgba(148,163,184,.45);
-            background: rgba(30,41,59,.72);
+            gap: clamp(5px, .7vh, 9px);
+            padding: clamp(18px, 2vw, 30px);
             color: #cbd5e1;
+            background: rgba(30,41,59,.72);
+            border: 1px dashed rgba(148,163,184,.45);
+            border-radius: clamp(14px, 1.2vw, 19px);
             text-align: center;
         }}
-        .tv-empty-icon {{ font-size: calc(2rem * var(--tv-scale)); }}
+
+        .tv-empty-icon {{
+            font-size:
+                calc(
+                    clamp(1.55rem, min(2vw, 3vh), 2.25rem)
+                    * var(--tv-scale)
+                );
+        }}
+
         .tv-empty-title {{
             color: #f8fafc;
-            font-size: calc(1.05rem * var(--tv-scale));
+            font-size:
+                calc(
+                    clamp(.9rem, min(1.05vw, 1.55vh), 1.2rem)
+                    * var(--tv-scale)
+                );
             font-weight: 900;
         }}
+
         .tv-empty-text {{
             color: #94a3b8;
-            font-size: calc(.83rem * var(--tv-scale));
+            font-size:
+                calc(
+                    clamp(.7rem, min(.82vw, 1.2vh), .92rem)
+                    * var(--tv-scale)
+                );
             font-weight: 650;
         }}
 
-        @media (max-width: 900px) {{
-            .tv-notice-card {{
-                min-height: 0;
-                padding: 19px 20px 18px 23px;
+        /* Pantallas con poca altura: compactar automáticamente. */
+        @media (max-height: 850px) and (min-width: 1000px) {{
+            :root {{
+                --tv-page-gap: 8px;
+                --tv-card-gap: 8px;
+                --tv-heading-size:
+                    clamp(1.12rem, min(1.9vw, 2.75vh), 2rem);
+                --tv-notice-title-size:
+                    clamp(.98rem, min(1.5vw, 2.15vh), 1.75rem);
+                --tv-notice-body-size:
+                    clamp(.82rem, min(1.05vw, 1.55vh), 1.2rem);
             }}
+
+            .tv-header {{
+                min-height: 66px;
+                margin-bottom: 8px;
+                padding: 8px 16px;
+            }}
+
+            .header-logo-img {{
+                height: clamp(48px, 7vh, 72px);
+            }}
+
+            .progress-bar {{
+                margin-bottom: 8px;
+            }}
+
+            .tv-notice-card {{
+                padding: 12px 18px 11px 22px;
+            }}
+
+            .tv-notice-text {{
+                margin-top: 8px;
+                gap: 4px;
+            }}
+
+            .tv-notice-footer {{
+                margin-top: 8px;
+            }}
+
+            .stExpander {{
+                margin-top: 7px !important;
+            }}
+        }}
+
+        /* Tablets y pantallas estrechas: columnas verticales. */
+        @media (max-width: 1050px) {{
+            [data-testid="stHorizontalBlock"] {{
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 14px !important;
+            }}
+
+            [data-testid="column"] {{
+                width: 100% !important;
+                min-width: 100% !important;
+                flex: 1 1 100% !important;
+            }}
+
+            .tv-header {{
+                align-items: flex-start;
+                flex-direction: column;
+            }}
+
+            .header-info {{
+                width: 100%;
+                justify-content: flex-start;
+            }}
+
             .tv-notice-text,
             .tv-notice-footer {{
                 margin-left: 0;
             }}
-            .tv-priority-pill {{ display: none; }}
+        }}
+
+        /* Celulares. */
+        @media (max-width: 620px) {{
+            [data-testid="stMainBlockContainer"],
+            .block-container {{
+                padding: 7px !important;
+            }}
+
+            .tv-header {{
+                gap: 9px;
+                border-radius: 14px;
+            }}
+
+            .header-logo-img {{
+                max-width: 100%;
+                height: auto;
+                max-height: 68px;
+            }}
+
+            .header-info {{
+                gap: 8px;
+                font-size: .84rem;
+            }}
+
+            .tv-section-head {{
+                align-items: flex-start;
+            }}
+
+            .tv-priority-pill {{
+                display: none;
+            }}
+
+            .tv-count-badge {{
+                max-width: 42%;
+                white-space: normal;
+                text-align: center;
+            }}
+
+            .tv-notice-card {{
+                padding: 14px 14px 13px 18px;
+            }}
+        }}
+
+        /* Pantallas 4K o monitores muy grandes. */
+        @media (min-width: 2200px) and (min-height: 1200px) {{
+            :root {{
+                --tv-heading-size: 3rem;
+                --tv-notice-title-size: 2.45rem;
+                --tv-notice-body-size: 1.72rem;
+                --tv-agenda-title-size: 1.35rem;
+            }}
+
+            [data-testid="stMainBlockContainer"],
+            .block-container {{
+                padding: 28px !important;
+            }}
+        }}
+
+        @media (prefers-reduced-motion: reduce) {{
+            .progress-bar,
+            .tv-notice-card,
+            .tv-agenda-card {{
+                animation: none !important;
+            }}
         }}
     </style>
     """, unsafe_allow_html=True)
@@ -3109,7 +3599,17 @@ if st.session_state.get("ver_pantalla_tv", False):
         total_avisos = len(avisos_vivos)
 
         if total_avisos:
-            AVISOS_POR_PAGINA = 2
+            longitud_max_aviso = max(
+                (
+                    len(str(aviso.get("titulo", "") or ""))
+                    + len(str(aviso.get("descripcion", "") or ""))
+                )
+                for aviso in avisos_vivos
+            )
+            AVISOS_POR_PAGINA = (
+                1 if longitud_max_aviso > 430 else 2
+            )
+
             paginas_avisos = max(
                 1,
                 (total_avisos + AVISOS_POR_PAGINA - 1) // AVISOS_POR_PAGINA,
@@ -3202,7 +3702,17 @@ if st.session_state.get("ver_pantalla_tv", False):
         total_eventos = len(eventos)
 
         if total_eventos:
-            AGENDA_POR_PAGINA = 4
+            longitud_max_agenda = max(
+                (
+                    len(str(item.get("titulo", "") or ""))
+                    + len(str(item.get("desc", "") or ""))
+                )
+                for item in eventos
+            )
+            AGENDA_POR_PAGINA = (
+                3 if longitud_max_agenda > 260 else 4
+            )
+
             paginas_agenda = max(
                 1,
                 (total_eventos + AGENDA_POR_PAGINA - 1) // AGENDA_POR_PAGINA,
@@ -3291,12 +3801,16 @@ if st.session_state.get("ver_pantalla_tv", False):
                 )
 
             st.slider(
-                "🔍 Tamaño de texto (%)",
-                50,
-                200,
+                "🔍 Ajuste manual fino (%)",
+                80,
+                130,
                 key="tv_scale_widget",
                 step=5,
                 on_change=guardar_escala_tv,
+                help=(
+                    "La adaptación principal es automática según el ancho y "
+                    "alto de la pantalla. Este control solo permite un ajuste fino."
+                ),
             )
 
         st.write("")
@@ -3606,7 +4120,7 @@ if not st.session_state.logged:
 
         with col_form:
             st.markdown("<h2 style='text-align: center; color: #1E3A8A; margin-bottom: 0px;'>SISTEMA CAV</h2>", unsafe_allow_html=True)
-            st.markdown("<p style='text-align: center; color: gray; font-size: 0.9rem;'>Reservas, recursos, diplomas y monitor semanal · Diseño responsivo V18</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: gray; font-size: 0.9rem;'>Reservas, recursos, diplomas y monitor semanal · Autoescala inteligente V18.1</p>", unsafe_allow_html=True)
             
             with st.container(border=True):
                 # Quitamos "Profesor" de las opciones. Ahora solo quedan Admin y Mensajería
