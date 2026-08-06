@@ -4663,106 +4663,1012 @@ if page == "Registrar":
                         except Exception as e:
                             st.error(f"Error al guardar en la nube: {e}")
 if page == "Base de datos":
-    st.title("🗃️ Base de Datos de Reservas")
-    st.info("Nota: Para eliminar una fila selecciónala y presiona Supr/Delete, luego guarda.")
-    
-    with st.container(border=True):
-        if not df.empty:
-            df_display = df.drop(columns=['id'])
-            edited_df = st.data_editor(
-                df_display, 
-                hide_index=True, 
-                use_container_width=True, 
-                num_rows="dynamic", 
-                column_config={
-                    "Fecha": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"), 
-                    "Hora inicio": st.column_config.TimeColumn("Hora Inicio", format="HH:mm"), 
-                    "Hora fin": st.column_config.TimeColumn("Hora Fin", format="HH:mm"), 
-                    "Profesor": st.column_config.SelectboxColumn("Profesor", options=PROFESORES, required=True), 
-                    "Curso": st.column_config.SelectboxColumn("Curso", options=CURSOS, required=True), 
-                    "Recurso": st.column_config.SelectboxColumn("Recurso", options=RECURSOS, required=True)
-                }
+    st.title("🗃️ Centro avanzado de registros")
+    st.caption(
+        "Busca, consulta, edita, elimina y exporta reservas de forma segura. "
+        "Los filtros se aplican sin modificar la información original."
+    )
+
+    def bd_fecha(valor):
+        try:
+            return pd.to_datetime(valor).date()
+        except Exception:
+            return None
+
+    def bd_hora(valor):
+        if isinstance(valor, dt.time):
+            return valor
+        try:
+            return pd.to_datetime(str(valor)).time()
+        except Exception:
+            try:
+                return dt.datetime.strptime(
+                    str(valor)[:5],
+                    "%H:%M",
+                ).time()
+            except Exception:
+                return dt.time(0, 0)
+
+    def bd_hora_texto(valor):
+        hora = bd_hora(valor)
+        return hora.strftime("%H:%M")
+
+    def bd_etiqueta_registro(fila):
+        return (
+            f"ID {int(fila['id'])} · "
+            f"{bd_fecha(fila['Fecha']).strftime('%d/%m/%Y') if bd_fecha(fila['Fecha']) else 'Sin fecha'} · "
+            f"{bd_hora_texto(fila['Hora inicio'])} · "
+            f"{fila.get('Recurso', 'Sin recurso')} · "
+            f"{fila.get('Profesor', 'Sin profesor')}"
+        )
+
+    if df.empty:
+        st.info("No hay reservas registradas en la base de datos.")
+    else:
+        datos_bd = df.copy()
+
+        # Columnas normalizadas solo para filtros y orden.
+        datos_bd["_fecha_filtro"] = pd.to_datetime(
+            datos_bd["Fecha"],
+            errors="coerce",
+        ).dt.date
+        datos_bd["_hora_inicio_filtro"] = datos_bd["Hora inicio"].apply(
+            bd_hora
+        )
+        datos_bd["_texto_busqueda"] = (
+            datos_bd[
+                [
+                    "Profesor",
+                    "Curso",
+                    "Recurso",
+                    "Observaciones",
+                ]
+            ]
+            .fillna("")
+            .astype(str)
+            .agg(" ".join, axis=1)
+            .str.lower()
+        )
+
+        st.markdown("### 🔎 Búsqueda avanzada")
+
+        with st.container(border=True):
+            fila_1 = st.columns([1.5, 1, 1, 1])
+
+            texto_busqueda = fila_1[0].text_input(
+                "Buscar en todos los campos",
+                placeholder=(
+                    "Profesor, curso, recurso, observación o ID"
+                ),
+                key="bd_busqueda_global",
             )
-            
-            if st.button("💾 Guardar Cambios en la Nube", use_container_width=True, type="primary"):
-                with st.spinner("Sincronizando con Supabase..."):
-                    try:
-                        original_indices = set(df.index)
-                        edited_indices = set(edited_df.index)
-                        
-                        # ---------------------------------------------------------
-                        # 1. ELIMINACIONES
-                        # ---------------------------------------------------------
-                        deleted_indices = original_indices - edited_indices
-                        for idx in deleted_indices:
-                            id_borrar = int(df.loc[idx, 'id'])
-                            supabase.table("reservas").delete().eq("id", id_borrar).execute()
-                            
-                            prof_name = df.loc[idx, 'Profesor']
-                            email_to = PROFESOR_DATA.get(prof_name)
-                            if email_to:
-                                subject = f"Cancelación de Reserva de Recursos - {df.loc[idx, 'Curso']}"
-                                body = f"""<html><body><p>Hola {prof_name.split(' ')[0]},</p><p>Te informamos que la siguiente reserva ha sido <b>cancelada</b>:</p><ul><li><b>Fecha:</b> {format_date_es(df.loc[idx, 'Fecha'])}</li><li><b>Horario:</b> {df.loc[idx, 'Hora inicio'].strftime('%H:%M')} - {df.loc[idx, 'Hora fin'].strftime('%H:%M')}</li><li><b>Curso:</b> {df.loc[idx, 'Curso']}</li><li><b>Recurso:</b> {df.loc[idx, 'Recurso']}</li></ul><p>Saludos,<br>Sistema de Horarios CAV</p></body></html>"""
-                                send_email(subject, body, email_to)
 
-                        # ---------------------------------------------------------
-                        # 2. MODIFICACIONES (¡Lo que nos faltaba!)
-                        # ---------------------------------------------------------
-                        common_indices = original_indices.intersection(edited_indices)
-                        for idx in common_indices:
-                            r_orig = df_display.loc[idx]
-                            r_edit = edited_df.loc[idx]
-                            
-                            # Comparamos si cambió alguna celda (Fecha, hora, profe, etc.)
-                            if str(r_orig["Fecha"]) != str(r_edit["Fecha"]) or \
-                               str(r_orig["Hora inicio"]) != str(r_edit["Hora inicio"]) or \
-                               str(r_orig["Hora fin"]) != str(r_edit["Hora fin"]) or \
-                               str(r_orig["Profesor"]) != str(r_edit["Profesor"]) or \
-                               str(r_orig["Curso"]) != str(r_edit["Curso"]) or \
-                               str(r_orig["Recurso"]) != str(r_edit["Recurso"]) or \
-                               str(r_orig.get("Observaciones", "")) != str(r_edit.get("Observaciones", "")):
-                               
-                                # Si algo cambió, actualizamos esa fila específica en Supabase
-                                id_actualizar = int(df.loc[idx, 'id'])
+            profesores_filtro = fila_1[1].multiselect(
+                "Profesor",
+                sorted(
+                    datos_bd["Profesor"]
+                    .dropna()
+                    .astype(str)
+                    .unique()
+                    .tolist()
+                ),
+                placeholder="Todos",
+                key="bd_filtro_profesor",
+            )
+
+            cursos_filtro = fila_1[2].multiselect(
+                "Curso",
+                sorted(
+                    datos_bd["Curso"]
+                    .dropna()
+                    .astype(str)
+                    .unique()
+                    .tolist()
+                ),
+                placeholder="Todos",
+                key="bd_filtro_curso",
+            )
+
+            recursos_filtro = fila_1[3].multiselect(
+                "Recurso",
+                sorted(
+                    datos_bd["Recurso"]
+                    .dropna()
+                    .astype(str)
+                    .unique()
+                    .tolist()
+                ),
+                placeholder="Todos",
+                key="bd_filtro_recurso",
+            )
+
+            fila_2 = st.columns([1, 1, 1, 1])
+
+            fecha_minima = datos_bd["_fecha_filtro"].dropna().min()
+            fecha_maxima = datos_bd["_fecha_filtro"].dropna().max()
+
+            usar_todas_fechas = fila_2[0].checkbox(
+                "Todas las fechas",
+                value=True,
+                key="bd_todas_fechas",
+            )
+
+            fecha_desde = fila_2[1].date_input(
+                "Desde",
+                value=fecha_minima or dt.date.today(),
+                format="DD/MM/YYYY",
+                disabled=usar_todas_fechas,
+                key="bd_fecha_desde",
+            )
+
+            fecha_hasta = fila_2[2].date_input(
+                "Hasta",
+                value=fecha_maxima or dt.date.today(),
+                format="DD/MM/YYYY",
+                disabled=usar_todas_fechas,
+                key="bd_fecha_hasta",
+            )
+
+            solo_futuras = fila_2[3].checkbox(
+                "Solo reservas vigentes o futuras",
+                value=False,
+                key="bd_solo_futuras",
+            )
+
+            fila_3 = st.columns([1.3, 1, 1, 1])
+
+            campo_orden = fila_3[0].selectbox(
+                "Ordenar por",
+                [
+                    "Fecha",
+                    "Hora inicio",
+                    "Profesor",
+                    "Curso",
+                    "Recurso",
+                    "id",
+                ],
+                key="bd_orden_campo",
+            )
+
+            orden_descendente = fila_3[1].toggle(
+                "Orden descendente",
+                value=False,
+                key="bd_orden_desc",
+            )
+
+            resultados_pagina = fila_3[2].selectbox(
+                "Resultados por página",
+                [10, 20, 50, 100],
+                index=1,
+                key="bd_resultados_pagina",
+            )
+
+            mostrar_observaciones = fila_3[3].toggle(
+                "Mostrar observaciones",
+                value=True,
+                key="bd_mostrar_observaciones",
+            )
+
+        filtrados = datos_bd.copy()
+
+        if texto_busqueda.strip():
+            texto_normalizado = texto_busqueda.strip().lower()
+            mascara_texto = filtrados["_texto_busqueda"].str.contains(
+                texto_normalizado,
+                regex=False,
+                na=False,
+            )
+            if texto_normalizado.isdigit():
+                mascara_texto = (
+                    mascara_texto
+                    | filtrados["id"]
+                    .astype(str)
+                    .str.contains(
+                        texto_normalizado,
+                        regex=False,
+                        na=False,
+                    )
+                )
+            filtrados = filtrados[mascara_texto]
+
+        if profesores_filtro:
+            filtrados = filtrados[
+                filtrados["Profesor"].isin(profesores_filtro)
+            ]
+
+        if cursos_filtro:
+            filtrados = filtrados[
+                filtrados["Curso"].isin(cursos_filtro)
+            ]
+
+        if recursos_filtro:
+            filtrados = filtrados[
+                filtrados["Recurso"].isin(recursos_filtro)
+            ]
+
+        if not usar_todas_fechas:
+            filtrados = filtrados[
+                filtrados["_fecha_filtro"].between(
+                    fecha_desde,
+                    fecha_hasta,
+                    inclusive="both",
+                )
+            ]
+
+        if solo_futuras:
+            filtrados = filtrados[
+                filtrados["_fecha_filtro"] >= dt.date.today()
+            ]
+
+        columna_orden_real = {
+            "Fecha": "_fecha_filtro",
+            "Hora inicio": "_hora_inicio_filtro",
+        }.get(campo_orden, campo_orden)
+
+        filtrados = filtrados.sort_values(
+            columna_orden_real,
+            ascending=not orden_descendente,
+            na_position="last",
+        )
+
+        total_encontrados = len(filtrados)
+        hoy_bd = dt.date.today()
+        reservas_hoy = int(
+            (filtrados["_fecha_filtro"] == hoy_bd).sum()
+        )
+        reservas_futuras = int(
+            (filtrados["_fecha_filtro"] >= hoy_bd).sum()
+        )
+        recursos_encontrados = int(
+            filtrados["Recurso"].dropna().nunique()
+        )
+
+        metricas = st.columns(4)
+        metricas[0].metric("Resultados", total_encontrados)
+        metricas[1].metric("Reservas de hoy", reservas_hoy)
+        metricas[2].metric("Vigentes o futuras", reservas_futuras)
+        metricas[3].metric(
+            "Recursos distintos",
+            recursos_encontrados,
+        )
+
+        pestaña_consultar, pestaña_editar, pestaña_eliminar, pestaña_exportar = st.tabs(
+            [
+                "🔍 Consultar",
+                "✏️ Editar",
+                "🗑️ Eliminar",
+                "⬇️ Exportar",
+            ]
+        )
+
+        with pestaña_consultar:
+            if filtrados.empty:
+                st.warning(
+                    "No se encontraron registros con los filtros actuales."
+                )
+            else:
+                total_paginas = max(
+                    1,
+                    (
+                        total_encontrados
+                        + resultados_pagina
+                        - 1
+                    )
+                    // resultados_pagina,
+                )
+
+                if (
+                    st.session_state.get("bd_pagina_actual", 1)
+                    > total_paginas
+                ):
+                    st.session_state.bd_pagina_actual = 1
+
+                navegacion = st.columns([1, 1, 1.5, 1, 1])
+
+                if navegacion[0].button(
+                    "⏮️ Primera",
+                    use_container_width=True,
+                    disabled=(
+                        st.session_state.get(
+                            "bd_pagina_actual",
+                            1,
+                        )
+                        <= 1
+                    ),
+                ):
+                    st.session_state.bd_pagina_actual = 1
+                    st.rerun()
+
+                if navegacion[1].button(
+                    "◀️ Anterior",
+                    use_container_width=True,
+                    disabled=(
+                        st.session_state.get(
+                            "bd_pagina_actual",
+                            1,
+                        )
+                        <= 1
+                    ),
+                ):
+                    st.session_state.bd_pagina_actual = max(
+                        1,
+                        st.session_state.get(
+                            "bd_pagina_actual",
+                            1,
+                        )
+                        - 1,
+                    )
+                    st.rerun()
+
+                pagina_actual = navegacion[2].number_input(
+                    "Página",
+                    min_value=1,
+                    max_value=total_paginas,
+                    value=min(
+                        st.session_state.get(
+                            "bd_pagina_actual",
+                            1,
+                        ),
+                        total_paginas,
+                    ),
+                    step=1,
+                    key="bd_selector_pagina",
+                )
+                st.session_state.bd_pagina_actual = int(
+                    pagina_actual
+                )
+
+                if navegacion[3].button(
+                    "Siguiente ▶️",
+                    use_container_width=True,
+                    disabled=(
+                        st.session_state.bd_pagina_actual
+                        >= total_paginas
+                    ),
+                ):
+                    st.session_state.bd_pagina_actual = min(
+                        total_paginas,
+                        st.session_state.bd_pagina_actual + 1,
+                    )
+                    st.rerun()
+
+                if navegacion[4].button(
+                    "Última ⏭️",
+                    use_container_width=True,
+                    disabled=(
+                        st.session_state.bd_pagina_actual
+                        >= total_paginas
+                    ),
+                ):
+                    st.session_state.bd_pagina_actual = total_paginas
+                    st.rerun()
+
+                inicio = (
+                    st.session_state.bd_pagina_actual - 1
+                ) * resultados_pagina
+                fin = inicio + resultados_pagina
+
+                pagina_df = filtrados.iloc[inicio:fin].copy()
+                pagina_df.insert(0, "Seleccionar", False)
+
+                columnas_visibles = [
+                    "Seleccionar",
+                    "id",
+                    "Fecha",
+                    "Hora inicio",
+                    "Hora fin",
+                    "Profesor",
+                    "Curso",
+                    "Recurso",
+                ]
+                if mostrar_observaciones:
+                    columnas_visibles.append("Observaciones")
+
+                editor_consulta = st.data_editor(
+                    pagina_df[columnas_visibles],
+                    hide_index=True,
+                    use_container_width=True,
+                    disabled=[
+                        columna
+                        for columna in columnas_visibles
+                        if columna != "Seleccionar"
+                    ],
+                    column_config={
+                        "Seleccionar": st.column_config.CheckboxColumn(
+                            "Seleccionar",
+                            help=(
+                                "Marca uno o más registros para "
+                                "consultarlos."
+                            ),
+                        ),
+                        "id": st.column_config.NumberColumn(
+                            "ID",
+                            format="%d",
+                        ),
+                        "Fecha": st.column_config.DateColumn(
+                            "Fecha",
+                            format="DD/MM/YYYY",
+                        ),
+                        "Hora inicio": st.column_config.TimeColumn(
+                            "Inicio",
+                            format="HH:mm",
+                        ),
+                        "Hora fin": st.column_config.TimeColumn(
+                            "Fin",
+                            format="HH:mm",
+                        ),
+                    },
+                    key=(
+                        f"bd_consulta_"
+                        f"{st.session_state.bd_pagina_actual}_"
+                        f"{total_encontrados}"
+                    ),
+                )
+
+                ids_seleccionados = (
+                    editor_consulta.loc[
+                        editor_consulta["Seleccionar"],
+                        "id",
+                    ]
+                    .astype(int)
+                    .tolist()
+                )
+
+                st.caption(
+                    f"Mostrando {inicio + 1}–"
+                    f"{min(fin, total_encontrados)} de "
+                    f"{total_encontrados} registros."
+                )
+
+                if ids_seleccionados:
+                    st.markdown("#### 📄 Detalle seleccionado")
+                    detalle_df = datos_bd[
+                        datos_bd["id"].isin(ids_seleccionados)
+                    ].drop(
+                        columns=[
+                            "_fecha_filtro",
+                            "_hora_inicio_filtro",
+                            "_texto_busqueda",
+                        ],
+                        errors="ignore",
+                    )
+
+                    st.dataframe(
+                        detalle_df,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+                    if len(ids_seleccionados) == 1:
+                        fila_detalle = detalle_df.iloc[0]
+                        with st.container(border=True):
+                            d1, d2, d3 = st.columns(3)
+                            d1.write(
+                                f"**Profesor:** "
+                                f"{fila_detalle.get('Profesor', '—')}"
+                            )
+                            d2.write(
+                                f"**Curso:** "
+                                f"{fila_detalle.get('Curso', '—')}"
+                            )
+                            d3.write(
+                                f"**Recurso:** "
+                                f"{fila_detalle.get('Recurso', '—')}"
+                            )
+
+                            st.write(
+                                f"**Fecha y horario:** "
+                                f"{bd_fecha(fila_detalle.get('Fecha')).strftime('%d/%m/%Y') if bd_fecha(fila_detalle.get('Fecha')) else '—'} "
+                                f"· {bd_hora_texto(fila_detalle.get('Hora inicio'))}"
+                                f"–{bd_hora_texto(fila_detalle.get('Hora fin'))}"
+                            )
+                            st.write(
+                                f"**Observaciones:** "
+                                f"{fila_detalle.get('Observaciones') or 'Sin observaciones'}"
+                            )
+
+        with pestaña_editar:
+            if filtrados.empty:
+                st.info(
+                    "No hay registros disponibles para editar "
+                    "con los filtros actuales."
+                )
+            else:
+                opciones_edicion = {
+                    int(fila["id"]): bd_etiqueta_registro(fila)
+                    for _, fila in filtrados.iterrows()
+                }
+
+                id_editar = st.selectbox(
+                    "Selecciona el registro",
+                    list(opciones_edicion.keys()),
+                    format_func=lambda valor: opciones_edicion[valor],
+                    key="bd_id_editar",
+                )
+
+                fila_editar = datos_bd[
+                    datos_bd["id"].astype(int) == int(id_editar)
+                ].iloc[0]
+
+                with st.form(
+                    f"bd_form_editar_{id_editar}",
+                    clear_on_submit=False,
+                ):
+                    e1, e2, e3 = st.columns(3)
+
+                    fecha_editada = e1.date_input(
+                        "Fecha",
+                        value=bd_fecha(
+                            fila_editar["Fecha"]
+                        ) or dt.date.today(),
+                        format="DD/MM/YYYY",
+                    )
+                    hora_inicio_editada = e2.time_input(
+                        "Hora de inicio",
+                        value=bd_hora(
+                            fila_editar["Hora inicio"]
+                        ),
+                        step=300,
+                    )
+                    hora_fin_editada = e3.time_input(
+                        "Hora de término",
+                        value=bd_hora(
+                            fila_editar["Hora fin"]
+                        ),
+                        step=300,
+                    )
+
+                    e4, e5, e6 = st.columns(3)
+
+                    profesor_editado = e4.selectbox(
+                        "Profesor",
+                        PROFESORES,
+                        index=(
+                            PROFESORES.index(
+                                fila_editar["Profesor"]
+                            )
+                            if fila_editar["Profesor"] in PROFESORES
+                            else 0
+                        ),
+                    )
+                    curso_editado = e5.selectbox(
+                        "Curso",
+                        CURSOS,
+                        index=(
+                            CURSOS.index(
+                                fila_editar["Curso"]
+                            )
+                            if fila_editar["Curso"] in CURSOS
+                            else 0
+                        ),
+                    )
+                    recurso_editado = e6.selectbox(
+                        "Recurso",
+                        RECURSOS,
+                        index=(
+                            RECURSOS.index(
+                                fila_editar["Recurso"]
+                            )
+                            if fila_editar["Recurso"] in RECURSOS
+                            else 0
+                        ),
+                    )
+
+                    observaciones_editadas = st.text_area(
+                        "Observaciones",
+                        value=str(
+                            fila_editar.get(
+                                "Observaciones",
+                                "",
+                            )
+                            or ""
+                        ),
+                        height=100,
+                    )
+
+                    notificar_edicion = st.checkbox(
+                        "Notificar el cambio al profesor por correo",
+                        value=True,
+                    )
+
+                    guardar_edicion = st.form_submit_button(
+                        "💾 Guardar modificación",
+                        type="primary",
+                        use_container_width=True,
+                    )
+
+                if guardar_edicion:
+                    if hora_inicio_editada >= hora_fin_editada:
+                        st.error(
+                            "La hora de término debe ser posterior "
+                            "a la hora de inicio."
+                        )
+                    else:
+                        try:
+                            recurso_id_editado = map_rec.get(
+                                recurso_editado
+                            )
+
+                            consulta_conflictos = (
+                                supabase.table("reservas")
+                                .select(
+                                    "id,hora_inicio,hora_fin,"
+                                    "profesores(nombre)"
+                                )
+                                .eq(
+                                    "fecha",
+                                    fecha_editada.isoformat(),
+                                )
+                                .eq(
+                                    "recurso",
+                                    recurso_id_editado,
+                                )
+                                .neq("id", int(id_editar))
+                                .execute()
+                            )
+
+                            conflictos = []
+                            for conflicto in (
+                                consulta_conflictos.data or []
+                            ):
+                                if overlap(
+                                    hora_inicio_editada,
+                                    hora_fin_editada,
+                                    bd_hora(
+                                        conflicto.get(
+                                            "hora_inicio"
+                                        )
+                                    ),
+                                    bd_hora(
+                                        conflicto.get(
+                                            "hora_fin"
+                                        )
+                                    ),
+                                ):
+                                    nombre_conflicto = (
+                                        (
+                                            conflicto.get(
+                                                "profesores"
+                                            )
+                                            or {}
+                                        ).get("nombre")
+                                        or "Otro usuario"
+                                    )
+                                    conflictos.append(
+                                        nombre_conflicto
+                                    )
+
+                            if conflictos:
+                                st.error(
+                                    "No se puede guardar porque el "
+                                    "recurso ya está reservado en ese "
+                                    "horario por: "
+                                    + ", ".join(
+                                        sorted(
+                                            set(conflictos)
+                                        )
+                                    )
+                                )
+                            else:
                                 datos_actualizados = {
-                                    "fecha": str(r_edit["Fecha"]),
-                                    "hora_inicio": str(r_edit["Hora inicio"]),
-                                    "hora_fin": str(r_edit["Hora fin"]),
-                                    "profesor": map_prof.get(r_edit["Profesor"]),
-                                    "curso": map_cur.get(r_edit["Curso"]),
-                                    "recurso": map_rec.get(r_edit["Recurso"]),
-                                    "observaciones": r_edit.get("Observaciones", "")
+                                    "fecha": fecha_editada.isoformat(),
+                                    "hora_inicio": (
+                                        hora_inicio_editada
+                                        .strftime("%H:%M:%S")
+                                    ),
+                                    "hora_fin": (
+                                        hora_fin_editada
+                                        .strftime("%H:%M:%S")
+                                    ),
+                                    "profesor": map_prof.get(
+                                        profesor_editado
+                                    ),
+                                    "curso": map_cur.get(
+                                        curso_editado
+                                    ),
+                                    "recurso": recurso_id_editado,
+                                    "observaciones": (
+                                        observaciones_editadas.strip()
+                                    ),
                                 }
-                                supabase.table("reservas").update(datos_actualizados).eq("id", id_actualizar).execute()
 
-                        # ---------------------------------------------------------
-                        # 3. NUEVAS INSERCIONES
-                        # ---------------------------------------------------------
-                        new_rows = edited_df[~edited_df.index.isin(original_indices)]
-                        if not new_rows.empty:
-                            nuevas_inserciones = []
-                            for _, r in new_rows.iterrows():
-                                nuevas_inserciones.append({
-                                    "fecha": str(r["Fecha"]),
-                                    "hora_inicio": str(r["Hora inicio"]),
-                                    "hora_fin": str(r["Hora fin"]),
-                                    "profesor": map_prof.get(r["Profesor"]),
-                                    "curso": map_cur.get(r["Curso"]),
-                                    "recurso": map_rec.get(r["Recurso"]),
-                                    "observaciones": r["Observaciones"]
-                                })
-                            supabase.table("reservas").insert(nuevas_inserciones).execute()
-                            
-                        # Fin del proceso: recargamos la interfaz
-                        st.success("Sincronización completa.")
-                        st.cache_data.clear()
-                        time.sleep(0.5)
-                        st.rerun()
-                        
-                    except Exception as e:
-                        st.error(f"Error al sincronizar: {e}")
-        else:
-            st.write("No hay datos registrados.")
+                                (
+                                    supabase.table("reservas")
+                                    .update(datos_actualizados)
+                                    .eq("id", int(id_editar))
+                                    .execute()
+                                )
+
+                                registrar_auditoria(
+                                    "editó reserva",
+                                    "Base de datos",
+                                    registro_id=id_editar,
+                                    detalle={
+                                        "fecha": (
+                                            fecha_editada.isoformat()
+                                        ),
+                                        "profesor": profesor_editado,
+                                        "curso": curso_editado,
+                                        "recurso": recurso_editado,
+                                    },
+                                )
+
+                                if notificar_edicion:
+                                    email_to = PROFESOR_DATA.get(
+                                        profesor_editado
+                                    )
+                                    if email_to:
+                                        subject = (
+                                            "Actualización de reserva "
+                                            f"- {curso_editado}"
+                                        )
+                                        body = f"""
+                                        <html>
+                                        <body>
+                                        <p>Hola {profesor_editado.split(' ')[0]},</p>
+                                        <p>Se actualizó una reserva registrada a tu nombre:</p>
+                                        <ul>
+                                            <li><b>Fecha:</b> {format_date_es(fecha_editada)}</li>
+                                            <li><b>Horario:</b> {hora_inicio_editada.strftime('%H:%M')}–{hora_fin_editada.strftime('%H:%M')}</li>
+                                            <li><b>Curso:</b> {curso_editado}</li>
+                                            <li><b>Recurso:</b> {recurso_editado}</li>
+                                        </ul>
+                                        <p>Saludos,<br>Sistema de Horarios CAV</p>
+                                        </body>
+                                        </html>
+                                        """
+                                        send_email(
+                                            subject,
+                                            body,
+                                            email_to,
+                                        )
+
+                                st.success(
+                                    "✅ Registro actualizado correctamente."
+                                )
+                                st.cache_data.clear()
+                                time.sleep(0.5)
+                                st.rerun()
+
+                        except Exception as error:
+                            registrar_error(
+                                "editar_reserva_bd",
+                                error,
+                            )
+                            st.error(
+                                "No fue posible actualizar el registro. "
+                                f"Detalle técnico: {error}"
+                            )
+
+        with pestaña_eliminar:
+            if filtrados.empty:
+                st.info(
+                    "No hay registros disponibles para eliminar "
+                    "con los filtros actuales."
+                )
+            else:
+                opciones_eliminacion = {
+                    int(fila["id"]): bd_etiqueta_registro(fila)
+                    for _, fila in filtrados.iterrows()
+                }
+
+                ids_eliminar = st.multiselect(
+                    "Selecciona uno o varios registros",
+                    list(opciones_eliminacion.keys()),
+                    format_func=lambda valor: opciones_eliminacion[valor],
+                    key="bd_ids_eliminar",
+                )
+
+                if ids_eliminar:
+                    detalle_eliminar = datos_bd[
+                        datos_bd["id"].astype(int).isin(
+                            [int(valor) for valor in ids_eliminar]
+                        )
+                    ][
+                        [
+                            "id",
+                            "Fecha",
+                            "Hora inicio",
+                            "Hora fin",
+                            "Profesor",
+                            "Curso",
+                            "Recurso",
+                        ]
+                    ]
+
+                    st.dataframe(
+                        detalle_eliminar,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+                    texto_confirmacion_esperado = (
+                        f"ELIMINAR {len(ids_eliminar)}"
+                    )
+
+                    st.warning(
+                        "Esta acción es permanente. Para confirmar, "
+                        f"escribe exactamente: "
+                        f"**{texto_confirmacion_esperado}**"
+                    )
+
+                    confirmacion_eliminar = st.text_input(
+                        "Confirmación",
+                        key="bd_confirmacion_eliminar",
+                    )
+
+                    notificar_eliminacion = st.checkbox(
+                        "Notificar las cancelaciones por correo",
+                        value=True,
+                        key="bd_notificar_eliminacion",
+                    )
+
+                    if st.button(
+                        "🗑️ Eliminar registros seleccionados",
+                        type="primary",
+                        use_container_width=True,
+                        disabled=(
+                            confirmacion_eliminar.strip()
+                            != texto_confirmacion_esperado
+                        ),
+                    ):
+                        eliminados = 0
+                        errores_eliminar = []
+
+                        with st.spinner(
+                            "Eliminando registros de Supabase..."
+                        ):
+                            for id_borrar in ids_eliminar:
+                                try:
+                                    fila_original = datos_bd[
+                                        datos_bd["id"].astype(int)
+                                        == int(id_borrar)
+                                    ].iloc[0]
+
+                                    (
+                                        supabase.table("reservas")
+                                        .delete()
+                                        .eq(
+                                            "id",
+                                            int(id_borrar),
+                                        )
+                                        .execute()
+                                    )
+
+                                    registrar_auditoria(
+                                        "eliminó reserva",
+                                        "Base de datos",
+                                        registro_id=id_borrar,
+                                        detalle={
+                                            "fecha": str(
+                                                fila_original[
+                                                    "Fecha"
+                                                ]
+                                            ),
+                                            "profesor": (
+                                                fila_original[
+                                                    "Profesor"
+                                                ]
+                                            ),
+                                            "curso": (
+                                                fila_original[
+                                                    "Curso"
+                                                ]
+                                            ),
+                                            "recurso": (
+                                                fila_original[
+                                                    "Recurso"
+                                                ]
+                                            ),
+                                        },
+                                    )
+
+                                    if notificar_eliminacion:
+                                        profesor_borrado = (
+                                            fila_original[
+                                                "Profesor"
+                                            ]
+                                        )
+                                        email_to = PROFESOR_DATA.get(
+                                            profesor_borrado
+                                        )
+                                        if email_to:
+                                            subject = (
+                                                "Cancelación de reserva "
+                                                f"- {fila_original['Curso']}"
+                                            )
+                                            body = f"""
+                                            <html>
+                                            <body>
+                                            <p>Hola {str(profesor_borrado).split(' ')[0]},</p>
+                                            <p>Se canceló la siguiente reserva:</p>
+                                            <ul>
+                                                <li><b>Fecha:</b> {format_date_es(bd_fecha(fila_original['Fecha']))}</li>
+                                                <li><b>Horario:</b> {bd_hora_texto(fila_original['Hora inicio'])}–{bd_hora_texto(fila_original['Hora fin'])}</li>
+                                                <li><b>Curso:</b> {fila_original['Curso']}</li>
+                                                <li><b>Recurso:</b> {fila_original['Recurso']}</li>
+                                            </ul>
+                                            <p>Saludos,<br>Sistema de Horarios CAV</p>
+                                            </body>
+                                            </html>
+                                            """
+                                            send_email(
+                                                subject,
+                                                body,
+                                                email_to,
+                                            )
+
+                                    eliminados += 1
+
+                                except Exception as error:
+                                    errores_eliminar.append(
+                                        f"ID {id_borrar}: {error}"
+                                    )
+                                    registrar_error(
+                                        "eliminar_reserva_bd",
+                                        error,
+                                    )
+
+                        if eliminados:
+                            st.success(
+                                f"✅ Se eliminaron {eliminados} "
+                                "registros correctamente."
+                            )
+
+                        if errores_eliminar:
+                            st.error(
+                                "Algunos registros no pudieron "
+                                "eliminarse:\n\n"
+                                + "\n".join(
+                                    f"- {mensaje}"
+                                    for mensaje
+                                    in errores_eliminar
+                                )
+                            )
+                        else:
+                            st.cache_data.clear()
+                            time.sleep(0.5)
+                            st.rerun()
+
+        with pestaña_exportar:
+            st.markdown("#### Descargar resultados filtrados")
+
+            exportar_df = filtrados.drop(
+                columns=[
+                    "_fecha_filtro",
+                    "_hora_inicio_filtro",
+                    "_texto_busqueda",
+                ],
+                errors="ignore",
+            ).copy()
+
+            st.write(
+                f"El archivo incluirá **{len(exportar_df)}** registros."
+            )
+
+            csv_exportacion = exportar_df.to_csv(
+                index=False,
+            ).encode("utf-8-sig")
+
+            st.download_button(
+                "⬇️ Descargar CSV",
+                data=csv_exportacion,
+                file_name=(
+                    "reservas_filtradas_"
+                    f"{dt.date.today().isoformat()}.csv"
+                ),
+                mime="text/csv",
+                type="primary",
+                use_container_width=True,
+            )
+
+            st.markdown("#### Vista previa")
+            st.dataframe(
+                exportar_df.head(100),
+                use_container_width=True,
+                hide_index=True,
+            )
+
 # --- VISTA SEMANAL ---
 elif page == "Semana": 
     import json # Necesario para la animación del monitor
