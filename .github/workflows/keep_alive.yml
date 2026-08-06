@@ -36,39 +36,38 @@ jobs:
               echo "::error::SUPABASE_PROJECT_REF contiene caracteres inválidos."
               exit 1
             fi
+
             BASE_URL="https://${REF}.supabase.co"
+
           elif [ -n "$RAW_URL" ]; then
-            BASE_URL="$(
-              python - "$RAW_URL" <<'PY'
-import sys
-from urllib.parse import urlsplit
+            case "$RAW_URL" in
+              http://*|https://*)
+                BASE_URL="${RAW_URL%/}"
+                ;;
+              *)
+                BASE_URL="https://${RAW_URL%/}"
+                ;;
+            esac
 
-raw = sys.argv[1].strip().rstrip("/")
-if "://" not in raw:
-    raw = "https://" + raw
+            BASE_URL="${BASE_URL%%\?*}"
+            BASE_URL="${BASE_URL%%\#*}"
 
-parts = urlsplit(raw)
-if parts.scheme != "https" or not parts.netloc:
-    raise SystemExit("URL inválida")
+            if ! printf '%s' "$BASE_URL" | grep -Eq '^https://[a-z0-9.-]+\.supabase\.(co|in)$'; then
+              echo "::error::SUPABASE_URL no tiene un formato válido."
+              echo "::error::Formato esperado: https://TU-PROYECTO.supabase.co"
+              exit 1
+            fi
 
-print(f"https://{parts.netloc}")
-PY
-            )"
           else
             echo "::error::Falta SUPABASE_PROJECT_REF o SUPABASE_URL en Repository secrets."
             exit 1
           fi
 
-          HOST="$(
-            python - "$BASE_URL" <<'PY'
-import sys
-from urllib.parse import urlsplit
-print(urlsplit(sys.argv[1]).hostname or "")
-PY
-          )"
+          HOST="${BASE_URL#https://}"
+          HOST="${HOST%%/*}"
 
           if [ -z "$HOST" ]; then
-            echo "::error::No se pudo extraer el host de Supabase."
+            echo "::error::No se pudo obtener el host de Supabase."
             exit 1
           fi
 
@@ -85,13 +84,15 @@ PY
 
           echo "Resolviendo DNS para: $HOST"
 
-          if ! getent ahosts "$HOST"; then
-            echo "::error::No se pudo resolver $HOST."
-            echo "::error::Revisa que el Project URL o Project Ref coincida exactamente con Supabase."
+          if ! getent ahosts "$HOST" > /dev/null 2>&1; then
+            echo "::error::No se pudo resolver el host $HOST."
+            echo "::error::Revisa que SUPABASE_PROJECT_REF o SUPABASE_URL coincidan exactamente con tu proyecto."
             exit 1
           fi
 
-      - name: Consultar salud del servicio
+          echo "DNS correcto."
+
+      - name: Consultar salud de Supabase
         shell: bash
         env:
           BASE_URL: ${{ steps.prepare.outputs.base_url }}
