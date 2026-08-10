@@ -4614,90 +4614,167 @@ INSTRUCCIONES DE RESPUESTA:
 
 
 def renderizar_asistente_flotante(pagina_actual):
-    # CSS del botón flotante. Se mantiene fuera del sidebar.
+    """
+    Asistente flotante V21.1.
+
+    La versión anterior dependía del selector interno data-testid="stPopover".
+    En versiones nuevas de Streamlit ese selector puede cambiar.
+
+    Esta versión asigna una KEY explícita al popover y usa la clase CSS
+    oficial generada por Streamlit: st-key-asistente_flotante_cav.
+    """
+
     st.markdown(
         """
         <style>
-        /* Botón circular del asistente flotante */
-        div[data-testid="stPopover"] {
+        /* ==========================================================
+           GLOBITO FLOTANTE DEL ASISTENTE
+           ========================================================== */
+
+        .st-key-asistente_flotante_cav,
+        div.st-key-asistente_flotante_cav,
+        [class*="st-key-asistente_flotante_cav"] {
             position: fixed !important;
-            left: max(14px, env(safe-area-inset-left)) !important;
+            left: max(16px, env(safe-area-inset-left)) !important;
             bottom: max(18px, env(safe-area-inset-bottom)) !important;
-            z-index: 999990 !important;
-            width: auto !important;
+            right: auto !important;
+            top: auto !important;
+            width: 64px !important;
+            min-width: 64px !important;
+            max-width: 64px !important;
+            height: 64px !important;
+            min-height: 64px !important;
+            max-height: 64px !important;
+            z-index: 2147483000 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
         }
 
-        div[data-testid="stPopover"] > button,
-        div[data-testid="stPopover"] button[kind] {
-            width: 62px !important;
-            min-width: 62px !important;
-            max-width: 62px !important;
-            height: 62px !important;
-            min-height: 62px !important;
+        .st-key-asistente_flotante_cav button,
+        [class*="st-key-asistente_flotante_cav"] button {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 0 !important;
+
+            width: 64px !important;
+            min-width: 64px !important;
+            max-width: 64px !important;
+            height: 64px !important;
+            min-height: 64px !important;
+            max-height: 64px !important;
+
             padding: 0 !important;
+            margin: 0 !important;
+
+            color: #ffffff !important;
+            background:
+                linear-gradient(
+                    145deg,
+                    #800020 0%,
+                    #5b0017 100%
+                ) !important;
+
+            border: 2px solid #C7A44A !important;
             border-radius: 999px !important;
-            border: 2px solid rgba(255,255,255,.88) !important;
-            background: linear-gradient(
-                145deg,
-                #800020 0%,
-                #5d0017 100%
-            ) !important;
-            color: white !important;
-            font-size: 1.65rem !important;
+
             box-shadow:
-                0 12px 28px rgba(31,41,55,.28),
-                0 0 0 5px rgba(128,0,32,.10) !important;
+                0 14px 30px rgba(15, 23, 42, .34),
+                0 0 0 6px rgba(128, 0, 32, .12) !important;
+
+            cursor: pointer !important;
             transition:
                 transform .18s ease,
                 box-shadow .18s ease !important;
         }
 
-        div[data-testid="stPopover"] > button:hover,
-        div[data-testid="stPopover"] button[kind]:hover {
-            transform: translateY(-3px) scale(1.03) !important;
+        .st-key-asistente_flotante_cav button:hover,
+        [class*="st-key-asistente_flotante_cav"] button:hover {
+            transform: translateY(-3px) scale(1.05) !important;
             box-shadow:
-                0 16px 34px rgba(31,41,55,.34),
-                0 0 0 7px rgba(199,164,74,.16) !important;
+                0 18px 38px rgba(15, 23, 42, .38),
+                0 0 0 8px rgba(199, 164, 74, .16) !important;
         }
 
-        div[data-testid="stPopover"] > button p {
-            font-size: 0 !important;
-            margin: 0 !important;
+        /* Ocultar el texto y dejar solo el robot */
+        .st-key-asistente_flotante_cav button p,
+        [class*="st-key-asistente_flotante_cav"] button p {
+            display: none !important;
         }
 
-        div[data-testid="stPopover"] > button p::after {
-            content: "🤖";
-            font-size: 1.65rem;
+        .st-key-asistente_flotante_cav button svg,
+        [class*="st-key-asistente_flotante_cav"] button svg {
+            width: 29px !important;
+            height: 29px !important;
         }
 
-        /* Panel del popover */
-        div[data-testid="stPopoverBody"] {
-            width: min(430px, calc(100vw - 26px)) !important;
-            max-width: min(430px, calc(100vw - 26px)) !important;
-            max-height: min(76vh, 720px) !important;
-            overflow-y: auto !important;
-            border-radius: 20px !important;
+        /* Pulso visual discreto para hacerlo fácil de encontrar */
+        .st-key-asistente_flotante_cav::after,
+        [class*="st-key-asistente_flotante_cav"]::after {
+            content: "";
+            position: absolute;
+            inset: -7px;
+            border: 2px solid rgba(199, 164, 74, .33);
+            border-radius: 999px;
+            pointer-events: none;
+            animation: cavAssistantPulse 2.6s ease-out infinite;
         }
 
+        @keyframes cavAssistantPulse {
+            0% {
+                opacity: .65;
+                transform: scale(.92);
+            }
+            72% {
+                opacity: 0;
+                transform: scale(1.25);
+            }
+            100% {
+                opacity: 0;
+                transform: scale(1.25);
+            }
+        }
+
+        /* El panel emergente */
+        [data-baseweb="popover"] {
+            z-index: 2147483001 !important;
+        }
+
+        [data-baseweb="popover"] > div {
+            max-width: min(440px, calc(100vw - 24px)) !important;
+        }
+
+        /* En teléfono: globito algo más pequeño */
         @media (max-width: 700px) {
-            div[data-testid="stPopover"] {
+            .st-key-asistente_flotante_cav,
+            div.st-key-asistente_flotante_cav,
+            [class*="st-key-asistente_flotante_cav"] {
                 left: 10px !important;
                 bottom: 12px !important;
+                width: 58px !important;
+                min-width: 58px !important;
+                max-width: 58px !important;
+                height: 58px !important;
+                min-height: 58px !important;
+                max-height: 58px !important;
             }
 
-            div[data-testid="stPopover"] > button,
-            div[data-testid="stPopover"] button[kind] {
-                width: 56px !important;
-                min-width: 56px !important;
-                max-width: 56px !important;
-                height: 56px !important;
-                min-height: 56px !important;
+            .st-key-asistente_flotante_cav button,
+            [class*="st-key-asistente_flotante_cav"] button {
+                width: 58px !important;
+                min-width: 58px !important;
+                max-width: 58px !important;
+                height: 58px !important;
+                min-height: 58px !important;
+                max-height: 58px !important;
             }
+        }
 
-            div[data-testid="stPopoverBody"] {
-                width: calc(100vw - 18px) !important;
-                max-width: calc(100vw - 18px) !important;
-                max-height: 74vh !important;
+        @media (prefers-reduced-motion: reduce) {
+            .st-key-asistente_flotante_cav::after,
+            [class*="st-key-asistente_flotante_cav"]::after {
+                animation: none !important;
             }
         }
         </style>
@@ -4705,13 +4782,23 @@ def renderizar_asistente_flotante(pagina_actual):
         unsafe_allow_html=True,
     )
 
-    with st.popover(
-        "Asistente IA",
-        help="Abrir asistente contextual",
-    ):
+    # KEY explícita: Streamlit genera la clase CSS
+    # "st-key-asistente_flotante_cav", que usamos arriba.
+    asistente_popover = st.popover(
+        "Asistente",
+        icon="🤖",
+        help=(
+            f"Asistente IA contextual · Página actual: {pagina_actual}"
+        ),
+        type="primary",
+        width="content",
+        key="asistente_flotante_cav",
+    )
+
+    with asistente_popover:
         st.markdown("### 🤖 Asistente CAV")
         st.caption(
-            f"Estoy viendo contigo: **{pagina_actual}**"
+            f"Contexto actual: **{pagina_actual}**"
         )
 
         st.info(
@@ -4719,9 +4806,7 @@ def renderizar_asistente_flotante(pagina_actual):
             "o qué significa la información que estás viendo."
         )
 
-        # Sugerencias rápidas contextualizadas.
         sugerencias = st.columns(3)
-
         pregunta_sugerida = None
 
         if sugerencias[0].button(
@@ -4757,7 +4842,10 @@ def renderizar_asistente_flotante(pagina_actual):
             [],
         )
 
-        contenedor_historial = st.container(height=330)
+        contenedor_historial = st.container(
+            height=320,
+            border=True,
+        )
 
         with contenedor_historial:
             if not historial:
@@ -4777,7 +4865,7 @@ def renderizar_asistente_flotante(pagina_actual):
             pregunta_manual = st.text_input(
                 "Tu pregunta",
                 placeholder=(
-                    f"Ej. ¿Cómo edito un registro en {pagina_actual}?"
+                    f"Ej. ¿Cómo uso {pagina_actual}?"
                 ),
                 label_visibility="collapsed",
             )
@@ -4789,35 +4877,30 @@ def renderizar_asistente_flotante(pagina_actual):
             )
 
         pregunta_final = pregunta_sugerida
+
         if enviar and pregunta_manual.strip():
             pregunta_final = pregunta_manual.strip()
 
         if pregunta_final:
             with st.spinner("Analizando esta sección..."):
-                respuesta = responder_asistente_contextual(
+                responder_asistente_contextual(
                     pregunta_final,
                     pagina_actual,
                 )
 
-            # Mostrar de inmediato el último intercambio.
-            with contenedor_historial:
-                with st.chat_message("user"):
-                    st.markdown(pregunta_final)
-                with st.chat_message("assistant"):
-                    st.markdown(respuesta)
+            st.rerun()
 
-        col_chat_1, col_chat_2 = st.columns(2)
-
-        if col_chat_1.button(
-            "🧹 Limpiar chat",
+        if st.button(
+            "🧹 Limpiar conversación",
             key=f"limpiar_asistente_{pagina_actual}",
             use_container_width=True,
         ):
             st.session_state.asistente_historial = []
             st.rerun()
 
-        col_chat_2.caption(
-            "El contexto cambia automáticamente al cambiar de sección."
+        st.caption(
+            "🔒 El asistente usa el contexto de la sección actual y no "
+            "tiene acceso a tus contraseñas ni claves secretas."
         )
 
 
@@ -4830,6 +4913,7 @@ renderizar_asistente_flotante(page)
 
 if page == "Inicio":
     st.title("🏠 Centro de Operaciones")
+    st.caption("🤖 Asistente flotante contextual V21.1 activo")
     nombre_corto = (st.session_state.get("profesor_name") or "Usuario").split(" ")[0]
     st.caption(f"Bienvenido, {nombre_corto}. Resumen actualizado del sistema.")
 
