@@ -4376,20 +4376,33 @@ with st.sidebar:
         "Mantención preventiva": {"icon": "🧰", "roles": ["admin"]},
         "Auditoría": {"icon": "🧾", "roles": ["admin"]},
         "Configuración": {"icon": "⚙️", "roles": ["admin"]},
-        "Modo TV": {"icon": "📺", "roles": ["mensajeria"]}, # <-- El nuevo rol ahora tiene acceso
+        "Modo TV": {"icon": "📺", "roles": ["admin", "mensajeria"]},
     }
 
-    available_pages = [p for p, conf in PAGES_CONFIG.items() if st.session_state.role in conf["roles"]]
+    available_pages = [
+        p
+        for p, conf in PAGES_CONFIG.items()
+        if st.session_state.role in conf["roles"]
+    ]
     default_page = "Inicio"
-    
-    # --- AQUÍ ESTÁ LA SOLUCIÓN ---
-    # Si la página por defecto ("Registrar") no está permitida para este usuario, 
-    # entonces selecciona la primera que sí tenga disponible en su lista.
+
     if default_page not in available_pages:
         default_page = available_pages[0]
-    # -----------------------------
 
-    page = st.sidebar.radio("Navegación", available_pages, index=available_pages.index(default_page), format_func=lambda p: f"{PAGES_CONFIG[p]['icon']} {p}", label_visibility="collapsed")
+    # Navegación controlada por session_state para permitir botones rápidos.
+    if (
+        "nav_page" not in st.session_state
+        or st.session_state.nav_page not in available_pages
+    ):
+        st.session_state.nav_page = default_page
+
+    page = st.sidebar.radio(
+        "Navegación",
+        available_pages,
+        format_func=lambda p: f"{PAGES_CONFIG[p]['icon']} {p}",
+        label_visibility="collapsed",
+        key="nav_page",
+    )
 
     st.sidebar.markdown("---")
 
@@ -4500,15 +4513,154 @@ if page == "Inicio":
     c4.metric("🗑️ Bajas registradas", len(bajas_inicio))
 
     st.markdown("### ⚡ Acciones rápidas")
-    acciones = st.columns(4)
-    with acciones[0]:
-        st.info("📝 **Nueva reserva**\n\nUsa el menú lateral → Registrar.")
-    with acciones[1]:
-        st.info("🎫 **Gestionar tickets**\n\nUsa el menú lateral → Técnicos.")
-    with acciones[2]:
-        st.info("🗑️ **Dar de baja**\n\nTécnicos → Baja de Equipos.")
-    with acciones[3]:
-        st.info("📺 **Publicar aviso**\n\nModo TV → Añadir Aviso.")
+
+    def ir_accion_rapida(
+        pagina,
+        modulo_tecnico=None,
+        abrir_config_tv=False,
+    ):
+        if pagina not in available_pages:
+            st.warning(
+                "Tu perfil no tiene permisos para abrir esta sección."
+            )
+            return
+
+        if modulo_tecnico:
+            st.session_state.tecnico_modulo = modulo_tecnico
+
+        if abrir_config_tv:
+            st.session_state.ver_pantalla_tv = False
+
+        st.session_state.nav_page = pagina
+        st.rerun()
+
+    if st.session_state.get("role") == "admin":
+        acciones = st.columns(4)
+
+        with acciones[0]:
+            with st.container(border=True):
+                st.markdown("#### 📝 Nueva reserva")
+                st.caption(
+                    "Registrar una nueva reserva de sala, laboratorio "
+                    "o recurso."
+                )
+                if st.button(
+                    "Crear reserva",
+                    key="qa_nueva_reserva",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    ir_accion_rapida("Registrar")
+
+        with acciones[1]:
+            with st.container(border=True):
+                st.markdown("#### 🎫 Gestionar tickets")
+                st.caption(
+                    "Revisar fallas reportadas y actualizar su estado."
+                )
+                if st.button(
+                    "Abrir tickets",
+                    key="qa_tickets",
+                    use_container_width=True,
+                ):
+                    ir_accion_rapida(
+                        "Técnicos",
+                        modulo_tecnico="🎫 Tickets",
+                    )
+
+        with acciones[2]:
+            with st.container(border=True):
+                st.markdown("#### 🗑️ Dar de baja")
+                st.caption(
+                    "Abrir directamente el módulo de Baja de Equipos."
+                )
+                if st.button(
+                    "Procesar baja",
+                    key="qa_baja",
+                    use_container_width=True,
+                ):
+                    ir_accion_rapida(
+                        "Técnicos",
+                        modulo_tecnico="🗑️ Baja de Equipos",
+                    )
+
+        with acciones[3]:
+            with st.container(border=True):
+                st.markdown("#### 📺 Publicar aviso")
+                st.caption(
+                    "Abrir la administración de Modo TV para avisos "
+                    "y alertas."
+                )
+                if st.button(
+                    "Abrir Modo TV",
+                    key="qa_modo_tv",
+                    use_container_width=True,
+                ):
+                    ir_accion_rapida(
+                        "Modo TV",
+                        abrir_config_tv=True,
+                    )
+
+    elif st.session_state.get("role") == "profesor":
+        acciones = st.columns(3)
+
+        with acciones[0]:
+            with st.container(border=True):
+                st.markdown("#### 👤 Mis reservas")
+                if st.button(
+                    "Ver mis reservas",
+                    key="qa_prof_reservas",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    ir_accion_rapida("Mis Reservas")
+
+        with acciones[1]:
+            with st.container(border=True):
+                st.markdown("#### 🗓️ Semana")
+                if st.button(
+                    "Ver horario semanal",
+                    key="qa_prof_semana",
+                    use_container_width=True,
+                ):
+                    ir_accion_rapida("Semana")
+
+        with acciones[2]:
+            with st.container(border=True):
+                st.markdown("#### 🎓 Diplomas")
+                if st.button(
+                    "Abrir diplomas",
+                    key="qa_prof_diplomas",
+                    use_container_width=True,
+                ):
+                    ir_accion_rapida("Diplomas")
+
+    else:
+        acciones = st.columns(2)
+
+        with acciones[0]:
+            with st.container(border=True):
+                st.markdown("#### 📺 Modo TV")
+                if st.button(
+                    "Administrar pantalla",
+                    key="qa_msg_tv",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    ir_accion_rapida(
+                        "Modo TV",
+                        abrir_config_tv=True,
+                    )
+
+        with acciones[1]:
+            with st.container(border=True):
+                st.markdown("#### 🏠 Inicio")
+                if st.button(
+                    "Volver al inicio",
+                    key="qa_msg_inicio",
+                    use_container_width=True,
+                ):
+                    ir_accion_rapida("Inicio")
 
     st.markdown("### 🕒 Próximas actividades")
     if reservas_hoy_inicio.empty:
@@ -5168,27 +5320,162 @@ if page == "Base de datos":
                             )
 
         with pestaña_editar:
-            if filtrados.empty:
-                st.info(
-                    "No hay registros disponibles para editar "
-                    "con los filtros actuales."
+            st.markdown("#### 📅 Selecciona el día que deseas editar")
+            st.caption(
+                "Selecciona primero una fecha. El sistema mostrará "
+                "solamente las reservas registradas para ese día."
+            )
+
+            fechas_disponibles = sorted(
+                fecha
+                for fecha in datos_bd["_fecha_filtro"].dropna().unique()
+            )
+
+            fecha_inicial_edicion = dt.date.today()
+            if (
+                fecha_inicial_edicion not in fechas_disponibles
+                and fechas_disponibles
+            ):
+                fechas_futuras = [
+                    fecha
+                    for fecha in fechas_disponibles
+                    if fecha >= dt.date.today()
+                ]
+                fecha_inicial_edicion = (
+                    fechas_futuras[0]
+                    if fechas_futuras
+                    else fechas_disponibles[-1]
                 )
+
+            with st.container(border=True):
+                c_cal1, c_cal2 = st.columns([1, 2])
+
+                fecha_registros_editar = c_cal1.date_input(
+                    "Fecha de la reserva",
+                    value=fecha_inicial_edicion,
+                    format="DD/MM/YYYY",
+                    key="bd_calendario_edicion",
+                )
+
+                registros_dia = datos_bd[
+                    datos_bd["_fecha_filtro"] == fecha_registros_editar
+                ].copy()
+
+                registros_dia = registros_dia.sort_values(
+                    ["_hora_inicio_filtro", "Recurso", "Profesor"],
+                    ascending=[True, True, True],
+                    na_position="last",
+                )
+
+                c_cal2.metric(
+                    "Registros encontrados ese día",
+                    len(registros_dia),
+                )
+
+            if registros_dia.empty:
+                st.info(
+                    "No hay reservas registradas para "
+                    f"{fecha_registros_editar.strftime('%d/%m/%Y')}."
+                )
+
+                if fechas_disponibles:
+                    with st.expander(
+                        "📌 Ver fechas que sí tienen registros",
+                        expanded=False,
+                    ):
+                        fechas_texto = ", ".join(
+                            fecha.strftime("%d/%m/%Y")
+                            for fecha in fechas_disponibles[-30:]
+                        )
+                        st.write(fechas_texto)
+
             else:
+                st.markdown(
+                    f"##### Reservas del "
+                    f"{fecha_registros_editar.strftime('%d/%m/%Y')}"
+                )
+
+                resumen_dia = registros_dia[
+                    [
+                        "id",
+                        "Hora inicio",
+                        "Hora fin",
+                        "Profesor",
+                        "Curso",
+                        "Recurso",
+                    ]
+                ].copy()
+
+                st.dataframe(
+                    resumen_dia,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "id": st.column_config.NumberColumn(
+                            "ID",
+                            format="%d",
+                        ),
+                        "Hora inicio": st.column_config.TimeColumn(
+                            "Inicio",
+                            format="HH:mm",
+                        ),
+                        "Hora fin": st.column_config.TimeColumn(
+                            "Fin",
+                            format="HH:mm",
+                        ),
+                    },
+                )
+
                 opciones_edicion = {
-                    int(fila["id"]): bd_etiqueta_registro(fila)
-                    for _, fila in filtrados.iterrows()
+                    int(fila["id"]): (
+                        f"{bd_hora_texto(fila['Hora inicio'])}"
+                        f"–{bd_hora_texto(fila['Hora fin'])} · "
+                        f"{fila.get('Recurso', 'Sin recurso')} · "
+                        f"{fila.get('Curso', 'Sin curso')} · "
+                        f"{fila.get('Profesor', 'Sin profesor')}"
+                    )
+                    for _, fila in registros_dia.iterrows()
                 }
 
+                st.markdown("##### ✏️ Elige el registro exacto")
+
                 id_editar = st.selectbox(
-                    "Selecciona el registro",
+                    "Reserva a modificar",
                     list(opciones_edicion.keys()),
                     format_func=lambda valor: opciones_edicion[valor],
-                    key="bd_id_editar",
+                    key=(
+                        "bd_id_editar_"
+                        f"{fecha_registros_editar.isoformat()}"
+                    ),
                 )
 
                 fila_editar = datos_bd[
                     datos_bd["id"].astype(int) == int(id_editar)
                 ].iloc[0]
+
+                with st.container(border=True):
+                    vista1, vista2, vista3, vista4 = st.columns(4)
+                    vista1.metric(
+                        "Horario",
+                        (
+                            f"{bd_hora_texto(fila_editar['Hora inicio'])}"
+                            f"–{bd_hora_texto(fila_editar['Hora fin'])}"
+                        ),
+                    )
+                    vista2.metric(
+                        "Profesor",
+                        str(fila_editar.get("Profesor") or "—"),
+                    )
+                    vista3.metric(
+                        "Curso",
+                        str(fila_editar.get("Curso") or "—"),
+                    )
+                    vista4.metric(
+                        "Recurso",
+                        str(fila_editar.get("Recurso") or "—"),
+                    )
+
+                st.markdown("##### 🛠️ Modificar reserva")
 
                 with st.form(
                     f"bd_form_editar_{id_editar}",
@@ -6232,9 +6519,24 @@ elif page == "Técnicos":
 
    
     
-    modulo_tec = st.radio("Selecciona el módulo de trabajo:", 
-                          ["🎫 Tickets", "🗑️ Baja de Equipos", "📋 Generador QR"], 
-                          horizontal=True)
+    opciones_modulo_tecnico = [
+        "🎫 Tickets",
+        "🗑️ Baja de Equipos",
+        "📋 Generador QR",
+    ]
+
+    if (
+        "tecnico_modulo" not in st.session_state
+        or st.session_state.tecnico_modulo not in opciones_modulo_tecnico
+    ):
+        st.session_state.tecnico_modulo = "🎫 Tickets"
+
+    modulo_tec = st.radio(
+        "Selecciona el módulo de trabajo:",
+        opciones_modulo_tecnico,
+        horizontal=True,
+        key="tecnico_modulo",
+    )
     st.markdown("---")
 
     # ---------------------------------------------------------
