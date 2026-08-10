@@ -4415,71 +4415,413 @@ with st.sidebar:
             del st.session_state[key]
         st.rerun()
 # ==============================================================================
-# 🤖 WIDGET DE CHATBOT (VENTANA FLOTANTE / MODAL)
+# 🤖 ASISTENTE IA FLOTANTE Y CONTEXTUAL V21
 # ==============================================================================
-st.sidebar.markdown("---")
+def obtener_contexto_pagina_asistente(pagina_actual):
+    """
+    Entrega a Gemini contexto de la sección que el usuario está visitando.
+    No expone secretos ni credenciales.
+    """
+    rol_actual = st.session_state.get("role", "usuario")
+    usuario_actual = (
+        st.session_state.get("profesor_name")
+        or st.session_state.get("mensajeria_user")
+        or "Usuario"
+    )
 
-# 1. Definimos la estructura de la ventana flotante (con ancho "large")
-@st.dialog("🤖 Asistente Técnico IA", width="large")
-def abrir_ventana_chat():
-    st.info("💡 Pregúntame sobre reparaciones, fallas, configuraciones o cómo usar el sistema. Cierra esta ventana con la 'X' arriba a la derecha.")
-    
-    # Inicializar la memoria de la IA con CONTEXTO TOTAL DEL SISTEMA Y PERSONALIDAD
-    if "chat_session" not in st.session_state:
-        
-        instrucciones_sistema = """
-        Eres el Asistente de IA exclusivo del Departamento de Informática/Enlaces del 'Liceo Bicentenario Colegio Antonio Varas'.
-        Tu misión es ayudar a los técnicos y administradores con el soporte diario y guiarlos en el uso de esta plataforma.
-        
-        Conoces a la perfección todas las secciones de nuestro sistema:
-        1. Mis Reservas / Registrar: Módulo donde los profesores agendan los recursos del colegio (laboratorios, proyectores, carritos de tablets, etc.).
-        2. Semana (Calendario): La vista semanal para organizar los horarios y ver qué recursos están ocupados y por quién.
-        3. Dashboard: Panel de estadísticas donde vemos gráficos de uso, métricas de fallas, equipos con más problemas y profesores que más reservan.
-        4. Base de Datos: Nuestro motor es Supabase. Ahí se guarda todo nuestro inventario, los usuarios, el historial de reservas y los reportes de mantenimiento.
-        5. Panel Técnico: El centro de mando. Aquí gestionamos los Tickets (fallas reportadas por QR que pasan a Pendiente, Revisión o Resuelto), creamos Códigos QR para pegar en los equipos nuevos, y procesamos las Bajas de Equipos obsoletos generando informes automáticos en Word.
-        6. Diplomas Digitales: Generador institucional de diplomas individuales en PDF y PNG, con diseños por área, logo del colegio, firma del profesor opcional y firma del director con sello incorporado.
-        7. Configuración: Módulo de administración para agregar/eliminar recursos del inventario o gestionar usuarios.
-        
-        Tu tono y personalidad:
-        Háblame como un colega informático más del equipo. Sé directo, empático, resolutivo y nada robótico. Puedes usar términos informáticos y modismos chilenos de forma natural (ej: 'apañar', 'la pega', 'dar jugo', 'sacar el cacho'). 
-        Si te pregunto por un problema técnico (ej. un notebook no conecta o una impresora mancha) o cómo usar una sección del sistema, dame soluciones prácticas, paso a paso, y pensadas para la realidad de nuestro colegio.
-        """
-        
-        st.session_state.chat_session = model.start_chat(
-            history=[
-                {"role": "user", "parts": [instrucciones_sistema]},
-                {"role": "model", "parts": ["¡Todo anotado! Ya tengo el mapa completo del sistema del colegio en mi cabeza (Reservas, Dashboard, Supabase, Tickets...). Listo para apañar con la pega técnica. ¿Qué revisamos hoy?"]}
-            ]
+    contexto_base = [
+        "SISTEMA: Sistema Institucional CAV / Departamento de Informática y Enlaces.",
+        f"PÁGINA ACTUAL: {pagina_actual}.",
+        f"ROL ACTUAL: {rol_actual}.",
+        f"USUARIO: {usuario_actual}.",
+        (
+            "Tu prioridad es ayudar sobre la sección visible. "
+            "Si la pregunta no tiene relación con la página actual, puedes responder, "
+            "pero primero aclara brevemente que estás cambiando de contexto."
+        ),
+        (
+            "Nunca muestres claves API, contraseñas, tokens, service_role, secretos "
+            "de Streamlit ni credenciales SMTP."
+        ),
+    ]
+
+    contextos = {
+        "Inicio": """
+La página Inicio es el Centro de Operaciones. Muestra métricas rápidas del día,
+tickets pendientes/en revisión, bajas registradas, próximas actividades y
+Acciones rápidas mediante botones que llevan a Registrar, Tickets, Baja de Equipos
+y Modo TV.
+""",
+        "Registrar": """
+La página Registrar permite crear reservas de recursos. El usuario selecciona
+profesor, curso, recurso, fecha, hora de inicio, hora de término y observaciones.
+El sistema debe prevenir reservas superpuestas del mismo recurso.
+""",
+        "Mis Reservas": """
+La página Mis Reservas permite revisar reservas asociadas al profesor autenticado,
+consultar fechas y horarios y gestionar sus registros según los permisos disponibles.
+""",
+        "Semana": """
+La página Semana es la vista semanal de reservas. Sirve para revisar rápidamente
+qué recurso está ocupado, por quién, para qué curso y en qué horario.
+""",
+        "Dashboard": """
+Dashboard contiene estadísticas de uso, gráficos, métricas de reservas y resúmenes
+para apoyar la gestión del Departamento de Informática/Enlaces.
+""",
+        "Base de datos": """
+Base de datos es el Centro avanzado de registros. Tiene cuatro pestañas:
+Consultar, Editar, Eliminar y Exportar.
+Consultar permite búsqueda global, filtros por profesor/curso/recurso/fecha y paginación.
+Editar funciona seleccionando primero una fecha en calendario; después muestra solo
+los registros de ese día y permite elegir exactamente una reserva para modificarla.
+Eliminar permite seleccionar registros con confirmación explícita.
+Exportar descarga los resultados filtrados en CSV.
+""",
+        "Técnicos": f"""
+Técnicos es el centro de soporte. El submódulo actualmente seleccionado es:
+{st.session_state.get("tecnico_modulo", "Tickets")}.
+Incluye Tickets, Baja de Equipos y Generador QR. Los tickets administran fallas
+reportadas; Baja de Equipos genera documentación técnica; Generador QR crea
+identificadores para reportes/equipos.
+""",
+        "Inventario": """
+Inventario registra equipos y recursos tecnológicos: nombre, categoría, código
+patrimonial, serie, marca, modelo, ubicación, responsable, garantía, estado y
+observaciones. También permite búsqueda y consulta del pasaporte del equipo.
+""",
+        "Mantención preventiva": """
+Mantención preventiva permite programar tareas de mantenimiento para equipos del
+inventario, asignar prioridad, responsable, frecuencia, estado y resultado.
+""",
+        "Auditoría": """
+Auditoría permite revisar acciones realizadas dentro del sistema, usuario,
+módulo, registro afectado, detalle y fecha.
+""",
+        "Diplomas": """
+Diplomas Digitales CAV genera reconocimientos digitales oficiales. Mantiene registro
+en Supabase, código único, enlace digital, PDF de respaldo, envío por correo
+institucional y métricas de impacto ambiental. El administrador puede revisar el
+dashboard histórico de diplomas.
+""",
+        "Configuración": """
+Configuración reúne opciones administrativas, estado de servicios y controles
+generales del sistema. Debe utilizarse con cuidado porque afecta el funcionamiento
+institucional.
+""",
+        "Modo TV": """
+Modo TV administra la pantalla informativa pública. Incluye avisos, alertas rojas,
+eventos y cronograma. Las alertas y avisos pueden tener fecha/hora de inicio y fin.
+La pantalla se adapta automáticamente a la resolución del dispositivo.
+""",
+    }
+
+    contexto_especifico = contextos.get(
+        pagina_actual,
+        "Esta es una sección del Sistema Institucional CAV."
+    )
+
+    # Añadir un pequeño resumen de datos sin exponer información sensible.
+    resumen_datos = ""
+    try:
+        if pagina_actual in {"Inicio", "Semana", "Base de datos", "Mis Reservas"}:
+            total_reservas = len(df) if isinstance(df, pd.DataFrame) else 0
+            resumen_datos += f"\nReservas cargadas actualmente en memoria: {total_reservas}."
+
+        if pagina_actual == "Base de datos":
+            filtros_activos = []
+            if st.session_state.get("bd_busqueda_global"):
+                filtros_activos.append(
+                    f"texto='{st.session_state.get('bd_busqueda_global')}'"
+                )
+            if st.session_state.get("bd_filtro_profesor"):
+                filtros_activos.append("filtro profesor activo")
+            if st.session_state.get("bd_filtro_curso"):
+                filtros_activos.append("filtro curso activo")
+            if st.session_state.get("bd_filtro_recurso"):
+                filtros_activos.append("filtro recurso activo")
+            if st.session_state.get("bd_calendario_edicion"):
+                filtros_activos.append(
+                    "fecha de edición="
+                    + str(st.session_state.get("bd_calendario_edicion"))
+                )
+            if filtros_activos:
+                resumen_datos += (
+                    "\nEstado visible de filtros: "
+                    + ", ".join(filtros_activos)
+                    + "."
+                )
+    except Exception:
+        pass
+
+    return "\n".join(contexto_base) + "\n" + contexto_especifico + resumen_datos
+
+
+def responder_asistente_contextual(pregunta, pagina_actual):
+    if "asistente_historial" not in st.session_state:
+        st.session_state.asistente_historial = []
+
+    historial_reciente = st.session_state.asistente_historial[-8:]
+    historial_texto = "\n".join(
+        f"{'Usuario' if item['role'] == 'user' else 'Asistente'}: {item['content']}"
+        for item in historial_reciente
+    )
+
+    contexto = obtener_contexto_pagina_asistente(pagina_actual)
+
+    prompt = f"""
+Eres el Asistente IA del Departamento de Informática/Enlaces del
+Liceo Bicentenario de Excelencia Colegio Antonio Varas.
+
+Tu tono debe ser profesional, cercano, claro y resolutivo.
+Debes orientar al usuario sobre la página que está viendo y explicar
+acciones concretas dentro del sistema.
+
+{contexto}
+
+HISTORIAL RECIENTE:
+{historial_texto if historial_texto else "Sin conversación previa."}
+
+PREGUNTA DEL USUARIO:
+{pregunta}
+
+INSTRUCCIONES DE RESPUESTA:
+- Responde en español.
+- Prioriza instrucciones relacionadas con la página actual.
+- Cuando corresponda, indica la ruta exacta dentro del sistema.
+- Sé breve cuando la consulta sea simple.
+- Para procedimientos, usa pasos claros.
+- No inventes funciones que no estén descritas en el contexto.
+- No reveles secretos ni credenciales.
+"""
+
+    respuesta = consultar_gemini(prompt)
+
+    st.session_state.asistente_historial.append(
+        {"role": "user", "content": pregunta}
+    )
+    st.session_state.asistente_historial.append(
+        {"role": "assistant", "content": respuesta}
+    )
+
+    # Limitar memoria visible para no hacer crecer indefinidamente la sesión.
+    if len(st.session_state.asistente_historial) > 30:
+        st.session_state.asistente_historial = (
+            st.session_state.asistente_historial[-30:]
         )
-        
-    # Contenedor para que el chat tenga barra de desplazamiento
-    contenedor_chat = st.container(height=400) 
-    
-    with contenedor_chat:
-        # Mostrar el historial (Filtramos las instrucciones para que no se vean en pantalla)
-        for mensaje in st.session_state.chat_session.history:
-            if "Eres el Asistente de IA exclusivo" not in mensaje.parts[0].text and "¡Todo anotado!" not in mensaje.parts[0].text:
-                rol = "assistant" if mensaje.role == "model" else "user"
-                with st.chat_message(rol):
-                    st.markdown(mensaje.parts[0].text)
-                    
-    # Caja de texto para el usuario
-    if pregunta := st.chat_input("Escribe tu duda técnica o del sistema aquí..."):
-        with contenedor_chat:
-            with st.chat_message("user"):
-                st.markdown(pregunta)
-            
-            with st.chat_message("assistant"):
-                with st.spinner("Pensando..."):
-                    try:
-                        respuesta = st.session_state.chat_session.send_message(pregunta)
-                        st.markdown(respuesta.text)
-                    except Exception as e:
-                        st.error(f"Error de red: {e}")
 
-# 2. El botón en la barra lateral que activa la ventana flotante
-if st.sidebar.button("💬 Abrir Asistente IA", type="primary", use_container_width=True):
-    abrir_ventana_chat()
+    return respuesta
+
+
+def renderizar_asistente_flotante(pagina_actual):
+    # CSS del botón flotante. Se mantiene fuera del sidebar.
+    st.markdown(
+        """
+        <style>
+        /* Botón circular del asistente flotante */
+        div[data-testid="stPopover"] {
+            position: fixed !important;
+            left: max(14px, env(safe-area-inset-left)) !important;
+            bottom: max(18px, env(safe-area-inset-bottom)) !important;
+            z-index: 999990 !important;
+            width: auto !important;
+        }
+
+        div[data-testid="stPopover"] > button,
+        div[data-testid="stPopover"] button[kind] {
+            width: 62px !important;
+            min-width: 62px !important;
+            max-width: 62px !important;
+            height: 62px !important;
+            min-height: 62px !important;
+            padding: 0 !important;
+            border-radius: 999px !important;
+            border: 2px solid rgba(255,255,255,.88) !important;
+            background: linear-gradient(
+                145deg,
+                #800020 0%,
+                #5d0017 100%
+            ) !important;
+            color: white !important;
+            font-size: 1.65rem !important;
+            box-shadow:
+                0 12px 28px rgba(31,41,55,.28),
+                0 0 0 5px rgba(128,0,32,.10) !important;
+            transition:
+                transform .18s ease,
+                box-shadow .18s ease !important;
+        }
+
+        div[data-testid="stPopover"] > button:hover,
+        div[data-testid="stPopover"] button[kind]:hover {
+            transform: translateY(-3px) scale(1.03) !important;
+            box-shadow:
+                0 16px 34px rgba(31,41,55,.34),
+                0 0 0 7px rgba(199,164,74,.16) !important;
+        }
+
+        div[data-testid="stPopover"] > button p {
+            font-size: 0 !important;
+            margin: 0 !important;
+        }
+
+        div[data-testid="stPopover"] > button p::after {
+            content: "🤖";
+            font-size: 1.65rem;
+        }
+
+        /* Panel del popover */
+        div[data-testid="stPopoverBody"] {
+            width: min(430px, calc(100vw - 26px)) !important;
+            max-width: min(430px, calc(100vw - 26px)) !important;
+            max-height: min(76vh, 720px) !important;
+            overflow-y: auto !important;
+            border-radius: 20px !important;
+        }
+
+        @media (max-width: 700px) {
+            div[data-testid="stPopover"] {
+                left: 10px !important;
+                bottom: 12px !important;
+            }
+
+            div[data-testid="stPopover"] > button,
+            div[data-testid="stPopover"] button[kind] {
+                width: 56px !important;
+                min-width: 56px !important;
+                max-width: 56px !important;
+                height: 56px !important;
+                min-height: 56px !important;
+            }
+
+            div[data-testid="stPopoverBody"] {
+                width: calc(100vw - 18px) !important;
+                max-width: calc(100vw - 18px) !important;
+                max-height: 74vh !important;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.popover(
+        "Asistente IA",
+        help="Abrir asistente contextual",
+    ):
+        st.markdown("### 🤖 Asistente CAV")
+        st.caption(
+            f"Estoy viendo contigo: **{pagina_actual}**"
+        )
+
+        st.info(
+            "Pregúntame cómo usar esta sección, dónde encontrar una opción "
+            "o qué significa la información que estás viendo."
+        )
+
+        # Sugerencias rápidas contextualizadas.
+        sugerencias = st.columns(3)
+
+        pregunta_sugerida = None
+
+        if sugerencias[0].button(
+            "🧭 ¿Qué hago aquí?",
+            key=f"asistente_que_hago_{pagina_actual}",
+            use_container_width=True,
+        ):
+            pregunta_sugerida = (
+                "Explícame qué puedo hacer en esta página y cuál es "
+                "el flujo recomendado."
+            )
+
+        if sugerencias[1].button(
+            "📋 Guíame",
+            key=f"asistente_guiame_{pagina_actual}",
+            use_container_width=True,
+        ):
+            pregunta_sugerida = (
+                "Guíame paso a paso para usar correctamente esta sección."
+            )
+
+        if sugerencias[2].button(
+            "⚠️ Ayuda",
+            key=f"asistente_ayuda_{pagina_actual}",
+            use_container_width=True,
+        ):
+            pregunta_sugerida = (
+                "¿Qué errores comunes debo evitar en esta sección?"
+            )
+
+        historial = st.session_state.get(
+            "asistente_historial",
+            [],
+        )
+
+        contenedor_historial = st.container(height=330)
+
+        with contenedor_historial:
+            if not historial:
+                st.markdown(
+                    "👋 **Hola.** Puedes preguntarme algo sobre "
+                    f"**{pagina_actual}**."
+                )
+            else:
+                for item in historial[-12:]:
+                    with st.chat_message(item["role"]):
+                        st.markdown(item["content"])
+
+        with st.form(
+            f"form_asistente_flotante_{pagina_actual}",
+            clear_on_submit=True,
+        ):
+            pregunta_manual = st.text_input(
+                "Tu pregunta",
+                placeholder=(
+                    f"Ej. ¿Cómo edito un registro en {pagina_actual}?"
+                ),
+                label_visibility="collapsed",
+            )
+
+            enviar = st.form_submit_button(
+                "Enviar ➜",
+                type="primary",
+                use_container_width=True,
+            )
+
+        pregunta_final = pregunta_sugerida
+        if enviar and pregunta_manual.strip():
+            pregunta_final = pregunta_manual.strip()
+
+        if pregunta_final:
+            with st.spinner("Analizando esta sección..."):
+                respuesta = responder_asistente_contextual(
+                    pregunta_final,
+                    pagina_actual,
+                )
+
+            # Mostrar de inmediato el último intercambio.
+            with contenedor_historial:
+                with st.chat_message("user"):
+                    st.markdown(pregunta_final)
+                with st.chat_message("assistant"):
+                    st.markdown(respuesta)
+
+        col_chat_1, col_chat_2 = st.columns(2)
+
+        if col_chat_1.button(
+            "🧹 Limpiar chat",
+            key=f"limpiar_asistente_{pagina_actual}",
+            use_container_width=True,
+        ):
+            st.session_state.asistente_historial = []
+            st.rerun()
+
+        col_chat_2.caption(
+            "El contexto cambia automáticamente al cambiar de sección."
+        )
+
+
+renderizar_asistente_flotante(page)
 
 
 # ------------------------------------------------------------------
