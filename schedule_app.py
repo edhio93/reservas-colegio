@@ -6154,29 +6154,170 @@ if page == "Base de datos":
                             )
 
         with pestaña_eliminar:
-            if filtrados.empty:
+            st.markdown("#### 📅 Selecciona el día de las reservas a eliminar")
+            st.caption(
+                "Primero elige una fecha en el calendario. Después se "
+                "mostrarán solamente las reservas de ese día para que puedas "
+                "seleccionar exactamente cuál o cuáles deseas eliminar."
+            )
+
+            fechas_disponibles_eliminar = sorted(
+                fecha
+                for fecha in datos_bd["_fecha_filtro"].dropna().unique()
+            )
+
+            fecha_inicial_eliminar = dt.date.today()
+
+            if (
+                fecha_inicial_eliminar not in fechas_disponibles_eliminar
+                and fechas_disponibles_eliminar
+            ):
+                fechas_futuras_eliminar = [
+                    fecha
+                    for fecha in fechas_disponibles_eliminar
+                    if fecha >= dt.date.today()
+                ]
+
+                fecha_inicial_eliminar = (
+                    fechas_futuras_eliminar[0]
+                    if fechas_futuras_eliminar
+                    else fechas_disponibles_eliminar[-1]
+                )
+
+            with st.container(border=True):
+                col_fecha_eliminar, col_total_eliminar = st.columns([1, 2])
+
+                fecha_registros_eliminar = col_fecha_eliminar.date_input(
+                    "Fecha de la reserva",
+                    value=fecha_inicial_eliminar,
+                    format="DD/MM/YYYY",
+                    key="bd_calendario_eliminar",
+                )
+
+                registros_dia_eliminar = datos_bd[
+                    datos_bd["_fecha_filtro"]
+                    == fecha_registros_eliminar
+                ].copy()
+
+                registros_dia_eliminar = registros_dia_eliminar.sort_values(
+                    [
+                        "_hora_inicio_filtro",
+                        "Recurso",
+                        "Profesor",
+                    ],
+                    ascending=[True, True, True],
+                    na_position="last",
+                )
+
+                col_total_eliminar.metric(
+                    "Reservas encontradas ese día",
+                    len(registros_dia_eliminar),
+                )
+
+            if registros_dia_eliminar.empty:
                 st.info(
-                    "No hay registros disponibles para eliminar "
-                    "con los filtros actuales."
-                )
-            else:
-                opciones_eliminacion = {
-                    int(fila["id"]): bd_etiqueta_registro(fila)
-                    for _, fila in filtrados.iterrows()
-                }
-
-                ids_eliminar = st.multiselect(
-                    "Selecciona uno o varios registros",
-                    list(opciones_eliminacion.keys()),
-                    format_func=lambda valor: opciones_eliminacion[valor],
-                    key="bd_ids_eliminar",
+                    "No existen reservas registradas para "
+                    f"{fecha_registros_eliminar.strftime('%d/%m/%Y')}."
                 )
 
-                if ids_eliminar:
-                    detalle_eliminar = datos_bd[
-                        datos_bd["id"].astype(int).isin(
-                            [int(valor) for valor in ids_eliminar]
+                if fechas_disponibles_eliminar:
+                    with st.expander(
+                        "📌 Ver fechas que sí tienen reservas",
+                        expanded=False,
+                    ):
+                        fechas_texto_eliminar = ", ".join(
+                            fecha.strftime("%d/%m/%Y")
+                            for fecha in fechas_disponibles_eliminar[-30:]
                         )
+                        st.write(fechas_texto_eliminar)
+
+            else:
+                st.markdown(
+                    f"##### Reservas del "
+                    f"{fecha_registros_eliminar.strftime('%d/%m/%Y')}"
+                )
+
+                tabla_eliminar = registros_dia_eliminar[
+                    [
+                        "id",
+                        "Hora inicio",
+                        "Hora fin",
+                        "Profesor",
+                        "Curso",
+                        "Recurso",
+                        "Observaciones",
+                    ]
+                ].copy()
+
+                # Selector visual mediante checkboxes dentro de una tabla.
+                tabla_eliminar.insert(0, "Eliminar", False)
+
+                seleccion_eliminar = st.data_editor(
+                    tabla_eliminar,
+                    hide_index=True,
+                    use_container_width=True,
+                    disabled=[
+                        "id",
+                        "Hora inicio",
+                        "Hora fin",
+                        "Profesor",
+                        "Curso",
+                        "Recurso",
+                        "Observaciones",
+                    ],
+                    column_config={
+                        "Eliminar": st.column_config.CheckboxColumn(
+                            "Eliminar",
+                            help=(
+                                "Marca únicamente las reservas que deseas "
+                                "eliminar."
+                            ),
+                        ),
+                        "id": st.column_config.NumberColumn(
+                            "ID",
+                            format="%d",
+                        ),
+                        "Hora inicio": st.column_config.TimeColumn(
+                            "Inicio",
+                            format="HH:mm",
+                        ),
+                        "Hora fin": st.column_config.TimeColumn(
+                            "Fin",
+                            format="HH:mm",
+                        ),
+                        "Observaciones": st.column_config.TextColumn(
+                            "Observaciones",
+                            width="large",
+                        ),
+                    },
+                    key=(
+                        "bd_tabla_eliminar_"
+                        f"{fecha_registros_eliminar.isoformat()}"
+                    ),
+                )
+
+                ids_eliminar = (
+                    seleccion_eliminar.loc[
+                        seleccion_eliminar["Eliminar"],
+                        "id",
+                    ]
+                    .astype(int)
+                    .tolist()
+                )
+
+                if not ids_eliminar:
+                    st.info(
+                        "☝️ Marca en la primera columna la reserva o las "
+                        "reservas que quieres eliminar."
+                    )
+
+                else:
+                    st.markdown("##### 🗑️ Registros seleccionados")
+
+                    detalle_eliminar = datos_bd[
+                        datos_bd["id"]
+                        .astype(int)
+                        .isin(ids_eliminar)
                     ][
                         [
                             "id",
@@ -6186,65 +6327,142 @@ if page == "Base de datos":
                             "Profesor",
                             "Curso",
                             "Recurso",
+                            "Observaciones",
                         ]
-                    ]
+                    ].copy()
 
                     st.dataframe(
                         detalle_eliminar,
                         use_container_width=True,
                         hide_index=True,
+                        column_config={
+                            "id": st.column_config.NumberColumn(
+                                "ID",
+                                format="%d",
+                            ),
+                            "Fecha": st.column_config.DateColumn(
+                                "Fecha",
+                                format="DD/MM/YYYY",
+                            ),
+                            "Hora inicio": st.column_config.TimeColumn(
+                                "Inicio",
+                                format="HH:mm",
+                            ),
+                            "Hora fin": st.column_config.TimeColumn(
+                                "Fin",
+                                format="HH:mm",
+                            ),
+                        },
+                    )
+
+                    # Resumen visual antes de eliminar.
+                    resumen_1, resumen_2, resumen_3 = st.columns(3)
+
+                    resumen_1.metric(
+                        "Seleccionadas",
+                        len(ids_eliminar),
+                    )
+                    resumen_2.metric(
+                        "Profesores afectados",
+                        detalle_eliminar["Profesor"]
+                        .dropna()
+                        .nunique(),
+                    )
+                    resumen_3.metric(
+                        "Recursos liberados",
+                        detalle_eliminar["Recurso"]
+                        .dropna()
+                        .nunique(),
+                    )
+
+                    st.warning(
+                        "⚠️ Esta acción es permanente. Una vez eliminadas, "
+                        "las reservas dejarán de aparecer en el calendario, "
+                        "Modo Monitor y demás vistas del sistema."
+                    )
+
+                    notificar_eliminacion = st.checkbox(
+                        "📧 Notificar por correo a los profesores afectados",
+                        value=True,
+                        key=(
+                            "bd_notificar_eliminacion_"
+                            f"{fecha_registros_eliminar.isoformat()}"
+                        ),
                     )
 
                     texto_confirmacion_esperado = (
                         f"ELIMINAR {len(ids_eliminar)}"
                     )
 
-                    st.warning(
-                        "Esta acción es permanente. Para confirmar, "
-                        f"escribe exactamente: "
-                        f"**{texto_confirmacion_esperado}**"
+                    st.markdown(
+                        "Para confirmar, escribe exactamente:"
+                    )
+                    st.code(
+                        texto_confirmacion_esperado,
+                        language=None,
                     )
 
                     confirmacion_eliminar = st.text_input(
-                        "Confirmación",
-                        key="bd_confirmacion_eliminar",
+                        "Confirmación de eliminación",
+                        placeholder=texto_confirmacion_esperado,
+                        key=(
+                            "bd_confirmacion_eliminar_"
+                            f"{fecha_registros_eliminar.isoformat()}_"
+                            f"{len(ids_eliminar)}"
+                        ),
                     )
 
-                    notificar_eliminacion = st.checkbox(
-                        "Notificar las cancelaciones por correo",
-                        value=True,
-                        key="bd_notificar_eliminacion",
+                    confirmacion_correcta = (
+                        confirmacion_eliminar.strip().upper()
+                        == texto_confirmacion_esperado
                     )
+
+                    if not confirmacion_correcta:
+                        st.caption(
+                            "🔒 El botón permanecerá bloqueado hasta que la "
+                            "confirmación coincida exactamente."
+                        )
 
                     if st.button(
-                        "🗑️ Eliminar registros seleccionados",
+                        (
+                            "🗑️ Eliminar "
+                            f"{len(ids_eliminar)} "
+                            + (
+                                "reserva"
+                                if len(ids_eliminar) == 1
+                                else "reservas"
+                            )
+                        ),
                         type="primary",
                         use_container_width=True,
-                        disabled=(
-                            confirmacion_eliminar.strip()
-                            != texto_confirmacion_esperado
+                        disabled=not confirmacion_correcta,
+                        key=(
+                            "bd_boton_eliminar_"
+                            f"{fecha_registros_eliminar.isoformat()}_"
+                            f"{len(ids_eliminar)}"
                         ),
                     ):
                         eliminados = 0
                         errores_eliminar = []
 
-                        with st.spinner(
-                            "Eliminando registros de Supabase..."
-                        ):
-                            for id_borrar in ids_eliminar:
-                                try:
-                                    fila_original = datos_bd[
-                                        datos_bd["id"].astype(int)
-                                        == int(id_borrar)
-                                    ].iloc[0]
+                        # Guardamos los datos originales antes de borrar.
+                        filas_a_eliminar = datos_bd[
+                            datos_bd["id"]
+                            .astype(int)
+                            .isin(ids_eliminar)
+                        ].copy()
 
+                        with st.spinner(
+                            "Eliminando las reservas seleccionadas..."
+                        ):
+                            for _, fila_original in filas_a_eliminar.iterrows():
+                                id_borrar = int(fila_original["id"])
+
+                                try:
                                     (
                                         supabase.table("reservas")
                                         .delete()
-                                        .eq(
-                                            "id",
-                                            int(id_borrar),
-                                        )
+                                        .eq("id", id_borrar)
                                         .execute()
                                     )
 
@@ -6254,57 +6472,121 @@ if page == "Base de datos":
                                         registro_id=id_borrar,
                                         detalle={
                                             "fecha": str(
-                                                fila_original[
-                                                    "Fecha"
-                                                ]
+                                                fila_original["Fecha"]
+                                            ),
+                                            "hora_inicio": (
+                                                bd_hora_texto(
+                                                    fila_original[
+                                                        "Hora inicio"
+                                                    ]
+                                                )
+                                            ),
+                                            "hora_fin": (
+                                                bd_hora_texto(
+                                                    fila_original[
+                                                        "Hora fin"
+                                                    ]
+                                                )
                                             ),
                                             "profesor": (
-                                                fila_original[
-                                                    "Profesor"
-                                                ]
+                                                fila_original["Profesor"]
                                             ),
                                             "curso": (
-                                                fila_original[
-                                                    "Curso"
-                                                ]
+                                                fila_original["Curso"]
                                             ),
                                             "recurso": (
-                                                fila_original[
-                                                    "Recurso"
-                                                ]
+                                                fila_original["Recurso"]
                                             ),
                                         },
                                     )
 
                                     if notificar_eliminacion:
                                         profesor_borrado = (
-                                            fila_original[
-                                                "Profesor"
-                                            ]
+                                            fila_original["Profesor"]
                                         )
+
                                         email_to = PROFESOR_DATA.get(
                                             profesor_borrado
                                         )
+
                                         if email_to:
                                             subject = (
                                                 "Cancelación de reserva "
                                                 f"- {fila_original['Curso']}"
                                             )
+
                                             body = f"""
                                             <html>
                                             <body>
-                                            <p>Hola {str(profesor_borrado).split(' ')[0]},</p>
-                                            <p>Se canceló la siguiente reserva:</p>
-                                            <ul>
-                                                <li><b>Fecha:</b> {format_date_es(bd_fecha(fila_original['Fecha']))}</li>
-                                                <li><b>Horario:</b> {bd_hora_texto(fila_original['Hora inicio'])}–{bd_hora_texto(fila_original['Hora fin'])}</li>
-                                                <li><b>Curso:</b> {fila_original['Curso']}</li>
-                                                <li><b>Recurso:</b> {fila_original['Recurso']}</li>
-                                            </ul>
-                                            <p>Saludos,<br>Sistema de Horarios CAV</p>
+                                                <p>
+                                                    Hola {
+                                                        str(
+                                                            profesor_borrado
+                                                        ).split(' ')[0]
+                                                    },
+                                                </p>
+
+                                                <p>
+                                                    Se canceló la siguiente
+                                                    reserva registrada a tu
+                                                    nombre:
+                                                </p>
+
+                                                <ul>
+                                                    <li>
+                                                        <b>Fecha:</b>
+                                                        {
+                                                            format_date_es(
+                                                                bd_fecha(
+                                                                    fila_original[
+                                                                        'Fecha'
+                                                                    ]
+                                                                )
+                                                            )
+                                                        }
+                                                    </li>
+                                                    <li>
+                                                        <b>Horario:</b>
+                                                        {
+                                                            bd_hora_texto(
+                                                                fila_original[
+                                                                    'Hora inicio'
+                                                                ]
+                                                            )
+                                                        }–{
+                                                            bd_hora_texto(
+                                                                fila_original[
+                                                                    'Hora fin'
+                                                                ]
+                                                            )
+                                                        }
+                                                    </li>
+                                                    <li>
+                                                        <b>Curso:</b>
+                                                        {
+                                                            fila_original[
+                                                                'Curso'
+                                                            ]
+                                                        }
+                                                    </li>
+                                                    <li>
+                                                        <b>Recurso:</b>
+                                                        {
+                                                            fila_original[
+                                                                'Recurso'
+                                                            ]
+                                                        }
+                                                    </li>
+                                                </ul>
+
+                                                <p>
+                                                    Saludos,<br>
+                                                    Sistema de Horarios CAV
+                                                </p>
                                             </body>
                                             </html>
                                             """
+
                                             send_email(
                                                 subject,
                                                 body,
@@ -6317,6 +6599,7 @@ if page == "Base de datos":
                                     errores_eliminar.append(
                                         f"ID {id_borrar}: {error}"
                                     )
+
                                     registrar_error(
                                         "eliminar_reserva_bd",
                                         error,
@@ -6324,8 +6607,14 @@ if page == "Base de datos":
 
                         if eliminados:
                             st.success(
-                                f"✅ Se eliminaron {eliminados} "
-                                "registros correctamente."
+                                "✅ "
+                                f"{eliminados} "
+                                + (
+                                    "reserva fue eliminada "
+                                    if eliminados == 1
+                                    else "reservas fueron eliminadas "
+                                )
+                                + "correctamente."
                             )
 
                         if errores_eliminar:
@@ -6340,7 +6629,7 @@ if page == "Base de datos":
                             )
                         else:
                             st.cache_data.clear()
-                            time.sleep(0.5)
+                            time.sleep(0.7)
                             st.rerun()
 
         with pestaña_exportar:
