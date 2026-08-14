@@ -5,16 +5,6 @@ from io import BytesIO
 from pathlib import Path
 import pandas as pd
 import streamlit as st
-
-from core.config import (
-    APP_ICON,
-    APP_LAYOUT,
-    APP_SIDEBAR_STATE,
-    APP_TITLE,
-    APP_VERSION,
-)
-from core.navigation import prepare_navigation, request_navigation
-from core.permissions import PAGES_CONFIG, get_available_pages
 import hashlib
 import re
 import textwrap
@@ -29,9 +19,12 @@ import qrcode
 import io
 import urllib.parse
 import zipfile
+import google.generativeai as genai
 import base64
 import os
 import uuid
+import traceback
+import logging
 
 import requests
 from icalendar import Calendar
@@ -72,20 +65,396 @@ def obtener_clima_vicuna():
     except Exception as e:
         return "" # Si no hay internet, no mostramos nada para que no salga error
 
-st.set_page_config(
-    page_title=APP_TITLE,
-    page_icon=APP_ICON,
-    layout=APP_LAYOUT,
-    initial_sidebar_state=APP_SIDEBAR_STATE,
-)
+st.set_page_config(page_title="Sistema de Horarios CAV", page_icon="📅", layout="wide", initial_sidebar_state="expanded")
 
-# ------------------------------------------------------------------
-# COMPONENTE RESPONSIVO MODULAR V24.0
-# ------------------------------------------------------------------
-from components.responsive import aplicar_diseno_responsivo_inteligente
+# ==============================================================================
+# DISEÑO RESPONSIVO INTELIGENTE V18
+# Se adapta automáticamente a móvil, tablet, notebook, escritorio y pantallas TV.
+# ==============================================================================
+def aplicar_diseno_responsivo_inteligente():
+    css_responsivo = """
+    <style>
+    :root {
+        --cav-touch-size: 46px;
+        --cav-radius-responsive: clamp(10px, 1.2vw, 18px);
+        --cav-gap-responsive: clamp(.55rem, 1.1vw, 1.15rem);
+        --cav-page-padding-x: clamp(.65rem, 2.4vw, 2.4rem);
+        --cav-page-padding-y: clamp(.75rem, 1.8vw, 1.8rem);
+        --cav-content-width: 1760px;
+    }
+
+    html {
+        text-size-adjust: 100%;
+        -webkit-text-size-adjust: 100%;
+        scroll-behavior: smooth;
+    }
+
+    body,
+    [data-testid="stAppViewContainer"] {
+        overflow-x: hidden;
+    }
+
+    .block-container {
+        width: 100% !important;
+        max-width: var(--cav-content-width) !important;
+        padding:
+            var(--cav-page-padding-y)
+            var(--cav-page-padding-x)
+            calc(var(--cav-page-padding-y) + env(safe-area-inset-bottom))
+            var(--cav-page-padding-x)
+            !important;
+    }
+
+    h1 {
+        font-size: clamp(1.75rem, 3.3vw, 3rem) !important;
+        line-height: 1.08 !important;
+        text-wrap: balance;
+    }
+
+    h2 {
+        font-size: clamp(1.4rem, 2.6vw, 2.25rem) !important;
+        line-height: 1.12 !important;
+        text-wrap: balance;
+    }
+
+    h3 {
+        font-size: clamp(1.12rem, 2vw, 1.65rem) !important;
+        line-height: 1.16 !important;
+    }
+
+    p,
+    label,
+    [data-testid="stMarkdownContainer"] {
+        overflow-wrap: anywhere;
+    }
+
+    img,
+    video,
+    canvas,
+    svg {
+        max-width: 100% !important;
+        height: auto;
+    }
+
+    iframe {
+        max-width: 100% !important;
+    }
+
+    /* streamlit-autorefresh usa un iframe invisible.
+       No se debe convertir en un bloque alto con height:auto. */
+    iframe[title*="autorefresh"],
+    iframe[src*="streamlit_autorefresh"] {
+        position: absolute !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        border: 0 !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        overflow: hidden !important;
+    }
+
+    div[data-testid="stElementContainer"]:has(
+        iframe[title*="autorefresh"]
+    ),
+    div[data-testid="stElementContainer"]:has(
+        iframe[src*="streamlit_autorefresh"]
+    ) {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+    }
+
+    [data-testid="stImage"] img {
+        object-fit: contain;
+    }
+
+    [data-testid="stHorizontalBlock"] {
+        gap: var(--cav-gap-responsive) !important;
+        align-items: stretch;
+    }
+
+    [data-testid="column"] {
+        min-width: 0 !important;
+    }
+
+    [data-testid="stForm"],
+    [data-testid="stExpander"],
+    [data-testid="stMetric"],
+    [data-testid="stAlert"],
+    [data-testid="stDataFrame"],
+    [data-testid="stFileUploader"] {
+        border-radius: var(--cav-radius-responsive) !important;
+    }
+
+    [data-testid="stForm"] {
+        padding: clamp(.85rem, 1.8vw, 1.5rem) !important;
+    }
+
+    [data-testid="stMetric"] {
+        height: 100%;
+        padding: clamp(.7rem, 1.25vw, 1.05rem) !important;
+    }
+
+    [data-testid="stMetricValue"] {
+        font-size: clamp(1.3rem, 2.2vw, 2rem) !important;
+        overflow-wrap: anywhere;
+    }
+
+    [data-testid="stMetricLabel"] {
+        white-space: normal !important;
+    }
+
+    .stButton > button,
+    .stDownloadButton > button,
+    [data-testid="stLinkButton"] a,
+    button[kind] {
+        min-height: var(--cav-touch-size) !important;
+        border-radius: clamp(9px, 1vw, 14px) !important;
+        white-space: normal !important;
+        line-height: 1.2 !important;
+    }
+
+    input,
+    textarea,
+    [data-baseweb="select"] > div {
+        min-height: var(--cav-touch-size) !important;
+        font-size: max(16px, 1rem) !important;
+        border-radius: clamp(8px, .9vw, 13px) !important;
+    }
+
+    textarea {
+        min-height: 110px !important;
+    }
+
+    [data-testid="stTabs"] [role="tablist"] {
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: thin;
+        flex-wrap: nowrap;
+    }
+
+    [data-testid="stTabs"] [role="tab"] {
+        flex: 0 0 auto;
+        min-height: var(--cav-touch-size);
+        white-space: nowrap;
+    }
+
+    [data-testid="stDataFrame"],
+    [data-testid="stTable"] {
+        width: 100% !important;
+        overflow-x: auto !important;
+    }
+
+    [data-testid="stDataFrame"] > div {
+        max-width: 100% !important;
+    }
+
+    [data-testid="stSidebar"] {
+        width: clamp(270px, 25vw, 370px) !important;
+    }
+
+    [data-testid="stSidebarContent"] {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    [data-testid="stDialog"] > div {
+        width: min(94vw, 760px) !important;
+        max-height: 92dvh !important;
+        overflow-y: auto !important;
+    }
+
+    /* Tablets y notebooks pequeños */
+    @media (max-width: 1180px) {
+        :root {
+            --cav-content-width: 100%;
+            --cav-gap-responsive: .75rem;
+        }
+
+        [data-testid="stHorizontalBlock"] {
+            flex-wrap: wrap !important;
+        }
+
+        [data-testid="column"] {
+            flex: 1 1 min(320px, 100%) !important;
+            width: auto !important;
+        }
+    }
+
+    /* Celulares y tablets verticales */
+    @media (max-width: 760px) {
+        :root {
+            --cav-touch-size: 48px;
+            --cav-page-padding-x: .7rem;
+            --cav-page-padding-y: .8rem;
+        }
+
+        .block-container {
+            max-width: 100% !important;
+        }
+
+        h1,
+        h2 {
+            text-align: center;
+        }
+
+        [data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: .7rem !important;
+        }
+
+        [data-testid="column"] {
+            flex: 1 1 100% !important;
+            width: 100% !important;
+            min-width: 100% !important;
+        }
+
+        .stButton,
+        .stDownloadButton,
+        [data-testid="stLinkButton"] {
+            width: 100%;
+        }
+
+        .stButton > button,
+        .stDownloadButton > button,
+        [data-testid="stLinkButton"] a {
+            width: 100% !important;
+            justify-content: center !important;
+            padding-left: .8rem !important;
+            padding-right: .8rem !important;
+        }
+
+        [data-testid="stSidebar"] {
+            width: min(88vw, 340px) !important;
+        }
+
+        [data-testid="stMetric"] {
+            min-height: 88px;
+        }
+
+        [data-testid="stForm"] {
+            padding: .85rem !important;
+        }
+
+        [data-testid="stFileUploader"] section {
+            padding: .8rem !important;
+        }
+
+        [data-testid="stFileUploaderDropzoneInstructions"] {
+            min-width: 0 !important;
+        }
+
+        [data-testid="stToolbar"],
+        [data-testid="stDecoration"] {
+            max-width: 100vw !important;
+        }
+
+        div[data-testid="stPlotlyChart"] {
+            overflow-x: auto;
+        }
+
+        div[data-testid="stPlotlyChart"] > div {
+            min-width: 100%;
+        }
+    }
+
+    /* Celulares muy pequeños */
+    @media (max-width: 390px) {
+        :root {
+            --cav-page-padding-x: .5rem;
+        }
+
+        h1 {
+            font-size: 1.62rem !important;
+        }
+
+        h2 {
+            font-size: 1.32rem !important;
+        }
+
+        [data-testid="stMetricValue"] {
+            font-size: 1.22rem !important;
+        }
+    }
+
+    /* Pantallas grandes y televisores */
+    @media (min-width: 1700px) {
+        :root {
+            --cav-content-width: 1900px;
+            --cav-page-padding-x: 2.8rem;
+        }
+
+        body {
+            font-size: 1.05rem;
+        }
+
+        .stButton > button,
+        .stDownloadButton > button,
+        [data-testid="stLinkButton"] a {
+            min-height: 50px !important;
+        }
+    }
+
+    /* Dispositivos táctiles */
+    @media (pointer: coarse) {
+        button,
+        a,
+        input,
+        textarea,
+        [role="tab"],
+        [role="option"] {
+            touch-action: manipulation;
+        }
+
+        [data-baseweb="select"] [role="option"] {
+            min-height: 46px;
+        }
+    }
+
+    /* Pantallas horizontales de poca altura */
+    @media (orientation: landscape) and (max-height: 650px) {
+        :root {
+            --cav-page-padding-y: .45rem;
+        }
+
+        h1 {
+            margin-top: .2rem !important;
+            margin-bottom: .45rem !important;
+        }
+
+        [data-testid="stForm"] {
+            padding-top: .65rem !important;
+            padding-bottom: .65rem !important;
+        }
+    }
+
+    /* Accesibilidad: reducir animaciones cuando el dispositivo lo solicita */
+    @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+            scroll-behavior: auto !important;
+            animation-duration: .01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: .01ms !important;
+        }
+    }
+    </style>
+    """
+
+    if hasattr(st, "html"):
+        st.html(css_responsivo)
+    else:
+        st.markdown(css_responsivo, unsafe_allow_html=True)
+
 
 aplicar_diseno_responsivo_inteligente()
-
 
 @st.cache_data(ttl=1800) # Se actualiza cada 30 minutos
 def obtener_eventos_google_calendar(url_ics):
@@ -135,20 +504,114 @@ def obtener_eventos_google_calendar(url_ics):
     except Exception as e:
         return []
         
-# ------------------------------------------------------------------
-# SERVICIO GEMINI MODULAR V24.0
-# ------------------------------------------------------------------
-from services.gemini import consultar_gemini
+# --- CONFIGURACIÓN DE GEMINI ---
+try:
+    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+except KeyError:
+    st.error(
+        "🚨 Error: No se encontró la API Key en los secretos de Streamlit."
+    )
+    st.stop()
+
+
+@st.cache_resource(show_spinner=False)
+def obtener_modelo_gemini(api_key):
+    """Reutiliza el modelo de IA y evita reconstruirlo en cada rerun."""
+    genai.configure(api_key=api_key)
+    return genai.GenerativeModel("gemini-2.5-flash")
+
+
+model = obtener_modelo_gemini(GEMINI_API_KEY)
+
+# --- TU FUNCIÓN PARA LLAMAR A LA IA ---
+def consultar_gemini(prompt):
+    try:
+        response = model.generate_content(prompt) 
+        return response.text
+    except Exception as e:
+        return f"Error con la IA: {e}"
+        st.header("💬 Asistente Técnico IA")
 
 # ------------------------------------------------------------------
-# SERVICIO SUPABASE MODULAR V24.0
+# CONFIGURACIÓN SUPABASE (NUEVO MOTOR DE BASE DE DATOS)
 # ------------------------------------------------------------------
-from services.supabase import (
-    registrar_auditoria,
-    registrar_error,
-    select_paginado,
-    supabase,
+from supabase import create_client, Client, ClientOptions
+
+# Las credenciales se leen exclusivamente desde Streamlit Secrets.
+try:
+    URL_SUPABASE = st.secrets["SUPABASE_URL"]
+    CLAVE_SUPABASE = st.secrets["SUPABASE_KEY"]
+except KeyError as e:
+    st.error(f"🚨 Falta configurar {e} en los Secrets de Streamlit.")
+    st.stop()
+
+@st.cache_resource(show_spinner=False)
+def obtener_cliente_supabase(url_supabase, clave_supabase):
+    """
+    Reutiliza el cliente Supabase entre reruns.
+    """
+    opciones = ClientOptions(
+        postgrest_client_timeout=45,
+        storage_client_timeout=60,
+    )
+    return create_client(
+        url_supabase,
+        clave_supabase,
+        options=opciones,
+    )
+
+
+supabase: Client = obtener_cliente_supabase(
+    URL_SUPABASE,
+    CLAVE_SUPABASE,
 )
+
+
+# Registro local de errores para diagnóstico administrativo.
+logging.basicConfig(level=logging.INFO)
+LOGGER = logging.getLogger("sistema_cav")
+
+def registrar_error(contexto, error):
+    LOGGER.error("%s: %s\n%s", contexto, error, traceback.format_exc())
+    st.session_state.setdefault("errores_sistema", [])
+    st.session_state.errores_sistema.append({
+        "fecha": dt_datetime.now().isoformat(timespec="seconds"),
+        "contexto": contexto,
+        "error": str(error),
+    })
+    st.session_state.errores_sistema = st.session_state.errores_sistema[-50:]
+
+def select_paginado(tabla, columnas="*", filtros=None, orden=None, desc=False, pagina=1000):
+    """Lee todos los registros de una tabla evitando el límite por defecto de Supabase."""
+    filas = []
+    desde = 0
+    while True:
+        consulta = supabase.table(tabla).select(columnas)
+        for metodo, campo, valor in (filtros or []):
+            consulta = getattr(consulta, metodo)(campo, valor)
+        if orden:
+            consulta = consulta.order(orden, desc=desc)
+        bloque = consulta.range(desde, desde + pagina - 1).execute().data or []
+        filas.extend(bloque)
+        if len(bloque) < pagina:
+            break
+        desde += pagina
+    return filas
+
+def registrar_auditoria(accion, modulo, registro_id=None, detalle=None):
+    """Registra acciones importantes. Si aún no existe la tabla, no interrumpe la app."""
+    try:
+        supabase.table("auditoria").insert({
+            "usuario": st.session_state.get("profesor_name") or st.session_state.get("role") or "sistema",
+            "accion": accion,
+            "modulo": modulo,
+            "registro_id": str(registro_id) if registro_id is not None else None,
+            "detalle": detalle or {},
+            "fecha": dt_datetime.now().isoformat(),
+        }).execute()
+    except Exception as e:
+        registrar_error("auditoria", e)
+
 
 # ==============================================================================
 # DIPLOMAS DIGITALES V15: REGISTRO, STORAGE Y VISTA PÚBLICA
@@ -4039,10 +4502,46 @@ with st.sidebar:
     components.html(html_reloj, height=85)
     st.markdown("<hr style='margin: 0px 0px 10px 0px; padding: 0;'>", unsafe_allow_html=True)
 
-    # Matriz de páginas/permisos centralizada en core/permissions.py
-    available_pages = get_available_pages(st.session_state.role)
+    PAGES_CONFIG = {
+        "Inicio": {"icon": "🏠", "roles": ["admin", "profesor", "mensajeria"]},
+        "Mis Reservas": {"icon": "👤", "roles": ["profesor"]},
+        "Registrar": {"icon": "📝", "roles": ["admin"]},
+        "Base de datos": {"icon": "🗃️", "roles": ["admin"]},
+        "Semana": {"icon": "🗓️", "roles": ["admin", "profesor"]},
+        "Dashboard": {"icon": "📈", "roles": ["admin"]},
+        "Técnicos": {"icon": "🔧", "roles": ["admin"]},
+        "Diplomas": {"icon": "🎓", "roles": ["admin", "profesor"]},
+        "Inventario": {"icon": "💻", "roles": ["admin"]},
+        "Mantención preventiva": {"icon": "🧰", "roles": ["admin"]},
+        "Auditoría": {"icon": "🧾", "roles": ["admin"]},
+        "Configuración": {"icon": "⚙️", "roles": ["admin"]},
+        "Modo TV": {"icon": "📺", "roles": ["admin", "mensajeria"]},
+    }
+
+    available_pages = [
+        p
+        for p, conf in PAGES_CONFIG.items()
+        if st.session_state.role in conf["roles"]
+    ]
     default_page = "Inicio"
-    prepare_navigation(available_pages, default_page)
+
+    if default_page not in available_pages:
+        default_page = available_pages[0]
+
+    # Navegación diferida: aplicar ANTES de crear el widget del menú.
+    pagina_pendiente = st.session_state.pop(
+        "_pending_nav_page",
+        None,
+    )
+
+    if pagina_pendiente in available_pages:
+        st.session_state.nav_page = pagina_pendiente
+
+    if (
+        "nav_page" not in st.session_state
+        or st.session_state.nav_page not in available_pages
+    ):
+        st.session_state.nav_page = default_page
 
     page = st.sidebar.radio(
         "Navegación",
@@ -4054,7 +4553,6 @@ with st.sidebar:
 
     st.sidebar.markdown("---")
 
-    st.sidebar.caption(f"🧩 Sistema CAV v{APP_VERSION} · Core modular")
     st.sidebar.caption(
         "⚡ Modo rendimiento activo · sin refrescos automáticos mientras trabajas"
     )
@@ -4605,11 +5103,16 @@ if page == "Inicio":
             )
             return
 
-        request_navigation(
-            pagina,
-            technical_module=modulo_tecnico,
-            open_tv_config=abrir_config_tv,
-        )
+        # No modificamos directamente `nav_page` porque el radio ya existe.
+        st.session_state["_pending_nav_page"] = pagina
+
+        if modulo_tecnico:
+            st.session_state["_pending_tecnico_modulo"] = modulo_tecnico
+
+        if abrir_config_tv:
+            st.session_state.ver_pantalla_tv = False
+
+        st.rerun()
 
     if st.session_state.get("role") == "admin":
         acciones = st.columns(4)
