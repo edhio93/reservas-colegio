@@ -13,7 +13,23 @@ from email.utils import formataddr
 import streamlit as st
 
 
-_EMAIL_RE = re.compile(r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
+_EMAIL_RE = re.compile(
+    r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$"
+)
+
+_DOMINIO_INSTITUCIONAL = "colegioantoniovaras.cl"
+
+# Estructura institucional informada por el colegio:
+# nombre.apellidopaterno.inicialapellidomaterno@colegioantoniovaras.cl
+_EMAIL_INSTITUCIONAL_RE = re.compile(
+    r"^[A-Za-z0-9_-]+\."
+    r"[A-Za-z0-9_-]+\."
+    r"[A-Za-z0-9_-]+@"
+    r"colegioantoniovaras\.cl$",
+    re.IGNORECASE,
+)
 
 
 def get_email_config():
@@ -81,11 +97,41 @@ def validate_email_config():
     )
 
 
-def _validar_destinatario(destinatario):
+def _normalizar_destinatario(destinatario):
+    """Normaliza caracteres invisibles comunes al copiar/pegar un correo."""
     correo = str(destinatario or "").strip()
+
+    for invisible in ("\u200b", "\u200c", "\u200d", "\ufeff", "\u00a0"):
+        correo = correo.replace(invisible, "")
+
+    return correo.strip()
+
+
+def _validar_destinatario(destinatario):
+    correo = _normalizar_destinatario(destinatario)
+
+    if not correo:
+        raise ValueError("Escribe un correo destinatario.")
+
+    if any(caracter.isspace() for caracter in correo):
+        raise ValueError(
+            "El correo contiene espacios. "
+            "Ejemplo institucional: nombre.apellido.i@colegioantoniovaras.cl"
+        )
+
     if not _EMAIL_RE.fullmatch(correo):
-        raise ValueError("El correo destinatario no tiene un formato válido.")
-    return correo
+        raise ValueError(
+            "El correo destinatario no tiene un formato válido. "
+            "Ejemplo: nombre.apellido.i@colegioantoniovaras.cl"
+        )
+
+    return correo.lower()
+
+
+def es_correo_institucional(correo):
+    """Indica si coincide con el dominio y estructura institucional CAV."""
+    correo_normalizado = _normalizar_destinatario(correo).lower()
+    return bool(_EMAIL_INSTITUCIONAL_RE.fullmatch(correo_normalizado))
 
 
 def send_html_email(subject, html_body, recipient_email, text_body=None):

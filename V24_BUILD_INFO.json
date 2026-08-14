@@ -1,14 +1,31 @@
 {
-  "version": "24.0.1",
+  "version": "24.1.0",
   "source_lines": 11601,
   "main_lines_after_core_extraction": 11098,
   "lines_removed_from_main": 503,
-  "python_files_compiled": 24,
-  "database_migrations": 0,
+  "python_files_compiled": null,
+  "database_migrations": 1,
   "new_secrets": 0,
   "hotfixes": [
     "Gemini status no longer references removed global model",
     "SMTP test UI added to Estado del sistema",
-    "SMTP service centralized in services/email_smtp.py"
+    "SMTP service centralized in services/email_smtp.py",
+    "Fixed SMTP recipient regex escaping bug",
+    "Institutional Workspace email format supported",
+    "Email test field now shows institutional naming convention"
+  ],
+  "workspace_core": {
+    "directory_sync": true,
+    "groups_sync": true,
+    "professor_auto_link": true,
+    "gmail_api_outbox": true,
+    "reservation_change_notifications": true,
+    "weekly_digest": "Monday 07:30 America/Santiago"
+  },
+  "new_edge_function_secrets": 4,
+  "edge_functions": [
+    "workspace-sync",
+    "process-notifications",
+    "weekly-digest"
   ]
 }

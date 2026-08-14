@@ -155,6 +155,22 @@ from services.supabase import (
     supabase,
 )
 
+from services.workspace import (
+    listar_miembros_grupo,
+    listar_workspace_groups,
+    listar_workspace_users,
+    resumen_workspace,
+    sincronizar_workspace,
+    vincular_profesor_workspace,
+)
+from services.notifications import (
+    encolar_reserva_cancelada,
+    encolar_reserva_creada,
+    encolar_reserva_modificada,
+    encolar_reservas_creadas_lote,
+    listar_outbox_reciente,
+)
+
 # ==============================================================================
 # DIPLOMAS DIGITALES V15: REGISTRO, STORAGE Y VISTA PÚBLICA
 # ==============================================================================
@@ -3903,19 +3919,36 @@ def cargar_catalogos_runtime():
     profesor_data_local = {}
 
     try:
-        prof_data_db = (
-            supabase.table("profesores")
-            .select("id, nombre, email")
-            .execute()
-            .data
-            or []
-        )
+        try:
+            prof_data_db = (
+                supabase.table("profesores")
+                .select(
+                    "id,nombre,email,workspace_primary_email,"
+                    "workspace_active,workspace_user_id"
+                )
+                .execute()
+                .data
+                or []
+            )
+        except Exception:
+            prof_data_db = (
+                supabase.table("profesores")
+                .select("id,nombre,email")
+                .execute()
+                .data
+                or []
+            )
+
         map_prof_local = {
             p["nombre"]: p["id"]
             for p in prof_data_db
         }
         profesor_data_local = {
-            p["nombre"]: p.get("email", "")
+            p["nombre"]: (
+                p.get("workspace_primary_email")
+                or p.get("email")
+                or ""
+            )
             for p in prof_data_db
         }
     except Exception as error:
@@ -4881,17 +4914,27 @@ if page == "Registrar":
                                     'observaciones': obs
                                 })
                         try:
-                            supabase.table("reservas").insert(nuevas_reservas).execute()
+                            resultado_insert = (
+                                supabase.table("reservas")
+                                .insert(nuevas_reservas)
+                                .execute()
+                            )
                             st.success("✅ ¡Reservas guardadas exitosamente!")
-                            st.cache_data.clear() # Limpiamos la caché global
-                            
-                            email_to = PROFESOR_DATA.get(prof)
-                            if email_to:
-                                subject = f"Confirmación de Reserva de Recursos - {curso}"
-                                body = f"""<html><body><p>Hola {prof.split(' ')[0]},</p><p>Se ha(n) confirmado la(s) siguiente(s) reserva(s) a tu nombre:</p><ul><li><b>Curso:</b> {curso}</li><li><b>Recurso(s):</b> {', '.join(recs)}</li><li><b>Horario:</b> {hora}</li></ul><p><b>Fechas Registradas:</b></p><ul>{''.join([f'<li>{format_date_es(f)}</li>' for f in fechas_a_registrar])}</ul>{f"<p><b>Observaciones:</b> {obs}</p>" if obs else ""}<p>Saludos,<br>Sistema de Horarios CAV</p></body></html>"""
-                                send_email(subject, body, email_to)
-                                
-                            time.sleep(0.25)
+                            st.cache_data.clear()
+
+                            # V24.1: una sola confirmación por operación,
+                            # incluso si es una reserva recurrente/múltiple.
+                            encolar_reservas_creadas_lote(
+                                profesor_id=map_prof.get(prof),
+                                profesor_nombre=prof,
+                                curso=curso,
+                                recursos=recs,
+                                fechas=fechas_a_registrar,
+                                hora_inicio=h_inicio.strftime("%H:%M"),
+                                hora_fin=h_fin.strftime("%H:%M"),
+                            )
+
+                            time.sleep(0.15)
                             st.rerun()
                         except Exception as e:
                             st.error(f"Error al guardar en la nube: {e}")
@@ -5762,33 +5805,89 @@ if page == "Base de datos":
                                 )
 
                                 if notificar_edicion:
-                                    email_to = PROFESOR_DATA.get(
-                                        profesor_editado
-                                    )
-                                    if email_to:
-                                        subject = (
-                                            "Actualización de reserva "
-                                            f"- {curso_editado}"
+                                    before_notificacion = {
+                                        "fecha": str(
+                                            bd_fecha(fila_editar["Fecha"])
+                                        ),
+                                        "hora_inicio": bd_hora_texto(
+                                            fila_editar["Hora inicio"]
+                                        ),
+                                        "hora_fin": bd_hora_texto(
+                                            fila_editar["Hora fin"]
+                                        ),
+                                        "profesor": fila_editar["Profesor"],
+                                        "curso": fila_editar["Curso"],
+                                        "recurso": fila_editar["Recurso"],
+                                    }
+                                    after_notificacion = {
+                                        "fecha": fecha_editada.isoformat(),
+                                        "hora_inicio": hora_inicio_editada.strftime(
+                                            "%H:%M"
+                                        ),
+                                        "hora_fin": hora_fin_editada.strftime(
+                                            "%H:%M"
+                                        ),
+                                        "profesor": profesor_editado,
+                                        "curso": curso_editado,
+                                        "recurso": recurso_editado,
+                                    }
+
+                                    profesor_anterior = fila_editar["Profesor"]
+
+                                    if profesor_anterior != profesor_editado:
+                                        # El profesor anterior recibe cancelación/reasignación.
+                                        encolar_reserva_cancelada(
+                                            profesor_id=map_prof.get(
+                                                profesor_anterior
+                                            ),
+                                            reserva_id=id_editar,
+                                            profesor_nombre=profesor_anterior,
+                                            curso=fila_editar["Curso"],
+                                            recurso=fila_editar["Recurso"],
+                                            fecha=str(
+                                                bd_fecha(
+                                                    fila_editar["Fecha"]
+                                                )
+                                            ),
+                                            hora_inicio=bd_hora_texto(
+                                                fila_editar["Hora inicio"]
+                                            ),
+                                            hora_fin=bd_hora_texto(
+                                                fila_editar["Hora fin"]
+                                            ),
+                                            motivo=(
+                                                "La reserva fue reasignada "
+                                                "a otro profesor."
+                                            ),
                                         )
-                                        body = f"""
-                                        <html>
-                                        <body>
-                                        <p>Hola {profesor_editado.split(' ')[0]},</p>
-                                        <p>Se actualizó una reserva registrada a tu nombre:</p>
-                                        <ul>
-                                            <li><b>Fecha:</b> {format_date_es(fecha_editada)}</li>
-                                            <li><b>Horario:</b> {hora_inicio_editada.strftime('%H:%M')}–{hora_fin_editada.strftime('%H:%M')}</li>
-                                            <li><b>Curso:</b> {curso_editado}</li>
-                                            <li><b>Recurso:</b> {recurso_editado}</li>
-                                        </ul>
-                                        <p>Saludos,<br>Sistema de Horarios CAV</p>
-                                        </body>
-                                        </html>
-                                        """
-                                        send_email(
-                                            subject,
-                                            body,
-                                            email_to,
+
+                                        # El nuevo profesor recibe una asignación limpia,
+                                        # no una comparación con la agenda de otra persona.
+                                        encolar_reserva_creada(
+                                            profesor_id=map_prof.get(
+                                                profesor_editado
+                                            ),
+                                            reserva_id=id_editar,
+                                            profesor_nombre=profesor_editado,
+                                            curso=curso_editado,
+                                            recurso=recurso_editado,
+                                            fecha=fecha_editada.isoformat(),
+                                            hora_inicio=hora_inicio_editada.strftime(
+                                                "%H:%M"
+                                            ),
+                                            hora_fin=hora_fin_editada.strftime(
+                                                "%H:%M"
+                                            ),
+                                        )
+                                    else:
+                                        encolar_reserva_modificada(
+                                            profesor_id=map_prof.get(
+                                                profesor_editado
+                                            ),
+                                            reserva_id=id_editar,
+                                            profesor_nombre=profesor_editado,
+                                            before=before_notificacion,
+                                            after=after_notificacion,
                                         )
 
                                 st.success(
@@ -6160,93 +6259,26 @@ if page == "Base de datos":
                                             fila_original["Profesor"]
                                         )
 
-                                        email_to = PROFESOR_DATA.get(
-                                            profesor_borrado
+                                        encolar_reserva_cancelada(
+                                            profesor_id=map_prof.get(
+                                                profesor_borrado
+                                            ),
+                                            reserva_id=id_borrar,
+                                            profesor_nombre=profesor_borrado,
+                                            curso=fila_original["Curso"],
+                                            recurso=fila_original["Recurso"],
+                                            fecha=str(
+                                                bd_fecha(
+                                                    fila_original["Fecha"]
+                                                )
+                                            ),
+                                            hora_inicio=bd_hora_texto(
+                                                fila_original["Hora inicio"]
+                                            ),
+                                            hora_fin=bd_hora_texto(
+                                                fila_original["Hora fin"]
+                                            ),
                                         )
-
-                                        if email_to:
-                                            subject = (
-                                                "Cancelación de reserva "
-                                                f"- {fila_original['Curso']}"
-                                            )
-
-                                            body = f"""
-                                            <html>
-                                            <body>
-                                                <p>
-                                                    Hola {
-                                                        str(
-                                                            profesor_borrado
-                                                        ).split(' ')[0]
-                                                    },
-                                                </p>
-
-                                                <p>
-                                                    Se canceló la siguiente
-                                                    reserva registrada a tu
-                                                    nombre:
-                                                </p>
-
-                                                <ul>
-                                                    <li>
-                                                        <b>Fecha:</b>
-                                                        {
-                                                            format_date_es(
-                                                                bd_fecha(
-                                                                    fila_original[
-                                                                        'Fecha'
-                                                                    ]
-                                                                )
-                                                            )
-                                                        }
-                                                    </li>
-                                                    <li>
-                                                        <b>Horario:</b>
-                                                        {
-                                                            bd_hora_texto(
-                                                                fila_original[
-                                                                    'Hora inicio'
-                                                                ]
-                                                            )
-                                                        }–{
-                                                            bd_hora_texto(
-                                                                fila_original[
-                                                                    'Hora fin'
-                                                                ]
-                                                            )
-                                                        }
-                                                    </li>
-                                                    <li>
-                                                        <b>Curso:</b>
-                                                        {
-                                                            fila_original[
-                                                                'Curso'
-                                                            ]
-                                                        }
-                                                    </li>
-                                                    <li>
-                                                        <b>Recurso:</b>
-                                                        {
-                                                            fila_original[
-                                                                'Recurso'
-                                                            ]
-                                                        }
-                                                    </li>
-                                                </ul>
-
-                                                <p>
-                                                    Saludos,<br>
-                                                    Sistema de Horarios CAV
-                                                </p>
-                                            </body>
-                                            </html>
-                                            """
-
-                                            send_email(
-                                                subject,
-                                                body,
-                                                email_to,
-                                            )
 
                                     eliminados += 1
 
@@ -9881,7 +9913,15 @@ if page == "Configuración":
     st.title("⚙️ Configuración del Sistema")
     st.write("Desde aquí puedes administrar los elementos centrales de la aplicación.")
     
-    tab_prof, tab_cur, tab_rec, tab_estado = st.tabs(["Profesores", "Cursos", "Recursos", "Estado del sistema"])
+    tab_prof, tab_cur, tab_rec, tab_workspace, tab_estado = st.tabs(
+        [
+            "Profesores",
+            "Cursos",
+            "Recursos",
+            "Google Workspace",
+            "Estado del sistema",
+        ]
+    )
     
     with tab_prof:
         st.write("### 👥 Administración de Profesores")
@@ -9972,6 +10012,229 @@ if page == "Configuración":
                             st.cache_data.clear(); time.sleep(0.15); st.rerun()
                         except Exception as e: st.error("No se puede eliminar porque tiene reservas o reportes de mantenimiento asociados.")
 
+    with tab_workspace:
+        st.write("### 🧩 Google Workspace")
+        st.caption(
+            "Directorio institucional sincronizado con Supabase. "
+            "La app consulta la copia local para mantener velocidad."
+        )
+
+        resumen_ws = resumen_workspace()
+        ultima_sync = resumen_ws.get("last_sync") or {}
+
+        w1, w2, w3, w4 = st.columns(4)
+        w1.metric("Usuarios Workspace", resumen_ws.get("users", 0))
+        w2.metric("Grupos", resumen_ws.get("groups", 0))
+        w3.metric(
+            "Profesores vinculados",
+            f"{resumen_ws.get('linked_professors', 0)}/"
+            f"{resumen_ws.get('professors', 0)}",
+        )
+        w4.metric("Sin vincular", resumen_ws.get("unlinked_professors", 0))
+
+        if ultima_sync:
+            estado_sync = ultima_sync.get("status", "—")
+            detalle_sync = (
+                ultima_sync.get("finished_at")
+                or ultima_sync.get("started_at")
+                or "—"
+            )
+
+            if estado_sync == "success":
+                st.success(
+                    "✅ Workspace sincronizado. "
+                    f"Última ejecución: {detalle_sync}"
+                )
+            elif estado_sync == "running":
+                st.info("🔄 Sincronización en curso...")
+            else:
+                st.warning(
+                    "⚠️ Última sincronización con error: "
+                    f"{ultima_sync.get('error') or 'sin detalle'}"
+                )
+        else:
+            st.info(
+                "Aún no hay sincronizaciones. Ejecuta la migración SQL y "
+                "despliega la función `workspace-sync`."
+            )
+
+        col_sync_1, col_sync_2 = st.columns([1, 2])
+
+        if col_sync_1.button(
+            "🔄 Sincronizar Workspace ahora",
+            type="primary",
+            use_container_width=True,
+        ):
+            try:
+                with st.spinner(
+                    "Consultando usuarios, grupos y miembros..."
+                ):
+                    resultado_sync = sincronizar_workspace()
+                st.cache_data.clear()
+                st.success(
+                    "✅ Sincronización completada: "
+                    f"{resultado_sync.get('users', 0)} usuarios, "
+                    f"{resultado_sync.get('groups', 0)} grupos, "
+                    f"{resultado_sync.get('linked_professors', 0)} "
+                    "profesores vinculados."
+                )
+                time.sleep(0.2)
+                st.rerun()
+            except Exception as error:
+                registrar_error("workspace_sync_manual", error)
+                st.error(
+                    "No fue posible sincronizar Workspace. "
+                    f"Detalle: {error}"
+                )
+
+        col_sync_2.caption(
+            "Cuando instales Supabase Cron, Workspace también se "
+            "sincronizará automáticamente cada 6 horas."
+        )
+
+        st.markdown("#### 👨‍🏫 Vinculación de profesores")
+
+        profesores_ws = resumen_ws.get("professor_rows", [])
+        pendientes_ws = [
+            p for p in profesores_ws if not p.get("workspace_user_id")
+        ]
+
+        if not pendientes_ws and profesores_ws:
+            st.success(
+                "✅ Todos los profesores están vinculados a Workspace."
+            )
+        elif pendientes_ws:
+            usuarios_ws = listar_workspace_users()
+            st.warning(
+                f"Hay {len(pendientes_ws)} profesor(es) sin vínculo."
+            )
+
+            prof_opciones = {
+                int(p["id"]): (
+                    f"{p['nombre']} · {p.get('email') or 'sin correo'}"
+                )
+                for p in pendientes_ws
+            }
+            profesor_id_ws = st.selectbox(
+                "Profesor por vincular",
+                list(prof_opciones.keys()),
+                format_func=lambda pid: prof_opciones[pid],
+                key="workspace_profesor_manual",
+            )
+
+            usuario_opciones = {
+                u["google_id"]: (
+                    f"{u.get('full_name') or 'Sin nombre'} · "
+                    f"{u.get('primary_email')}"
+                )
+                for u in usuarios_ws
+                if not u.get("suspended")
+            }
+
+            if usuario_opciones:
+                workspace_user_id = st.selectbox(
+                    "Cuenta Workspace",
+                    list(usuario_opciones.keys()),
+                    format_func=lambda uid: usuario_opciones[uid],
+                    key="workspace_usuario_manual",
+                )
+
+                if st.button(
+                    "🔗 Vincular profesor y cuenta",
+                    use_container_width=True,
+                ):
+                    try:
+                        usuario = vincular_profesor_workspace(
+                            profesor_id_ws, workspace_user_id
+                        )
+                        st.success(
+                            "✅ Vinculado con "
+                            f"{usuario.get('primary_email')}."
+                        )
+                        time.sleep(0.15)
+                        st.rerun()
+                    except Exception as error:
+                        st.error(str(error))
+            else:
+                st.info("No hay usuarios Workspace sincronizados.")
+
+        st.markdown("#### 👥 Grupos institucionales")
+        grupos_ws = listar_workspace_groups()
+
+        if grupos_ws:
+            df_grupos_ws = pd.DataFrame(grupos_ws)
+            columnas_grupo = [
+                c
+                for c in [
+                    "name",
+                    "email",
+                    "direct_members_count",
+                    "synced_at",
+                ]
+                if c in df_grupos_ws.columns
+            ]
+            st.dataframe(
+                df_grupos_ws[columnas_grupo],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("Los grupos aparecerán después de sincronizar.")
+
+        if grupos_ws:
+            grupo_opciones_ws = {
+                g["google_id"]: (
+                    f"{g.get('name') or g.get('email')} · "
+                    f"{g.get('email')}"
+                )
+                for g in grupos_ws
+            }
+            grupo_ver_ws = st.selectbox(
+                "Ver miembros de un grupo",
+                list(grupo_opciones_ws.keys()),
+                format_func=lambda gid: grupo_opciones_ws[gid],
+                key="workspace_grupo_miembros",
+            )
+            miembros_ws = listar_miembros_grupo(grupo_ver_ws)
+            if miembros_ws:
+                st.dataframe(
+                    pd.DataFrame(miembros_ws),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                st.caption(
+                    f"{len(miembros_ws)} miembro(s) sincronizados en este grupo."
+                )
+            else:
+                st.caption("Este grupo no tiene miembros sincronizados.")
+
+        st.markdown("#### 📬 Cola de notificaciones")
+        outbox = listar_outbox_reciente(80)
+
+        if outbox:
+            df_outbox = pd.DataFrame(outbox)
+            st.dataframe(
+                df_outbox,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            q1, q2, q3 = st.columns(3)
+            q1.metric(
+                "Pendientes",
+                sum(1 for x in outbox if x.get("status") == "pending"),
+            )
+            q2.metric(
+                "Enviados recientes",
+                sum(1 for x in outbox if x.get("status") == "sent"),
+            )
+            q3.metric(
+                "Errores",
+                sum(1 for x in outbox if x.get("status") == "error"),
+            )
+        else:
+            st.caption("Todavía no hay notificaciones en cola.")
+
     with tab_estado:
         st.write("### 🩺 Estado del sistema")
         st.caption(
@@ -9980,6 +10243,43 @@ if page == "Configuración":
         )
 
         servicios = []
+
+        try:
+            resumen_ws_estado = resumen_workspace()
+            ultima_ws_estado = resumen_ws_estado.get("last_sync") or {}
+            estado_ws = ultima_ws_estado.get("status")
+
+            if estado_ws == "success":
+                servicios.append(
+                    (
+                        "Google Workspace",
+                        "✅ Sincronizado",
+                        (
+                            f"{resumen_ws_estado.get('users', 0)} usuarios · "
+                            f"{resumen_ws_estado.get('groups', 0)} grupos"
+                        ),
+                    )
+                )
+            elif estado_ws == "error":
+                servicios.append(
+                    (
+                        "Google Workspace",
+                        "❌ Error",
+                        ultima_ws_estado.get("error") or "Sin detalle",
+                    )
+                )
+            else:
+                servicios.append(
+                    (
+                        "Google Workspace",
+                        "⚪ Pendiente",
+                        "Ejecuta la primera sincronización",
+                    )
+                )
+        except Exception as error:
+            servicios.append(
+                ("Google Workspace", "⚪ No inicializado", str(error))
+            )
 
         try:
             supabase.table("recursos").select("id").limit(1).execute()
@@ -10055,7 +10355,16 @@ if page == "Configuración":
                 with st.form("form_correo_prueba", clear_on_submit=False):
                     correo_prueba = st.text_input(
                         "Enviar prueba a",
-                        placeholder="nombre@colegioantoniovaras.cl",
+                        placeholder=(
+                            "nombre.apellidopaterno.i@"
+                            "colegioantoniovaras.cl"
+                        ),
+                        autocomplete="email",
+                    )
+                    st.caption(
+                        "Formato institucional habitual: "
+                        "`nombre.apellidopaterno.inicialapellidomaterno"
+                        "@colegioantoniovaras.cl`"
                     )
                     enviar_prueba = st.form_submit_button(
                         "📨 Enviar correo de prueba",
