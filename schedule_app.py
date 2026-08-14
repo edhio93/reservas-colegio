@@ -22,9 +22,6 @@ import zipfile
 import google.generativeai as genai
 import base64
 import os
-from streamlit_autorefresh import st_autorefresh
-import base64
-import os
 import uuid
 import traceback
 import logging
@@ -508,17 +505,23 @@ def obtener_eventos_google_calendar(url_ics):
         return []
         
 # --- CONFIGURACIÓN DE GEMINI ---
-# Usamos st.secrets para que no te vuelvan a bloquear la llave
 try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-    genai.configure(api_key=GEMINI_API_KEY)
-    
-    # AQUÍ ESTÁ LA MAGIA: Usamos el nuevo modelo que tu llave sí reconoce
-    model = genai.GenerativeModel('gemini-2.5-flash') 
-    
 except KeyError:
-    st.error("🚨 Error: No se encontró la API Key en los secretos de Streamlit.")
+    st.error(
+        "🚨 Error: No se encontró la API Key en los secretos de Streamlit."
+    )
     st.stop()
+
+
+@st.cache_resource(show_spinner=False)
+def obtener_modelo_gemini(api_key):
+    """Reutiliza el modelo de IA y evita reconstruirlo en cada rerun."""
+    genai.configure(api_key=api_key)
+    return genai.GenerativeModel("gemini-2.5-flash")
+
+
+model = obtener_modelo_gemini(GEMINI_API_KEY)
 
 # --- TU FUNCIÓN PARA LLAMAR A LA IA ---
 def consultar_gemini(prompt):
@@ -542,8 +545,27 @@ except KeyError as e:
     st.error(f"🚨 Falta configurar {e} en los Secrets de Streamlit.")
     st.stop()
 
-opciones = ClientOptions(postgrest_client_timeout=60, storage_client_timeout=60)
-supabase: Client = create_client(URL_SUPABASE, CLAVE_SUPABASE, options=opciones)
+@st.cache_resource(show_spinner=False)
+def obtener_cliente_supabase(url_supabase, clave_supabase):
+    """
+    Reutiliza el cliente Supabase entre reruns.
+    """
+    opciones = ClientOptions(
+        postgrest_client_timeout=45,
+        storage_client_timeout=60,
+    )
+    return create_client(
+        url_supabase,
+        clave_supabase,
+        options=opciones,
+    )
+
+
+supabase: Client = obtener_cliente_supabase(
+    URL_SUPABASE,
+    CLAVE_SUPABASE,
+)
+
 
 # Registro local de errores para diagnóstico administrativo.
 logging.basicConfig(level=logging.INFO)
@@ -1636,9 +1658,9 @@ def renderizar_monitor_semanal_publico():
     lunes = fecha_referencia - dt.timedelta(days=fecha_referencia.weekday())
     viernes = lunes + dt.timedelta(days=4)
 
-    # Refresco automático cada minuto.
+    # Monitor público: refresco cada 2 minutos para reducir carga.
     st_autorefresh(
-        interval=60_000,
+        interval=120_000,
         key=f"monitor_semanal_publico_{lunes.isoformat()}",
     )
 
@@ -2526,7 +2548,7 @@ if st.session_state.get("ver_pantalla_tv", False):
     # Configuración de refresco y escala.
     # La escala real se conserva en una clave que no pertenece al slider.
     # Así Streamlit no la elimina cuando la alerta ejecuta st.stop().
-    refresh_count = st_autorefresh(interval=20000, key="tv_refresh_global")
+    refresh_count = st_autorefresh(interval=30000, key="tv_refresh_global")
 
     if "tv_scale_saved" not in st.session_state:
         st.session_state.tv_scale_saved = 100
@@ -4046,7 +4068,7 @@ if page_param == "reporte":
                         
                         st.success("✅ ¡Reporte enviado con éxito! Gracias por avisarnos.")
                         st.balloons() # 🎈 ¡AQUÍ ESTÁN LOS GLOBOS! 🎈
-                        time.sleep(4)
+                        time.sleep(1.2)
                         st.rerun() # Limpia la pantalla para el siguiente reporte
                     except Exception as e:
                         st.error(f"Error técnico al guardar: {e}")
@@ -4070,7 +4092,7 @@ def custom_course_sort_key(course_name):
         return (level_priority, int(num), letter or '')
     return (4, 0, course_name)
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=600, show_spinner=False)
 def cargar_datos_login():
     try:
         p_res = supabase.table("profesores").select("nombre").execute().data
@@ -4120,7 +4142,7 @@ if not st.session_state.logged:
 
         with col_form:
             st.markdown("<h2 style='text-align: center; color: #1E3A8A; margin-bottom: 0px;'>SISTEMA CAV</h2>", unsafe_allow_html=True)
-            st.markdown("<p style='text-align: center; color: gray; font-size: 0.9rem;'>Reservas, recursos, diplomas y monitor semanal · Autoescala inteligente V18.1</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: gray; font-size: 0.9rem;'>Reservas, recursos, diplomas y monitor semanal · V23 · navegación estable + modo rendimiento</p>", unsafe_allow_html=True)
             
             with st.container(border=True):
                 # Quitamos "Profesor" de las opciones. Ahora solo quedan Admin y Mensajería
@@ -4129,8 +4151,21 @@ if not st.session_state.logged:
 
                 if tipo_user == "Administrador":
                     with st.form("admin_form", clear_on_submit=True):
-                        u_adm = st.text_input("Usuario (Soporte Técnico)", placeholder="Ej: Edgar")
-                        p_adm = st.text_input("Contraseña", type="password", placeholder="••••••••")
+                        u_adm = st.text_input(
+                            "Usuario (Soporte Técnico)",
+                            placeholder="Ej: Edgar",
+                            autocomplete="username",
+                        )
+                        p_adm = st.text_input(
+                            "Contraseña",
+                            type="password",
+                            placeholder="••••••••",
+                            autocomplete="current-password",
+                        )
+                        st.caption(
+                            "🔐 Tu navegador puede ofrecer guardar esta clave "
+                            "después de iniciar sesión."
+                        )
                         
                         if st.form_submit_button("INICIAR SESIÓN", use_container_width=True, type="primary"):
                             try:
@@ -4150,9 +4185,21 @@ if not st.session_state.logged:
                                 
                 elif tipo_user == "Mensajería Interna":
                     st.info("💡 Acceso protegido para la gestión de Pantallas Informativas.")
-                    with st.form("mensajeria_form"):
-                        u_msg = st.text_input("Nombre del operador", placeholder="Ej. Inspectoría")
-                        p_msg = st.text_input("PIN de Mensajería", type="password", placeholder="••••••")
+                    with st.form("mensajeria_form", clear_on_submit=True):
+                        u_msg = st.text_input(
+                            "Nombre del operador",
+                            placeholder="Ej. Inspectoría",
+                            autocomplete="username",
+                        )
+                        p_msg = st.text_input(
+                            "PIN de Mensajería",
+                            type="password",
+                            placeholder="••••••",
+                            autocomplete="current-password",
+                        )
+                        st.caption(
+                            "🔐 Tu navegador puede ofrecer guardar este acceso."
+                        )
                         if st.form_submit_button("ENTRAR AL PANEL DE MENSAJERÍA", use_container_width=True, type="primary"):
                             try:
                                 clave_msg = st.secrets["passwords"]["mensajeria_pass"]
@@ -4171,7 +4218,16 @@ if not st.session_state.logged:
                 else:
                     with st.form("profe_form", clear_on_submit=True):
                         u_profe = st.selectbox("Busca tu nombre", PROFESORES, index=None, placeholder="Selecciona...")
-                        p_profe = st.text_input("Clave de Acceso", type="password", placeholder="6904")
+                        p_profe = st.text_input(
+                            "Clave de Acceso",
+                            type="password",
+                            placeholder="••••",
+                            autocomplete="current-password",
+                        )
+                        st.caption(
+                            "🔐 El navegador puede ofrecer recordar la clave "
+                            "en este dispositivo."
+                        )
                         
                         if st.form_submit_button("ENTRAR AL PANEL", use_container_width=True, type="primary"):
                             try:
@@ -4235,7 +4291,7 @@ if not st.session_state.logged:
 # ------------------------------------------------------------------
 # 3) CARGA DE LA BASE DE DATOS PRINCIPAL 
 # ------------------------------------------------------------------
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=120, show_spinner=False)
 def cargar_reservas_y_datos():
     horas_corregidas = [
         '8:00 a 8:45', '8:45 a 9:30', '8:00 a 9:30',
@@ -4295,20 +4351,101 @@ def cargar_reservas_y_datos():
 
 df, HORAS, df_mantenimiento = cargar_reservas_y_datos()
 
-map_prof, map_cur, map_rec, PROFESOR_DATA = {}, {}, {}, {}
-try: 
-    prof_data_db = supabase.table("profesores").select("id, nombre, email").execute().data
-    map_prof = {p["nombre"]: p["id"] for p in prof_data_db}; PROFESOR_DATA = {p["nombre"]: p.get("email", "") for p in prof_data_db}
-except: pass
-try: map_cur = {c["nombre"]: c["id"] for c in supabase.table("cursos").select("id, nombre").execute().data}
-except: pass
-try: map_rec = {r["nombre"]: r["id"] for r in supabase.table("recursos").select("id, nombre").execute().data}
-except: pass
+@st.cache_data(ttl=600, show_spinner=False)
+def cargar_catalogos_runtime():
+    """Catálogos de apoyo para formularios y correos."""
+    map_prof_local = {}
+    map_cur_local = {}
+    map_rec_local = {}
+    profesor_data_local = {}
+
+    try:
+        prof_data_db = (
+            supabase.table("profesores")
+            .select("id, nombre, email")
+            .execute()
+            .data
+            or []
+        )
+        map_prof_local = {
+            p["nombre"]: p["id"]
+            for p in prof_data_db
+        }
+        profesor_data_local = {
+            p["nombre"]: p.get("email", "")
+            for p in prof_data_db
+        }
+    except Exception as error:
+        registrar_error("catalogo_profesores", error)
+
+    try:
+        cursos_db = (
+            supabase.table("cursos")
+            .select("id, nombre")
+            .execute()
+            .data
+            or []
+        )
+        map_cur_local = {
+            c["nombre"]: c["id"]
+            for c in cursos_db
+        }
+    except Exception as error:
+        registrar_error("catalogo_cursos", error)
+
+    try:
+        recursos_db = (
+            supabase.table("recursos")
+            .select("id, nombre")
+            .execute()
+            .data
+            or []
+        )
+        map_rec_local = {
+            r["nombre"]: r["id"]
+            for r in recursos_db
+        }
+    except Exception as error:
+        registrar_error("catalogo_recursos", error)
+
+    return (
+        map_prof_local,
+        map_cur_local,
+        map_rec_local,
+        profesor_data_local,
+    )
+
+
+map_prof, map_cur, map_rec, PROFESOR_DATA = cargar_catalogos_runtime()
+
+
+@st.cache_data(ttl=90, show_spinner=False)
+def cargar_resumen_inicio():
+    """Resumen cacheado del Centro de Operaciones."""
+    try:
+        tickets = select_paginado(
+            "mantenimientos",
+            "*",
+            orden="fecha",
+            desc=True,
+        )
+    except Exception as error:
+        registrar_error("inicio_tickets", error)
+        tickets = []
+
+    try:
+        equipos = select_paginado("equipos", "*")
+    except Exception as error:
+        registrar_error("inicio_bajas", error)
+        equipos = []
+
+    return tickets, equipos
+
 
 # ------------------------------------------------------------------
 # 4) NAVEGACIÓN Y VISTAS
 # ------------------------------------------------------------------
-st_autorefresh(interval=300000, key="data_refresh")
+# V23: sin refresco automático global durante el trabajo privado.
 
 sidebar_title = f"Panel de {st.session_state.role.capitalize()}"
 if st.session_state.role == 'profesor': sidebar_title = f"Hola, {st.session_state.profesor_name.split(' ')[0]}"
@@ -4389,7 +4526,15 @@ with st.sidebar:
     if default_page not in available_pages:
         default_page = available_pages[0]
 
-    # Navegación controlada por session_state para permitir botones rápidos.
+    # Navegación diferida: aplicar ANTES de crear el widget del menú.
+    pagina_pendiente = st.session_state.pop(
+        "_pending_nav_page",
+        None,
+    )
+
+    if pagina_pendiente in available_pages:
+        st.session_state.nav_page = pagina_pendiente
+
     if (
         "nav_page" not in st.session_state
         or st.session_state.nav_page not in available_pages
@@ -4406,7 +4551,11 @@ with st.sidebar:
 
     st.sidebar.markdown("---")
 
-    if st.sidebar.button("🔄 Refrescar Pantalla", use_container_width=True):
+    st.sidebar.caption(
+        "⚡ Modo rendimiento activo · sin refrescos automáticos mientras trabajas"
+    )
+
+    if st.sidebar.button("🔄 Refrescar datos", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
@@ -4613,6 +4762,7 @@ INSTRUCCIONES DE RESPUESTA:
     return respuesta
 
 
+@st.fragment
 def renderizar_asistente_flotante(pagina_actual):
     """
     Asistente flotante V21.1.
@@ -4888,7 +5038,7 @@ def renderizar_asistente_flotante(pagina_actual):
                     pagina_actual,
                 )
 
-            st.rerun()
+            st.rerun(scope="fragment")
 
         if st.button(
             "🧹 Limpiar conversación",
@@ -4896,7 +5046,7 @@ def renderizar_asistente_flotante(pagina_actual):
             use_container_width=True,
         ):
             st.session_state.asistente_historial = []
-            st.rerun()
+            st.rerun(scope="fragment")
 
         st.caption(
             "🔒 El asistente usa el contexto de la sección actual y no "
@@ -4913,24 +5063,24 @@ renderizar_asistente_flotante(page)
 
 if page == "Inicio":
     st.title("🏠 Centro de Operaciones")
-    st.caption("🤖 Asistente flotante contextual V21.1 activo")
+    st.caption("⚡ V23 · rendimiento optimizado · asistente contextual activo")
     nombre_corto = (st.session_state.get("profesor_name") or "Usuario").split(" ")[0]
     st.caption(f"Bienvenido, {nombre_corto}. Resumen actualizado del sistema.")
 
     hoy_inicio = dt.date.today()
     reservas_hoy_inicio = df[df["Fecha"] == hoy_inicio] if not df.empty else pd.DataFrame()
-    try:
-        tickets_inicio = select_paginado("mantenimientos", "*", orden="fecha", desc=True)
-    except Exception as e:
-        registrar_error("inicio_tickets", e)
-        tickets_inicio = []
-    tickets_pend = [t for t in tickets_inicio if t.get("estado") == "Reportado (Vía QR)"]
-    tickets_rev = [t for t in tickets_inicio if t.get("estado") == "En Revisión"]
-    try:
-        bajas_inicio = select_paginado("equipos", "*")
-    except Exception as e:
-        registrar_error("inicio_bajas", e)
-        bajas_inicio = []
+    tickets_inicio, bajas_inicio = cargar_resumen_inicio()
+
+    tickets_pend = [
+        t
+        for t in tickets_inicio
+        if t.get("estado") == "Reportado (Vía QR)"
+    ]
+    tickets_rev = [
+        t
+        for t in tickets_inicio
+        if t.get("estado") == "En Revisión"
+    ]
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("📅 Reservas hoy", len(reservas_hoy_inicio))
@@ -4951,13 +5101,15 @@ if page == "Inicio":
             )
             return
 
+        # No modificamos directamente `nav_page` porque el radio ya existe.
+        st.session_state["_pending_nav_page"] = pagina
+
         if modulo_tecnico:
-            st.session_state.tecnico_modulo = modulo_tecnico
+            st.session_state["_pending_tecnico_modulo"] = modulo_tecnico
 
         if abrir_config_tv:
             st.session_state.ver_pantalla_tv = False
 
-        st.session_state.nav_page = pagina
         st.rerun()
 
     if st.session_state.get("role") == "admin":
@@ -5236,7 +5388,7 @@ if page == "Registrar":
                                 body = f"""<html><body><p>Hola {prof.split(' ')[0]},</p><p>Se ha(n) confirmado la(s) siguiente(s) reserva(s) a tu nombre:</p><ul><li><b>Curso:</b> {curso}</li><li><b>Recurso(s):</b> {', '.join(recs)}</li><li><b>Horario:</b> {hora}</li></ul><p><b>Fechas Registradas:</b></p><ul>{''.join([f'<li>{format_date_es(f)}</li>' for f in fechas_a_registrar])}</ul>{f"<p><b>Observaciones:</b> {obs}</p>" if obs else ""}<p>Saludos,<br>Sistema de Horarios CAV</p></body></html>"""
                                 send_email(subject, body, email_to)
                                 
-                            time.sleep(1)
+                            time.sleep(0.25)
                             st.rerun()
                         except Exception as e:
                             st.error(f"Error al guardar en la nube: {e}")
@@ -6140,7 +6292,7 @@ if page == "Base de datos":
                                     "✅ Registro actualizado correctamente."
                                 )
                                 st.cache_data.clear()
-                                time.sleep(0.5)
+                                time.sleep(0.15)
                                 st.rerun()
 
                         except Exception as error:
@@ -6629,7 +6781,7 @@ if page == "Base de datos":
                             )
                         else:
                             st.cache_data.clear()
-                            time.sleep(0.7)
+                            time.sleep(0.2)
                             st.rerun()
 
         with pestaña_exportar:
@@ -7240,6 +7392,14 @@ elif page == "Técnicos":
         "📋 Generador QR",
     ]
 
+    modulo_tecnico_pendiente = st.session_state.pop(
+        "_pending_tecnico_modulo",
+        None,
+    )
+
+    if modulo_tecnico_pendiente in opciones_modulo_tecnico:
+        st.session_state.tecnico_modulo = modulo_tecnico_pendiente
+
     if (
         "tecnico_modulo" not in st.session_state
         or st.session_state.tecnico_modulo not in opciones_modulo_tecnico
@@ -7323,7 +7483,7 @@ elif page == "Técnicos":
                                     "notas_tecnico": html_sanitizer.escape(nueva_nota).strip()
                                 }).eq("id", row['id']).execute()
                                 st.success("Ticket actualizado.")
-                                time.sleep(1); st.rerun()
+                                time.sleep(0.25); st.rerun()
                             except Exception as e: 
                                 st.error(f"Error técnico: {e}")
 
@@ -10232,7 +10392,7 @@ if page == "Configuración":
                         try:
                             supabase.table("profesores").insert({"nombre": nuevo_prof.strip().upper(), "email": nuevo_email.strip()}).execute()
                             st.success("¡Profesor agregado!")
-                            st.cache_data.clear(); time.sleep(0.5); st.rerun()
+                            st.cache_data.clear(); time.sleep(0.15); st.rerun()
                         except Exception as e: st.error(f"Error al agregar: {e}")
                     else: st.error("El nombre es obligatorio.")
         with col_list:
@@ -10248,7 +10408,7 @@ if page == "Configuración":
                             id_b = int(df_p[df_p['nombre'] == prof_borrar]['id'].values[0])
                             supabase.table("profesores").delete().eq("id", id_b).execute()
                             st.success(f"Profesor {prof_borrar} eliminado.")
-                            st.cache_data.clear(); time.sleep(0.5); st.rerun()
+                            st.cache_data.clear(); time.sleep(0.15); st.rerun()
                         except Exception as e: st.error("No se puede eliminar porque este profesor tiene reservas asociadas.")
 
     with tab_cur:
@@ -10262,7 +10422,7 @@ if page == "Configuración":
                         try:
                             supabase.table("cursos").insert({"nombre": nuevo_curso.strip().upper()}).execute()
                             st.success("¡Curso agregado!")
-                            st.cache_data.clear(); time.sleep(0.5); st.rerun()
+                            st.cache_data.clear(); time.sleep(0.15); st.rerun()
                         except Exception as e: st.error(f"Error al agregar: {e}")
                     else: st.error("El nombre es obligatorio.")
         with col_list_c:
@@ -10277,7 +10437,7 @@ if page == "Configuración":
                             id_b = int(df_c[df_c['nombre'] == cur_borrar]['id'].values[0])
                             supabase.table("cursos").delete().eq("id", id_b).execute()
                             st.success(f"Curso {cur_borrar} eliminado.")
-                            st.cache_data.clear(); time.sleep(0.5); st.rerun()
+                            st.cache_data.clear(); time.sleep(0.15); st.rerun()
                         except Exception as e: st.error("No se puede eliminar porque este curso tiene reservas asociadas.")
 
     with tab_rec:
@@ -10291,7 +10451,7 @@ if page == "Configuración":
                         try:
                             supabase.table("recursos").insert({"nombre": nuevo_rec.strip().upper()}).execute()
                             st.success("¡Recurso agregado!")
-                            st.cache_data.clear(); time.sleep(0.5); st.rerun()
+                            st.cache_data.clear(); time.sleep(0.15); st.rerun()
                         except Exception as e: st.error(f"Error al agregar: {e}")
                     else: st.error("El nombre es obligatorio.")
         with col_list_r:
@@ -10306,7 +10466,7 @@ if page == "Configuración":
                             id_b = int(df_r[df_r['nombre'] == rec_borrar]['id'].values[0])
                             supabase.table("recursos").delete().eq("id", id_b).execute()
                             st.success(f"Recurso {rec_borrar} eliminado.")
-                            st.cache_data.clear(); time.sleep(0.5); st.rerun()
+                            st.cache_data.clear(); time.sleep(0.15); st.rerun()
                         except Exception as e: st.error("No se puede eliminar porque tiene reservas o reportes de mantenimiento asociados.")
 
     with tab_estado:
@@ -10372,19 +10532,19 @@ elif page == "Modo TV":
         import pandas as pd
         
         # Refresco automático de pantalla cada 20 segundos
-        refresh_count = st_autorefresh(interval=20000, key="tv_refresh_timer")
+        refresh_count = st_autorefresh(interval=30000, key="tv_refresh_timer")
         
         if "tv_scale_saved" not in st.session_state:
             st.session_state.tv_scale_saved = 100
 
         escala_pct = int(st.session_state.get("tv_scale_saved", 100))
-        escala_pct = max(50, min(200, escala_pct))
+        escala_pct = max(80, min(130, escala_pct))
         st.session_state.tv_scale_saved = escala_pct
         escala = escala_pct / 100.0
 
         def guardar_escala_tv_secundaria():
             valor = int(st.session_state.get("tv_scale_widget_secundario", 100))
-            st.session_state.tv_scale_saved = max(50, min(200, valor))
+            st.session_state.tv_scale_saved = max(80, min(130, valor))
         
         now_dt = dt_datetime.now()
         hoy_str = now_dt.strftime("%Y-%m-%d")
@@ -10775,7 +10935,7 @@ elif page == "Modo TV":
                             st.success(
                                 f"Alerta activada hasta las {fin.strftime('%H:%M')}."
                             )
-                            time.sleep(0.5)
+                            time.sleep(0.15)
                             st.rerun()
 
                         except Exception as e:
