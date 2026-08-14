@@ -5,7 +5,7 @@ Streamlit Secrets y son leídas por los servicios correspondientes.
 """
 
 APP_NAME = "Sistema CAV"
-APP_VERSION = "24.0.0"
+APP_VERSION = "24.0.1"
 APP_TITLE = "Sistema de Horarios CAV"
 APP_ICON = "📅"
 APP_LAYOUT = "wide"

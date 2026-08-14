@@ -138,7 +138,12 @@ def obtener_eventos_google_calendar(url_ics):
 # ------------------------------------------------------------------
 # SERVICIO GEMINI MODULAR V24.0
 # ------------------------------------------------------------------
-from services.gemini import consultar_gemini
+from services.gemini import consultar_gemini, estado_gemini, probar_gemini
+from services.email_smtp import (
+    send_html_email,
+    send_test_email,
+    validate_email_config,
+)
 
 # ------------------------------------------------------------------
 # SERVICIO SUPABASE MODULAR V24.0
@@ -3517,16 +3522,15 @@ def format_date_es(date_obj):
     return f"{dias[date_obj.weekday()]}, {date_obj.day} de {meses[date_obj.month - 1]} de {date_obj.year}"
 
 def send_email(subject, body, recipient_email):
+    """Compatibilidad con módulos históricos usando el servicio SMTP V24.0.1."""
     try:
-        creds = st.secrets["email_credentials"]
-        sender_email, password = creds["smtp_username"], creds["smtp_password"]
-        msg = MIMEMultipart(); msg['From'] = sender_email; msg['To'] = recipient_email; msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'html'))
-        server = smtplib.SMTP(creds["smtp_server"], creds["smtp_port"]); server.starttls()
-        server.login(sender_email, password); server.send_message(msg); server.quit()
+        send_html_email(subject, body, recipient_email)
         st.toast(f"📧 Notificación enviada a {recipient_email}")
-    except Exception as e:
-        pass 
+        return True
+    except Exception as error:
+        registrar_error("send_email", error)
+        st.toast("⚠️ No se pudo enviar la notificación por correo")
+        return False
 
 # ==============================================================================
 # --- MODO PÚBLICO: ENRUTAMIENTO VÍA CÓDIGO QR ---
@@ -9970,33 +9974,113 @@ if page == "Configuración":
 
     with tab_estado:
         st.write("### 🩺 Estado del sistema")
-        st.caption("Diagnóstico rápido de servicios y tablas principales.")
+        st.caption(
+            "Diagnóstico rápido de servicios. Las pruebas manuales solo se "
+            "ejecutan cuando presionas sus botones."
+        )
 
         servicios = []
-        try:
-            prueba = supabase.table("recursos").select("id").limit(1).execute()
-            servicios.append(("Supabase", "✅ Conectado", "Base de datos disponible"))
-        except Exception as e:
-            registrar_error("estado_supabase", e)
-            servicios.append(("Supabase", "❌ Error", str(e)))
 
         try:
-            _ = model
-            servicios.append(("Gemini", "✅ Configurado", "Modelo cargado"))
-        except Exception as e:
-            servicios.append(("Gemini", "❌ Error", str(e)))
+            supabase.table("recursos").select("id").limit(1).execute()
+            servicios.append(
+                ("Supabase", "✅ Conectado", "Base de datos disponible")
+            )
+        except Exception as error:
+            registrar_error("estado_supabase", error)
+            servicios.append(("Supabase", "❌ Error", str(error)))
 
-        try:
-            creds = st.secrets["email_credentials"]
-            servicios.append(("Correo SMTP", "✅ Configurado", creds.get("smtp_server", "Servidor definido")))
-        except Exception:
-            servicios.append(("Correo SMTP", "⚠️ Sin configurar", "Las notificaciones por correo no estarán disponibles"))
+        gemini_ok, gemini_detalle = estado_gemini()
+        servicios.append(
+            (
+                "Gemini",
+                "✅ Configurado" if gemini_ok else "❌ Error",
+                gemini_detalle,
+            )
+        )
+
+        smtp_ok, smtp_detalle = validate_email_config()
+        servicios.append(
+            (
+                "Correo SMTP",
+                "✅ Configurado" if smtp_ok else "⚠️ Revisar",
+                smtp_detalle,
+            )
+        )
 
         st.dataframe(
-            pd.DataFrame(servicios, columns=["Servicio", "Estado", "Detalle"]),
+            pd.DataFrame(
+                servicios,
+                columns=["Servicio", "Estado", "Detalle"],
+            ),
             use_container_width=True,
-            hide_index=True
+            hide_index=True,
         )
+
+        st.write("### 🧪 Pruebas manuales")
+        col_prueba_ia, col_prueba_email = st.columns(2)
+
+        with col_prueba_ia:
+            with st.container(border=True):
+                st.markdown("#### 🤖 Gemini")
+                st.caption(
+                    "Realiza una llamada mínima a la API para confirmar que "
+                    "la clave y el modelo responden."
+                )
+
+                if st.button(
+                    "Probar Gemini",
+                    key="estado_probar_gemini",
+                    use_container_width=True,
+                    disabled=not gemini_ok,
+                ):
+                    with st.spinner("Probando Gemini..."):
+                        prueba_ok, prueba_detalle = probar_gemini()
+
+                    if prueba_ok:
+                        st.success(
+                            f"✅ Gemini respondió correctamente: {prueba_detalle}"
+                        )
+                    else:
+                        st.error(prueba_detalle)
+
+        with col_prueba_email:
+            with st.container(border=True):
+                st.markdown("#### 📧 Correo SMTP")
+                st.caption(
+                    "Envía un correo real para verificar conexión, "
+                    "autenticación y entrega al servidor SMTP."
+                )
+
+                with st.form("form_correo_prueba", clear_on_submit=False):
+                    correo_prueba = st.text_input(
+                        "Enviar prueba a",
+                        placeholder="nombre@colegioantoniovaras.cl",
+                    )
+                    enviar_prueba = st.form_submit_button(
+                        "📨 Enviar correo de prueba",
+                        type="primary",
+                        use_container_width=True,
+                        disabled=not smtp_ok,
+                    )
+
+                if enviar_prueba:
+                    if not str(correo_prueba or "").strip():
+                        st.error("Escribe un correo destinatario.")
+                    else:
+                        try:
+                            with st.spinner("Enviando correo de prueba..."):
+                                send_test_email(correo_prueba.strip())
+                            st.success(
+                                "✅ Correo enviado. Revisa la bandeja de entrada "
+                                "y, si no aparece, la carpeta Spam/No deseado."
+                            )
+                        except Exception as error:
+                            registrar_error("correo_prueba_smtp", error)
+                            st.error(
+                                "No se pudo enviar el correo de prueba. "
+                                f"Detalle: {error}"
+                            )
 
         st.write("### 📊 Conteo de tablas")
         conteos = []
